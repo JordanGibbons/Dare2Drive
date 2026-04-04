@@ -9,8 +9,8 @@ services:
     environment:
       - DATABASE_URL=postgresql+asyncpg://dare2drive:dare2drive@db:5432/dare2drive
       - REDIS_URL=redis://redis:6379/0
-    env_file:
-      - .env
+      - DISCORD_TOKEN=${DISCORD_TOKEN}
+      - API_SECRET_KEY=${API_SECRET_KEY}
     depends_on:
       db:
         condition: service_healthy
@@ -19,12 +19,6 @@ services:
     networks:
       - dare2drive_net
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "python -c \"import asyncio, asyncpg; asyncio.run(asyncpg.connect('postgresql://dare2drive:dare2drive@db:5432/dare2drive'))\" && echo ok"]
-      interval: 10s
-      timeout: 10s
-      retries: 5
-      start_period: 30s
 
   api:
     build:
@@ -39,8 +33,6 @@ services:
       - DATABASE_URL=postgresql+asyncpg://dare2drive:dare2drive@db:5432/dare2drive
       - REDIS_URL=redis://redis:6379/0
       - SKIP_MIGRATIONS=true
-    env_file:
-      - .env
     depends_on:
       db:
         condition: service_healthy
