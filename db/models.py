@@ -61,7 +61,7 @@ class User(Base):
 
     discord_id: Mapped[str] = mapped_column(String(20), primary_key=True)
     username: Mapped[str] = mapped_column(String(100), nullable=False)
-    body_type: Mapped[BodyType] = mapped_column(Enum(BodyType), nullable=False)
+    body_type: Mapped[BodyType] = mapped_column(Enum(BodyType, values_callable=lambda x: [e.value for e in x]), nullable=False)
     currency: Mapped[int] = mapped_column(Integer, default=500, nullable=False)
     xp: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
@@ -84,8 +84,8 @@ class Card(Base):
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     name: Mapped[str] = mapped_column(String(120), nullable=False, unique=True)
-    slot: Mapped[CardSlot] = mapped_column(Enum(CardSlot), nullable=False)
-    rarity: Mapped[Rarity] = mapped_column(Enum(Rarity), nullable=False)
+    slot: Mapped[CardSlot] = mapped_column(Enum(CardSlot, values_callable=lambda x: [e.value for e in x]), nullable=False)
+    rarity: Mapped[Rarity] = mapped_column(Enum(Rarity, values_callable=lambda x: [e.value for e in x]), nullable=False)
     stats: Mapped[dict] = mapped_column(JSONB, nullable=False)
     art_path: Mapped[str | None] = mapped_column(String(255), nullable=True)
     print_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
