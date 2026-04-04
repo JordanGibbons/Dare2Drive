@@ -1,9 +1,9 @@
 # Production Dockerfile — minimal runtime image, no dev tools
-FROM python:3.14-slim AS runtime
+FROM python:3.12-slim AS runtime
 
 # System deps (runtime only)
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends libpq5 curl && \
+    apt-get install -y --no-install-recommends libpq5 curl gcc libpq-dev && \
     rm -rf /var/lib/apt/lists/*
 
 # Create non-root user
@@ -13,10 +13,7 @@ WORKDIR /app
 
 # Install only runtime dependencies
 COPY pyproject.toml ./
-RUN pip install --no-cache-dir . 2>/dev/null || \
-    pip install --no-cache-dir discord.py "fastapi>=0.110" "uvicorn[standard]" \
-    "sqlalchemy[asyncio]" asyncpg alembic "redis>=5.0" pydantic-settings pillow \
-    infisical-python httpx
+RUN pip install --no-cache-dir .
 
 # Copy source
 COPY . .

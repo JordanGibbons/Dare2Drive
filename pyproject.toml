@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "dare2drive"
 version = "0.1.0"
 description = "Dare2Drive — a Discord trading card game where players collect car part cards, build cars, and race."
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.14"
 dependencies = [
     "discord.py>=2.3,<3",
     "fastapi>=0.110,<1",
