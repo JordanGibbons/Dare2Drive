@@ -1,0 +1,29 @@
+# Development Dockerfile — hot reload, dev tools, Alembic CLI
+FROM python:3.14-slim AS dev
+
+# System deps
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends gcc libpq-dev curl && \
+    rm -rf /var/lib/apt/lists/*
+
+# Create non-root user
+RUN groupadd -r dare2drive && useradd -r -g dare2drive -m -s /bin/bash dare2drive
+
+WORKDIR /app
+
+# Install all dependencies (runtime + dev)
+COPY pyproject.toml ./
+RUN pip install --no-cache-dir -e ".[dev]" 2>/dev/null || pip install --no-cache-dir ".[dev]"
+
+# Copy project for the initial layer (will be overridden by volume mount in dev)
+COPY . .
+
+# Make entrypoint executable
+RUN chmod +x docker/entrypoint.sh
+
+# Own the working directory
+RUN chown -R dare2drive:dare2drive /app
+
+USER dare2drive
+
+ENTRYPOINT ["docker/entrypoint.sh"]

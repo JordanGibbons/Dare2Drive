@@ -1,0 +1,59 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "dare2drive"
+version = "0.1.0"
+description = "Dare2Drive — a Discord trading card game where players collect car part cards, build cars, and race."
+requires-python = ">=3.12"
+dependencies = [
+    "discord.py>=2.3,<3",
+    "fastapi>=0.110,<1",
+    "uvicorn[standard]>=0.29,<1",
+    "sqlalchemy[asyncio]>=2.0,<3",
+    "asyncpg>=0.29,<1",
+    "alembic>=1.13,<2",
+    "redis>=5.0,<6",
+    "pydantic-settings>=2.2,<3",
+    "pillow>=10.3,<11",
+    "infisical-python>=2.0,<3",
+    "httpx>=0.27,<1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "watchfiles>=0.21,<1",
+    "pytest>=8.1,<9",
+    "pytest-asyncio>=0.23,<1",
+    "pytest-cov>=5.0,<6",
+    "black>=24.3,<25",
+    "ruff>=0.3,<1",
+    "ipython>=8.22,<9",
+    "aiosqlite>=0.20,<1",
+    "httpx>=0.27,<1",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
+
+[tool.black]
+line-length = 100
+target-version = ["py312"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+addopts = "--cov=bot --cov=engine --cov=api --cov=db --cov=config --cov-report=term-missing --cov-report=xml"
+
+[tool.coverage.run]
+source = ["bot", "engine", "api", "db", "config"]
+omit = ["*/migrations/*", "*/tests/*"]
+
+[tool.coverage.report]
+fail_under = 70
+show_missing = true

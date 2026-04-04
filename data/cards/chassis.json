@@ -1,0 +1,57 @@
+[
+  {
+    "name": "Scrapheap Frame",
+    "slot": "chassis",
+    "rarity": "common",
+    "stats": {
+      "primary": {"drag": 15, "weight": 10, "durability": 30, "style": 10},
+      "secondary": {"handling_cap_modifier": -5, "top_speed_multiplier": 0.9}
+    }
+  },
+  {
+    "name": "Tinbox Unibody",
+    "slot": "chassis",
+    "rarity": "common",
+    "stats": {
+      "primary": {"drag": 12, "weight": 8, "durability": 35, "style": 15},
+      "secondary": {"handling_cap_modifier": -3, "top_speed_multiplier": 0.92}
+    }
+  },
+  {
+    "name": "Steelvein Monocoque",
+    "slot": "chassis",
+    "rarity": "uncommon",
+    "stats": {
+      "primary": {"drag": 5, "weight": 2, "durability": 55, "style": 40},
+      "secondary": {"handling_cap_modifier": 2, "top_speed_multiplier": 0.98}
+    }
+  },
+  {
+    "name": "Phantom Coupe",
+    "slot": "chassis",
+    "rarity": "rare",
+    "stats": {
+      "primary": {"drag": -5, "weight": -8, "durability": 65, "style": 65},
+      "secondary": {"handling_cap_modifier": 8, "top_speed_multiplier": 1.05}
+    }
+  },
+  {
+    "name": "Obsidian Widebody",
+    "slot": "chassis",
+    "rarity": "epic",
+    "stats": {
+      "primary": {"drag": -15, "weight": -18, "durability": 80, "style": 85},
+      "secondary": {"handling_cap_modifier": 14, "top_speed_multiplier": 1.12}
+    }
+  },
+  {
+    "name": "Eclipse Carbon Shell",
+    "slot": "chassis",
+    "rarity": "legendary",
+    "stats": {
+      "primary": {"drag": -25, "weight": -28, "durability": 92, "style": 95},
+      "secondary": {"handling_cap_modifier": 18, "top_speed_multiplier": 1.18}
+    },
+    "print_max": 500
+  }
+]

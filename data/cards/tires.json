@@ -1,0 +1,57 @@
+[
+  {
+    "name": "Bald Eagles",
+    "slot": "tires",
+    "rarity": "common",
+    "stats": {
+      "primary": {"grip": 20, "handling": 18, "launch_acceleration": 15},
+      "secondary": {"durability": 30, "weather_performance": 20, "drag": 12}
+    }
+  },
+  {
+    "name": "Pavement Pawns",
+    "slot": "tires",
+    "rarity": "common",
+    "stats": {
+      "primary": {"grip": 25, "handling": 22, "launch_acceleration": 18},
+      "secondary": {"durability": 35, "weather_performance": 25, "drag": 10}
+    }
+  },
+  {
+    "name": "Stormrunner All-Seasons",
+    "slot": "tires",
+    "rarity": "uncommon",
+    "stats": {
+      "primary": {"grip": 42, "handling": 40, "launch_acceleration": 35},
+      "secondary": {"durability": 55, "weather_performance": 60, "drag": 8}
+    }
+  },
+  {
+    "name": "Driftcore Slicks",
+    "slot": "tires",
+    "rarity": "rare",
+    "stats": {
+      "primary": {"grip": 62, "handling": 65, "launch_acceleration": 55},
+      "secondary": {"durability": 60, "weather_performance": 30, "drag": 5}
+    }
+  },
+  {
+    "name": "Venomgrip Semi-Slicks",
+    "slot": "tires",
+    "rarity": "epic",
+    "stats": {
+      "primary": {"grip": 80, "handling": 78, "launch_acceleration": 72},
+      "secondary": {"durability": 78, "weather_performance": 65, "drag": 4}
+    }
+  },
+  {
+    "name": "Spectre Contact Pros",
+    "slot": "tires",
+    "rarity": "legendary",
+    "stats": {
+      "primary": {"grip": 94, "handling": 90, "launch_acceleration": 88},
+      "secondary": {"durability": 92, "weather_performance": 85, "drag": 2}
+    },
+    "print_max": 500
+  }
+]

@@ -1,0 +1,104 @@
+[
+  {
+    "name": "wet_track",
+    "display_name": "Wet Track",
+    "description": "Heavy rain has soaked the track. Grip and weather performance are king.",
+    "stat_weights": {
+      "grip": 2.0,
+      "weather_performance": 1.8,
+      "handling": 1.3,
+      "power": 0.8,
+      "top_speed": 1.0,
+      "braking": 1.0,
+      "durability": 1.0,
+      "acceleration": 1.0,
+      "stability": 1.0
+    },
+    "variance_multiplier": 1.0
+  },
+  {
+    "name": "night_race",
+    "display_name": "Night Race",
+    "description": "Under the lights. Balanced conditions but anything can happen.",
+    "stat_weights": {
+      "grip": 1.0,
+      "weather_performance": 1.0,
+      "handling": 1.0,
+      "power": 1.0,
+      "top_speed": 1.0,
+      "braking": 1.0,
+      "durability": 1.0,
+      "acceleration": 1.0,
+      "stability": 1.0
+    },
+    "variance_multiplier": 1.5
+  },
+  {
+    "name": "mountain_pass",
+    "display_name": "Mountain Pass",
+    "description": "Winding roads through mountain switchbacks. Handling and braking dominate.",
+    "stat_weights": {
+      "grip": 1.4,
+      "weather_performance": 1.0,
+      "handling": 1.8,
+      "power": 1.0,
+      "top_speed": 1.0,
+      "braking": 1.6,
+      "durability": 1.0,
+      "acceleration": 1.0,
+      "stability": 1.0
+    },
+    "variance_multiplier": 1.0
+  },
+  {
+    "name": "drag_strip",
+    "display_name": "Drag Strip",
+    "description": "Quarter-mile straight line. Raw power wins.",
+    "stat_weights": {
+      "grip": 1.0,
+      "weather_performance": 1.0,
+      "handling": 0.3,
+      "power": 2.0,
+      "top_speed": 1.5,
+      "braking": 1.0,
+      "durability": 1.0,
+      "acceleration": 1.0,
+      "stability": 1.0
+    },
+    "variance_multiplier": 1.0
+  },
+  {
+    "name": "city_circuit",
+    "display_name": "City Circuit",
+    "description": "Tight urban corners and short straights. Agility is everything.",
+    "stat_weights": {
+      "grip": 1.0,
+      "weather_performance": 1.0,
+      "handling": 1.6,
+      "power": 1.0,
+      "top_speed": 1.0,
+      "braking": 1.4,
+      "durability": 1.0,
+      "acceleration": 1.2,
+      "stability": 1.0
+    },
+    "variance_multiplier": 1.0
+  },
+  {
+    "name": "off_road",
+    "display_name": "Off-Road",
+    "description": "Dirt, gravel, and mud. Stability and durability are non-negotiable.",
+    "stat_weights": {
+      "grip": 1.2,
+      "weather_performance": 1.0,
+      "handling": 1.0,
+      "power": 1.0,
+      "top_speed": 0.5,
+      "braking": 1.0,
+      "durability": 1.5,
+      "acceleration": 1.0,
+      "stability": 2.0
+    },
+    "variance_multiplier": 1.0
+  }
+]

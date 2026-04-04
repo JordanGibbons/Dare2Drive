@@ -1,0 +1,57 @@
+[
+  {
+    "name": "Clunker 3-Speed",
+    "slot": "transmission",
+    "rarity": "common",
+    "stats": {
+      "primary": {"acceleration_scaling": 18, "top_speed_ceiling": 20, "shift_efficiency": 22},
+      "secondary": {"durability": 38, "torque_transfer_pct": 40}
+    }
+  },
+  {
+    "name": "Grindbox 4-Speed",
+    "slot": "transmission",
+    "rarity": "common",
+    "stats": {
+      "primary": {"acceleration_scaling": 22, "top_speed_ceiling": 25, "shift_efficiency": 20},
+      "secondary": {"durability": 42, "torque_transfer_pct": 45}
+    }
+  },
+  {
+    "name": "Slickshift 5-Speed",
+    "slot": "transmission",
+    "rarity": "uncommon",
+    "stats": {
+      "primary": {"acceleration_scaling": 40, "top_speed_ceiling": 42, "shift_efficiency": 45},
+      "secondary": {"durability": 55, "torque_transfer_pct": 58}
+    }
+  },
+  {
+    "name": "Quickdraw 6-Speed",
+    "slot": "transmission",
+    "rarity": "rare",
+    "stats": {
+      "primary": {"acceleration_scaling": 60, "top_speed_ceiling": 62, "shift_efficiency": 65},
+      "secondary": {"durability": 68, "torque_transfer_pct": 72}
+    }
+  },
+  {
+    "name": "Raptorshift DCT",
+    "slot": "transmission",
+    "rarity": "epic",
+    "stats": {
+      "primary": {"acceleration_scaling": 78, "top_speed_ceiling": 80, "shift_efficiency": 82},
+      "secondary": {"durability": 80, "torque_transfer_pct": 85}
+    }
+  },
+  {
+    "name": "Nexus Sequential",
+    "slot": "transmission",
+    "rarity": "legendary",
+    "stats": {
+      "primary": {"acceleration_scaling": 92, "top_speed_ceiling": 90, "shift_efficiency": 94},
+      "secondary": {"durability": 92, "torque_transfer_pct": 95}
+    },
+    "print_max": 500
+  }
+]

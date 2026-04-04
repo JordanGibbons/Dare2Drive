@@ -1,0 +1,81 @@
+services:
+  bot:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.dev
+    command: watchfiles --filter python "python -m bot.main" .
+    volumes:
+      - .:/app
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://dare2drive:dare2drive@db:5432/dare2drive
+      - REDIS_URL=redis://redis:6379/0
+    env_file:
+      - .env
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - dare2drive_net
+    restart: unless-stopped
+
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.dev
+    command: uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app
+    volumes:
+      - .:/app
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://dare2drive:dare2drive@db:5432/dare2drive
+      - REDIS_URL=redis://redis:6379/0
+    env_file:
+      - .env
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - dare2drive_net
+    restart: unless-stopped
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: dare2drive
+      POSTGRES_PASSWORD: dare2drive
+      POSTGRES_DB: dare2drive
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dare2drive -d dare2drive"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - dare2drive_net
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - dare2drive_net
+
+volumes:
+  pgdata:
+
+networks:
+  dare2drive_net:
+    driver: bridge

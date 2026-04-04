@@ -1,0 +1,57 @@
+[
+  {
+    "name": "Drum Stoppers",
+    "slot": "brakes",
+    "rarity": "common",
+    "stats": {
+      "primary": {"brake_force": 20, "corner_entry_speed": 15, "stability_under_decel": 18},
+      "secondary": {"handling_bonus": 2, "durability": 35}
+    }
+  },
+  {
+    "name": "Bargain Pads",
+    "slot": "brakes",
+    "rarity": "common",
+    "stats": {
+      "primary": {"brake_force": 25, "corner_entry_speed": 20, "stability_under_decel": 22},
+      "secondary": {"handling_bonus": 3, "durability": 40}
+    }
+  },
+  {
+    "name": "Ironclamp Discs",
+    "slot": "brakes",
+    "rarity": "uncommon",
+    "stats": {
+      "primary": {"brake_force": 45, "corner_entry_speed": 40, "stability_under_decel": 42},
+      "secondary": {"handling_bonus": 8, "durability": 55}
+    }
+  },
+  {
+    "name": "Scorchstop Ceramics",
+    "slot": "brakes",
+    "rarity": "rare",
+    "stats": {
+      "primary": {"brake_force": 65, "corner_entry_speed": 60, "stability_under_decel": 62},
+      "secondary": {"handling_bonus": 12, "durability": 68}
+    }
+  },
+  {
+    "name": "Titangrip Carbon Brakes",
+    "slot": "brakes",
+    "rarity": "epic",
+    "stats": {
+      "primary": {"brake_force": 82, "corner_entry_speed": 78, "stability_under_decel": 80},
+      "secondary": {"handling_bonus": 16, "durability": 82}
+    }
+  },
+  {
+    "name": "Voidlock Stoppers",
+    "slot": "brakes",
+    "rarity": "legendary",
+    "stats": {
+      "primary": {"brake_force": 95, "corner_entry_speed": 92, "stability_under_decel": 94},
+      "secondary": {"handling_bonus": 19, "durability": 94}
+    },
+    "print_max": 500
+  }
+]

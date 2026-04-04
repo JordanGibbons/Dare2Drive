@@ -1,0 +1,57 @@
+[
+  {
+    "name": "Springboard Basics",
+    "slot": "suspension",
+    "rarity": "common",
+    "stats": {
+      "primary": {"handling": 18, "stability": 20, "ride_height_modifier": 5},
+      "secondary": {"weight_balance_bonus": 3, "brake_efficiency_scaling": 2}
+    }
+  },
+  {
+    "name": "Bounceback Struts",
+    "slot": "suspension",
+    "rarity": "common",
+    "stats": {
+      "primary": {"handling": 22, "stability": 24, "ride_height_modifier": 3},
+      "secondary": {"weight_balance_bonus": 4, "brake_efficiency_scaling": 3}
+    }
+  },
+  {
+    "name": "Ironride Coilovers",
+    "slot": "suspension",
+    "rarity": "uncommon",
+    "stats": {
+      "primary": {"handling": 42, "stability": 45, "ride_height_modifier": -5},
+      "secondary": {"weight_balance_bonus": 8, "brake_efficiency_scaling": 6}
+    }
+  },
+  {
+    "name": "Viperstance Adjustables",
+    "slot": "suspension",
+    "rarity": "rare",
+    "stats": {
+      "primary": {"handling": 60, "stability": 62, "ride_height_modifier": -10},
+      "secondary": {"weight_balance_bonus": 12, "brake_efficiency_scaling": 10}
+    }
+  },
+  {
+    "name": "Graviton Active Dampers",
+    "slot": "suspension",
+    "rarity": "epic",
+    "stats": {
+      "primary": {"handling": 80, "stability": 82, "ride_height_modifier": -15},
+      "secondary": {"weight_balance_bonus": 16, "brake_efficiency_scaling": 15}
+    }
+  },
+  {
+    "name": "Wraith Adaptive Air",
+    "slot": "suspension",
+    "rarity": "legendary",
+    "stats": {
+      "primary": {"handling": 92, "stability": 95, "ride_height_modifier": -18},
+      "secondary": {"weight_balance_bonus": 19, "brake_efficiency_scaling": 18}
+    },
+    "print_max": 500
+  }
+]
