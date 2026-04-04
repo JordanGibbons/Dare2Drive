@@ -11,6 +11,9 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - DISCORD_TOKEN=${DISCORD_TOKEN}
       - API_SECRET_KEY=${API_SECRET_KEY}
+      - DISCORD_GUILD_ID=${DISCORD_GUILD_ID}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - ENVIRONMENT=${ENVIRONMENT:-development}
     depends_on:
       db:
         condition: service_healthy
