@@ -15,23 +15,30 @@ down_revision: Union[str, None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
-# Enum types
-bodytype_enum = sa.Enum("muscle", "sport", "compact", name="bodytype")
-cardslot_enum = sa.Enum(
+# Enum types — created explicitly; create_type=False suppresses auto-creation inside create_table
+bodytype_enum = postgresql.ENUM("muscle", "sport", "compact", name="bodytype", create_type=False)
+cardslot_enum = postgresql.ENUM(
     "engine", "transmission", "tires", "suspension", "chassis", "turbo", "brakes",
-    name="cardslot",
+    name="cardslot", create_type=False,
 )
-rarity_enum = sa.Enum(
+rarity_enum = postgresql.ENUM(
     "common", "uncommon", "rare", "epic", "legendary", "ghost",
-    name="rarity",
+    name="rarity", create_type=False,
 )
 
 
 def upgrade() -> None:
-    # Create enum types
-    bodytype_enum.create(op.get_bind(), checkfirst=True)
-    cardslot_enum.create(op.get_bind(), checkfirst=True)
-    rarity_enum.create(op.get_bind(), checkfirst=True)
+    bind = op.get_bind()
+    # Create enum types (idempotent)
+    postgresql.ENUM("muscle", "sport", "compact", name="bodytype").create(bind, checkfirst=True)
+    postgresql.ENUM(
+        "engine", "transmission", "tires", "suspension", "chassis", "turbo", "brakes",
+        name="cardslot",
+    ).create(bind, checkfirst=True)
+    postgresql.ENUM(
+        "common", "uncommon", "rare", "epic", "legendary", "ghost",
+        name="rarity",
+    ).create(bind, checkfirst=True)
 
     # Users
     op.create_table(
@@ -143,6 +150,7 @@ def downgrade() -> None:
     op.drop_table("user_cards")
     op.drop_table("cards")
     op.drop_table("users")
-    rarity_enum.drop(op.get_bind(), checkfirst=True)
-    cardslot_enum.drop(op.get_bind(), checkfirst=True)
-    bodytype_enum.drop(op.get_bind(), checkfirst=True)
+    bind = op.get_bind()
+    postgresql.ENUM(name="rarity").drop(bind, checkfirst=True)
+    postgresql.ENUM(name="cardslot").drop(bind, checkfirst=True)
+    postgresql.ENUM(name="bodytype").drop(bind, checkfirst=True)
