@@ -36,8 +36,15 @@ class Dare2DriveBot(commands.Bot):
         if settings.DISCORD_GUILD_ID:
             guild = discord.Object(id=int(settings.DISCORD_GUILD_ID))
             self.tree.copy_global_to(guild=guild)
-            await self.tree.sync(guild=guild)
-            log.info("Synced commands to guild %s", settings.DISCORD_GUILD_ID)
+            try:
+                await self.tree.sync(guild=guild)
+                log.info("Synced commands to guild %s", settings.DISCORD_GUILD_ID)
+            except discord.errors.Forbidden:
+                log.warning(
+                    "Cannot sync commands to guild %s — bot may not be a member yet. "
+                    "Invite the bot using the OAuth2 URL with the 'applications.commands' scope.",
+                    settings.DISCORD_GUILD_ID,
+                )
         else:
             await self.tree.sync()
             log.info("Synced commands globally")
