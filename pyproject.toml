@@ -27,11 +27,13 @@ dev = [
     "pytest>=8.1,<9",
     "pytest-asyncio>=0.23,<1",
     "pytest-cov>=5.0,<6",
-    "black>=24.3,<25",
+    "black>=26.3,<27",
     "ruff>=0.3,<1",
     "ipython>=8.22,<9",
     "aiosqlite>=0.20,<1",
     "httpx>=0.27,<1",
+    "commitizen>=3.29,<4",
+    "pre-commit>=3.7,<4",
 ]
 
 [tool.setuptools.packages.find]
@@ -61,3 +63,9 @@ omit = ["*/migrations/*", "*/tests/*"]
 [tool.coverage.report]
 fail_under = 70
 show_missing = true
+
+[tool.commitizen]
+name = "cz_conventional_commits"
+version = "0.1.0"
+tag_format = "v$version"
+version_files = ["pyproject.toml:version"]
