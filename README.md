@@ -303,6 +303,12 @@ mypy bot/ engine/ api/ db/ config/
 
 ---
 
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the git workflow, commit standards, and pre-commit setup.
+
+---
+
 ## License
 
 MIT
