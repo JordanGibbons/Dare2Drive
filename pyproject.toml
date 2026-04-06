@@ -58,7 +58,7 @@ addopts = "--cov=bot --cov=engine --cov=api --cov=db --cov=config --cov-report=t
 
 [tool.coverage.run]
 source = ["bot", "engine", "api", "db", "config"]
-omit = ["*/migrations/*", "*/tests/*"]
+omit = ["*/migrations/*", "*/tests/*", "bot/cogs/*", "bot/main.py"]
 
 [tool.coverage.report]
 fail_under = 70

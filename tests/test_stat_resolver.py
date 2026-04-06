@@ -147,6 +147,18 @@ class TestAggregateBuild:
         bs = aggregate_build(slots, cards)
         assert bs.overheat_risk is False
 
+    def test_body_type_applies_base_stats(self, full_build):
+        """Passing a body_type should add non-zero base stats to the build."""
+        bs_no_body = aggregate_build(full_build["slots"], full_build["cards"])
+        bs_muscle = aggregate_build(full_build["slots"], full_build["cards"], body_type="muscle")
+        # muscle body type should contribute extra power
+        assert bs_muscle.effective_power != bs_no_body.effective_power
+
+    def test_body_type_unknown_does_not_crash(self, full_build):
+        """Unknown body type silently contributes zero base stats."""
+        bs = aggregate_build(full_build["slots"], full_build["cards"], body_type="unicorn")
+        assert bs.effective_power >= 0  # no crash, stats from cards still applied
+
     def test_handling_capped_by_chassis_modifier(self):
         """Effective handling should not exceed 100 + handling_cap_modifier."""
         str(uuid.uuid4())
