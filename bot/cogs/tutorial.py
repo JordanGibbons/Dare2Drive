@@ -304,12 +304,12 @@ async def advance_tutorial(
             await session.commit()
             await view.wait_for_click()
 
-            from bot.cogs.cards import RARITY_COLORS, RARITY_EMOJI, _PackRevealView
+            from bot.cogs.cards import _PackRevealView
 
             starter_cards, pack_cards = await _grant_tutorial_completion(session, user)
             await session.commit()
 
-            # Show the starter cards they're keeping
+            # Show the starter cards they're keeping as a scrollable widget
             if starter_cards:
                 await send_dialogue(
                     interaction,
@@ -318,19 +318,18 @@ async def advance_tutorial(
                     ],
                     title="🔧 Starter Parts",
                 )
-                for card in starter_cards:
-                    await asyncio.sleep(0.5)
-                    color = RARITY_COLORS.get(card.rarity.value, 0x9CA3AF)
-                    emoji = RARITY_EMOJI.get(card.rarity.value, "")
-                    embed = discord.Embed(
-                        title=f"{emoji} {card.name}",
-                        description=(
-                            f"**Slot:** {card.slot.value.title()}\n"
-                            f"**Rarity:** {card.rarity.value.title()}"
-                        ),
-                        color=color,
-                    )
-                    await interaction.followup.send(embed=embed, ephemeral=True)
+                # Starter cards are bare Card objects — wrap with a dummy serial 0
+                starter_minted = [
+                    (card, type("_UC", (), {"serial_number": 0})()) for card in starter_cards
+                ]
+                starter_view = _PackRevealView(
+                    minted=starter_minted,
+                    display_name="Starter Parts",
+                    owner_id=interaction.user.id,
+                )
+                await interaction.followup.send(
+                    embed=starter_view.build_embed(), view=starter_view, ephemeral=True
+                )
 
             await send_dialogue(
                 interaction,
@@ -392,8 +391,10 @@ async def _grant_tutorial_completion(
             await mint_card(session, user.discord_id, card)
             starter_cards.append(card)
 
-    # Roll and grant 3 bonus cards from junkyard loot table
-    pack_cards = await _roll_cards(session, "junkyard_pack", 3)
+    # Roll and grant a full junkyard pack
+    from config.settings import settings
+
+    pack_cards = await _roll_cards(session, "junkyard_pack", settings.JUNKYARD_PACK_SIZE)
     pack_minted: list[tuple[Card, UserCard]] = []
     for card in pack_cards:
         uc = await _grant_card(session, user.discord_id, card)
