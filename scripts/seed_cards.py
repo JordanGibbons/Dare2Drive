@@ -13,8 +13,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from sqlalchemy import select
 
 from config.logging import get_logger, setup_logging
-from db.models import Base, Card
-from db.session import async_session, engine
+from db.models import Card
+from db.session import async_session
 
 setup_logging()
 log = get_logger(__name__)

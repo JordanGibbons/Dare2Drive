@@ -112,7 +112,10 @@ def _generate_narrative(
 
     # Clean race
     if position == 1:
-        narrative = intro + f"A dominant run powered by the {parts_mentioned[0] if parts_mentioned else 'build'}."
+        narrative = (
+            intro
+            + f"A dominant run powered by the {parts_mentioned[0] if parts_mentioned else 'build'}."
+        )
         narrative += f" First place with a score of {score:.1f}!"
     elif position <= 3:
         narrative = intro + f"Solid performance. P{position} finish — {score:.1f} points."
@@ -191,14 +194,16 @@ def compute_race(
         else:
             distance_pct = 1.0
 
-        raw_results.append({
-            "user_id": user_id,
-            "score": max(score, 0),
-            "dnf": dur_result.dnf,
-            "distance_pct": distance_pct,
-            "durability_result": dur_result,
-            "equipped_cards": equipped_cards,
-        })
+        raw_results.append(
+            {
+                "user_id": user_id,
+                "score": max(score, 0),
+                "dnf": dur_result.dnf,
+                "distance_pct": distance_pct,
+                "durability_result": dur_result,
+                "equipped_cards": equipped_cards,
+            }
+        )
 
     # Sort: finishers first (by score desc), DNFs last (by distance desc)
     raw_results.sort(key=lambda r: (r["dnf"], -r["distance_pct"] if r["dnf"] else -r["score"]))
@@ -249,14 +254,20 @@ def compute_race(
         placements.append(placement)
 
         if r["durability_result"].wrecked_parts:
-            wrecks.append({
-                "user_id": r["user_id"],
-                "lost_parts": [wp.to_dict() for wp in r["durability_result"].wrecked_parts],
-            })
+            wrecks.append(
+                {
+                    "user_id": r["user_id"],
+                    "lost_parts": [wp.to_dict() for wp in r["durability_result"].wrecked_parts],
+                }
+            )
 
     log.info(
         "Race complete: %d participants, environment=%s, %d wrecks",
-        len(placements), environment.name, len(wrecks),
+        len(placements),
+        environment.name,
+        len(wrecks),
     )
 
-    return RaceResult(placements=placements, environment=environment, all_dnf=all_dnf, wrecks=wrecks)
+    return RaceResult(
+        placements=placements, environment=environment, all_dnf=all_dnf, wrecks=wrecks
+    )

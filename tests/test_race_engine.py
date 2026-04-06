@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import random
-from unittest.mock import patch
 
 from engine.environment import EnvironmentCondition
 from engine.race_engine import (
@@ -62,10 +61,17 @@ class TestComputeRace:
             name="test_track",
             display_name="Test Track",
             description="A test.",
-            stat_weights={"power": 1.0, "handling": 1.0, "top_speed": 1.0,
-                          "grip": 1.0, "braking": 1.0, "durability": 1.0,
-                          "acceleration": 1.0, "stability": 1.0,
-                          "weather_performance": 1.0},
+            stat_weights={
+                "power": 1.0,
+                "handling": 1.0,
+                "top_speed": 1.0,
+                "grip": 1.0,
+                "braking": 1.0,
+                "durability": 1.0,
+                "acceleration": 1.0,
+                "stability": 1.0,
+                "weather_performance": 1.0,
+            },
             variance_multiplier=1.0,
         )
         result = compute_race([full_build, empty_build], environment=env)
@@ -81,11 +87,20 @@ class TestComputeRace:
     def test_single_player_race(self, full_build):
         random.seed(42)
         env = EnvironmentCondition(
-            name="drag_strip", display_name="Drag Strip", description="Quarter mile.",
-            stat_weights={"power": 2.0, "handling": 0.3, "top_speed": 1.5,
-                          "grip": 1.0, "braking": 1.0, "durability": 1.0,
-                          "acceleration": 1.0, "stability": 1.0,
-                          "weather_performance": 1.0},
+            name="drag_strip",
+            display_name="Drag Strip",
+            description="Quarter mile.",
+            stat_weights={
+                "power": 2.0,
+                "handling": 0.3,
+                "top_speed": 1.5,
+                "grip": 1.0,
+                "braking": 1.0,
+                "durability": 1.0,
+                "acceleration": 1.0,
+                "stability": 1.0,
+                "weather_performance": 1.0,
+            },
         )
         result = compute_race([full_build], environment=env)
         assert len(result.placements) == 1
@@ -101,7 +116,9 @@ class TestComputeRace:
         """If one player DNFs, they should be placed after non-DNF players."""
         random.seed(42)
         env = EnvironmentCondition(
-            name="test", display_name="Test", description="Test",
+            name="test",
+            display_name="Test",
+            description="Test",
             stat_weights={},
         )
         result = compute_race([full_build, empty_build], environment=env)

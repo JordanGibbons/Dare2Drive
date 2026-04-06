@@ -4,17 +4,15 @@ from __future__ import annotations
 
 import enum
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 
 from sqlalchemy import (
     Boolean,
     DateTime,
     Enum,
-    Float,
     ForeignKey,
     Integer,
     String,
-    Text,
     func,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
@@ -36,14 +34,15 @@ class BodyType(str, enum.Enum):
 
 class TutorialStep(str, enum.Enum):
     """Tracks player progress through the onboarding tutorial."""
-    STARTED = "started"              # Just picked body type, story playing
-    INVENTORY = "inventory"          # Told to use /inventory
-    INSPECT = "inspect"              # Told to use /inspect
-    EQUIP = "equip"                  # Told to use /equip
-    GARAGE = "garage"                # Told to check /garage
-    RACE = "race"                    # Told to /race the NPC
-    PACK = "pack"                    # Won/lost, opening reward pack
-    COMPLETE = "complete"            # Tutorial done, all commands unlocked
+
+    STARTED = "started"  # Just picked body type, story playing
+    INVENTORY = "inventory"  # Told to use /inventory
+    INSPECT = "inspect"  # Told to use /inspect
+    EQUIP = "equip"  # Told to use /equip
+    GARAGE = "garage"  # Told to check /garage
+    RACE = "race"  # Told to /race the NPC
+    PACK = "pack"  # Won/lost, opening reward pack
+    COMPLETE = "complete"  # Tutorial done, all commands unlocked
 
 
 class CardSlot(str, enum.Enum):
@@ -73,7 +72,9 @@ class User(Base):
 
     discord_id: Mapped[str] = mapped_column(String(20), primary_key=True)
     username: Mapped[str] = mapped_column(String(100), nullable=False)
-    body_type: Mapped[BodyType] = mapped_column(Enum(BodyType, values_callable=lambda x: [e.value for e in x]), nullable=False)
+    body_type: Mapped[BodyType] = mapped_column(
+        Enum(BodyType, values_callable=lambda x: [e.value for e in x]), nullable=False
+    )
     currency: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     xp: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     tutorial_step: Mapped[TutorialStep] = mapped_column(
@@ -82,7 +83,9 @@ class User(Base):
         default=TutorialStep.STARTED,
     )
     last_daily: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True, default=None,
+        DateTime(timezone=True),
+        nullable=True,
+        default=None,
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
@@ -100,17 +103,21 @@ class User(Base):
 class Card(Base):
     __tablename__ = "cards"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(120), nullable=False, unique=True)
-    slot: Mapped[CardSlot] = mapped_column(Enum(CardSlot, values_callable=lambda x: [e.value for e in x]), nullable=False)
-    rarity: Mapped[Rarity] = mapped_column(Enum(Rarity, values_callable=lambda x: [e.value for e in x]), nullable=False)
+    slot: Mapped[CardSlot] = mapped_column(
+        Enum(CardSlot, values_callable=lambda x: [e.value for e in x]), nullable=False
+    )
+    rarity: Mapped[Rarity] = mapped_column(
+        Enum(Rarity, values_callable=lambda x: [e.value for e in x]), nullable=False
+    )
     stats: Mapped[dict] = mapped_column(JSONB, nullable=False)
     art_path: Mapped[str | None] = mapped_column(String(255), nullable=True)
     print_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
     print_max: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    total_minted: Mapped[int] = mapped_column(Integer, default=0, nullable=False, server_default="0")
+    total_minted: Mapped[int] = mapped_column(
+        Integer, default=0, nullable=False, server_default="0"
+    )
 
     user_cards: Mapped[list[UserCard]] = relationship(back_populates="card", lazy="selectin")
 
@@ -118,12 +125,8 @@ class Card(Base):
 class UserCard(Base):
     __tablename__ = "user_cards"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
-    user_id: Mapped[str] = mapped_column(
-        String(20), ForeignKey("users.discord_id"), nullable=False
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[str] = mapped_column(String(20), ForeignKey("users.discord_id"), nullable=False)
     card_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("cards.id"), nullable=False
     )
@@ -142,12 +145,8 @@ class UserCard(Base):
 class Build(Base):
     __tablename__ = "builds"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
-    user_id: Mapped[str] = mapped_column(
-        String(20), ForeignKey("users.discord_id"), nullable=False
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[str] = mapped_column(String(20), ForeignKey("users.discord_id"), nullable=False)
     name: Mapped[str] = mapped_column(String(120), nullable=False, default="My Build")
     slots: Mapped[dict] = mapped_column(
         JSONB,
@@ -170,9 +169,7 @@ class Build(Base):
 class Race(Base):
     __tablename__ = "races"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     participants: Mapped[dict] = mapped_column(JSONB, nullable=False)
     environment: Mapped[dict] = mapped_column(JSONB, nullable=False)
     results: Mapped[dict] = mapped_column(JSONB, nullable=False)
@@ -186,9 +183,7 @@ class Race(Base):
 class MarketListing(Base):
     __tablename__ = "market_listings"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     seller_id: Mapped[str] = mapped_column(
         String(20), ForeignKey("users.discord_id"), nullable=False
     )
@@ -212,15 +207,11 @@ class MarketListing(Base):
 class WreckLog(Base):
     __tablename__ = "wreck_logs"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     race_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("races.id"), nullable=False
     )
-    user_id: Mapped[str] = mapped_column(
-        String(20), ForeignKey("users.discord_id"), nullable=False
-    )
+    user_id: Mapped[str] = mapped_column(String(20), ForeignKey("users.discord_id"), nullable=False)
     lost_parts: Mapped[dict] = mapped_column(JSONB, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False

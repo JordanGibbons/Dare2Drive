@@ -20,7 +20,7 @@ class TutorialCommandTree(app_commands.CommandTree):
     """CommandTree subclass that gates commands during the tutorial."""
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
-        from bot.cogs.tutorial import is_command_allowed, get_blocked_message
+        from bot.cogs.tutorial import get_blocked_message, is_command_allowed
         from db.models import User
 
         if not interaction.command:

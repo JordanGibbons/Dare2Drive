@@ -2,18 +2,14 @@
 
 from __future__ import annotations
 
-import asyncio
 import uuid
-from typing import Any
 
 import discord
 from discord import app_commands
 from discord.ext import commands
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from config.logging import get_logger
-from config.settings import settings
 from db.models import BodyType, Build, Card, CardSlot, TutorialStep, User, UserCard
 from db.session import async_session
 
@@ -26,8 +22,22 @@ BODY_EMOJI = {
 }
 
 RARITY_ORDER = {"common": 0, "uncommon": 1, "rare": 2, "epic": 3, "legendary": 4, "ghost": 5}
-RARITY_EMOJI = {"common": "⬜", "uncommon": "🟩", "rare": "🟦", "epic": "🟪", "legendary": "🟨", "ghost": "👻"}
-RARITY_COLORS = {"common": 0x9CA3AF, "uncommon": 0x22C55E, "rare": 0x3B82F6, "epic": 0xA855F7, "legendary": 0xF59E0B, "ghost": 0xFFFFFF}
+RARITY_EMOJI = {
+    "common": "⬜",
+    "uncommon": "🟩",
+    "rare": "🟦",
+    "epic": "🟪",
+    "legendary": "🟨",
+    "ghost": "👻",
+}
+RARITY_COLORS = {
+    "common": 0x9CA3AF,
+    "uncommon": 0x22C55E,
+    "rare": 0x3B82F6,
+    "epic": 0xA855F7,
+    "legendary": 0xF59E0B,
+    "ghost": 0xFFFFFF,
+}
 
 
 class BodyTypeSelect(discord.ui.View):
@@ -75,7 +85,8 @@ class BodyTypeSelect(discord.ui.View):
             await session.commit()
 
         # ── TUTORIAL STORY BEGINS ──
-        from bot.cogs.tutorial import send_dialogue, grant_starter_cards, _load_tutorial_data
+        from bot.cogs.tutorial import _load_tutorial_data, grant_starter_cards, send_dialogue
+
         data = _load_tutorial_data()
         dialogue = data["dialogue"]
         uid = self.user_id  # int
@@ -156,7 +167,9 @@ class BodyTypeSelect(discord.ui.View):
         await self._handle_choice(interaction, BodyType.SPORT)
 
     @discord.ui.button(label="🚗 Compact", style=discord.ButtonStyle.secondary)
-    async def compact_btn(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+    async def compact_btn(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ) -> None:
         await self._handle_choice(interaction, BodyType.COMPACT)
 
 
@@ -166,12 +179,16 @@ class GarageCog(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
 
-    @app_commands.command(name="start", description="Create your Dare2Drive account and pick a body type")
+    @app_commands.command(
+        name="start", description="Create your Dare2Drive account and pick a body type"
+    )
     async def start(self, interaction: discord.Interaction) -> None:
         async with async_session() as session:
             existing = await session.get(User, str(interaction.user.id))
             if existing:
-                await interaction.response.send_message("You already have an account!", ephemeral=True)
+                await interaction.response.send_message(
+                    "You already have an account!", ephemeral=True
+                )
                 return
 
         view = BodyTypeSelect(interaction.user.id, interaction.user.display_name)
@@ -196,7 +213,7 @@ class GarageCog(commands.Cog):
                 return
 
             result = await session.execute(
-                select(Build).where(Build.user_id == user.discord_id, Build.is_active == True)
+                select(Build).where(Build.user_id == user.discord_id, Build.is_active)
             )
             build = result.scalar_one_or_none()
             if not build:
@@ -215,9 +232,11 @@ class GarageCog(commands.Cog):
                         if card:
                             r_emoji = RARITY_EMOJI.get(card.rarity.value, "")
                             slot_lines.append(
-                                f"**{slot.value.title()}:** {r_emoji} {card.name} #{uc.serial_number} ({card.rarity.value})"
+                                f"**{slot.value.title()}:** {r_emoji} {card.name} #{uc.serial_number} ({card.rarity.value})"  # noqa: E501
                             )
-                            if RARITY_ORDER.get(card.rarity.value, 0) > RARITY_ORDER.get(best_rarity, 0):
+                            if RARITY_ORDER.get(card.rarity.value, 0) > RARITY_ORDER.get(
+                                best_rarity, 0
+                            ):
                                 best_rarity = card.rarity.value
                         else:
                             slot_lines.append(f"**{slot.value.title()}:** ❌ Card not found")
@@ -229,7 +248,7 @@ class GarageCog(commands.Cog):
         emoji = BODY_EMOJI.get(user.body_type, "🚗")
         embed = discord.Embed(
             title=f"{emoji} {interaction.user.display_name}'s Garage",
-            description=f"**Body Type:** {user.body_type.value.title()}\n**Build:** {build.name}\n\n"
+            description=f"**Body Type:** {user.body_type.value.title()}\n**Build:** {build.name}\n\n"  # noqa: E501
             + "\n".join(slot_lines),
             color=RARITY_COLORS.get(best_rarity, 0x3B82F6),
         )
@@ -240,13 +259,14 @@ class GarageCog(commands.Cog):
 
         # Tutorial progression
         from bot.cogs.tutorial import advance_tutorial
+
         await advance_tutorial(interaction, str(interaction.user.id), "garage")
 
     @app_commands.command(name="equip", description="Equip a card to a build slot")
     @app_commands.describe(slot="The slot to equip into", card_name="Name of the card to equip")
-    @app_commands.choices(slot=[
-        app_commands.Choice(name=s.value.title(), value=s.value) for s in CardSlot
-    ])
+    @app_commands.choices(
+        slot=[app_commands.Choice(name=s.value.title(), value=s.value) for s in CardSlot]
+    )
     async def equip(self, interaction: discord.Interaction, slot: str, card_name: str) -> None:
         from bot.cogs.cards import _parse_card_input
 
@@ -262,19 +282,21 @@ class GarageCog(commands.Cog):
             card_result = await session.execute(select(Card).where(Card.name == parsed_name))
             card = card_result.scalar_one_or_none()
             if not card:
-                await interaction.response.send_message(f"Card `{parsed_name}` not found.", ephemeral=True)
+                await interaction.response.send_message(
+                    f"Card `{parsed_name}` not found.", ephemeral=True
+                )
                 return
 
             # Validate slot matches
             if card.slot.value != slot:
                 await interaction.response.send_message(
-                    f"`{card.name}` is a **{card.slot.value}** card and can't go in the **{slot}** slot.",
+                    f"`{card.name}` is a **{card.slot.value}** card and can't go in the **{slot}** slot.",  # noqa: E501
                     ephemeral=True,
                 )
                 return
 
             build_result = await session.execute(
-                select(Build).where(Build.user_id == user.discord_id, Build.is_active == True)
+                select(Build).where(Build.user_id == user.discord_id, Build.is_active)
             )
             build = build_result.scalar_one_or_none()
             if not build:
@@ -282,18 +304,18 @@ class GarageCog(commands.Cog):
                 return
 
             # Get IDs of copies already equipped in other slots
-            equipped_uc_ids = {
-                uc_id for uc_id in build.slots.values() if uc_id is not None
-            }
+            equipped_uc_ids = {uc_id for uc_id in build.slots.values() if uc_id is not None}
 
             # If a specific serial was requested, find that exact copy
             if parsed_serial is not None:
                 uc_result = await session.execute(
-                    select(UserCard).where(
+                    select(UserCard)
+                    .where(
                         UserCard.user_id == user.discord_id,
                         UserCard.card_id == card.id,
                         UserCard.serial_number == parsed_serial,
-                    ).limit(1)
+                    )
+                    .limit(1)
                 )
                 chosen = uc_result.scalar_one_or_none()
                 if not chosen:
@@ -304,10 +326,12 @@ class GarageCog(commands.Cog):
             else:
                 # Find an available copy — prefer unequipped
                 uc_result = await session.execute(
-                    select(UserCard).where(
+                    select(UserCard)
+                    .where(
                         UserCard.user_id == user.discord_id,
                         UserCard.card_id == card.id,
-                    ).order_by(UserCard.serial_number)
+                    )
+                    .order_by(UserCard.serial_number)
                 )
                 copies = list(uc_result.scalars().all())
 
@@ -337,6 +361,7 @@ class GarageCog(commands.Cog):
 
         # Tutorial progression
         from bot.cogs.tutorial import advance_tutorial
+
         await advance_tutorial(interaction, str(interaction.user.id), "equip")
 
     @equip.autocomplete("card_name")
@@ -345,15 +370,20 @@ class GarageCog(commands.Cog):
     ) -> list[app_commands.Choice[str]]:
         """Show individual card copies the user owns, filtered by selected slot."""
         from bot.cogs.cards import _card_copy_autocomplete
+
         slot = interaction.namespace.slot
         return await _card_copy_autocomplete(interaction, current, slot_filter=slot)
 
-    @app_commands.command(name="autoequip", description="Auto-equip your best or worst parts into every slot")
+    @app_commands.command(
+        name="autoequip", description="Auto-equip your best or worst parts into every slot"
+    )
     @app_commands.describe(mode="Equip your best or worst parts")
-    @app_commands.choices(mode=[
-        app_commands.Choice(name="Best (highest rarity)", value="best"),
-        app_commands.Choice(name="Worst (lowest rarity)", value="worst"),
-    ])
+    @app_commands.choices(
+        mode=[
+            app_commands.Choice(name="Best (highest rarity)", value="best"),
+            app_commands.Choice(name="Worst (lowest rarity)", value="worst"),
+        ]
+    )
     async def autoequip(self, interaction: discord.Interaction, mode: str) -> None:
         use_best = mode == "best"
 
@@ -364,7 +394,7 @@ class GarageCog(commands.Cog):
                 return
 
             build_result = await session.execute(
-                select(Build).where(Build.user_id == user.discord_id, Build.is_active == True)
+                select(Build).where(Build.user_id == user.discord_id, Build.is_active)
             )
             build = build_result.scalar_one_or_none()
             if not build:
@@ -373,6 +403,7 @@ class GarageCog(commands.Cog):
 
             # Load all user's cards with their Card relationship
             from sqlalchemy.orm import selectinload
+
             uc_result = await session.execute(
                 select(UserCard)
                 .where(UserCard.user_id == user.discord_id)
@@ -412,7 +443,7 @@ class GarageCog(commands.Cog):
                     used_ids.add(str(chosen.id))
                     emoji = RARITY_EMOJI.get(chosen.card.rarity.value, "")
                     equipped_lines.append(
-                        f"**{slot.value.title()}:** {emoji} {chosen.card.name} #{chosen.serial_number}"
+                        f"**{slot.value.title()}:** {emoji} {chosen.card.name} #{chosen.serial_number}"  # noqa: E501
                     )
                 else:
                     new_slots[slot.value] = None
@@ -431,6 +462,7 @@ class GarageCog(commands.Cog):
 
         # Tutorial progression (autoequip counts as equip)
         from bot.cogs.tutorial import advance_tutorial
+
         await advance_tutorial(interaction, str(interaction.user.id), "equip")
 
     @app_commands.command(name="peek", description="View another player's garage (public)")
@@ -445,7 +477,7 @@ class GarageCog(commands.Cog):
                 return
 
             result = await session.execute(
-                select(Build).where(Build.user_id == user.discord_id, Build.is_active == True)
+                select(Build).where(Build.user_id == user.discord_id, Build.is_active)
             )
             build = result.scalar_one_or_none()
             if not build:
@@ -465,9 +497,11 @@ class GarageCog(commands.Cog):
                         if card:
                             emoji = RARITY_EMOJI.get(card.rarity.value, "")
                             slot_lines.append(
-                                f"**{slot.value.title()}:** {emoji} {card.name} #{uc.serial_number} ({card.rarity.value})"
+                                f"**{slot.value.title()}:** {emoji} {card.name} #{uc.serial_number} ({card.rarity.value})"  # noqa: E501
                             )
-                            if RARITY_ORDER.get(card.rarity.value, 0) > RARITY_ORDER.get(best_rarity, 0):
+                            if RARITY_ORDER.get(card.rarity.value, 0) > RARITY_ORDER.get(
+                                best_rarity, 0
+                            ):
                                 best_rarity = card.rarity.value
                             continue
                 slot_lines.append(f"**{slot.value.title()}:** — Empty —")
@@ -475,7 +509,8 @@ class GarageCog(commands.Cog):
         emoji = BODY_EMOJI.get(user.body_type, "🚗")
         embed = discord.Embed(
             title=f"{emoji} {target.display_name}'s Garage",
-            description=f"**Body Type:** {user.body_type.value.title()}\n\n" + "\n".join(slot_lines),
+            description=f"**Body Type:** {user.body_type.value.title()}\n\n"
+            + "\n".join(slot_lines),
             color=RARITY_COLORS.get(best_rarity, 0x3B82F6),
         )
         await interaction.response.send_message(embed=embed)
@@ -496,7 +531,9 @@ class GarageCog(commands.Cog):
         embed.add_field(name="Body Type", value=user.body_type.value.title(), inline=True)
         embed.add_field(name="Creds", value=str(user.currency), inline=True)
         embed.add_field(name="XP", value=str(user.xp), inline=True)
-        embed.set_footer(text=f"Member since {user.created_at.strftime('%Y-%m-%d') if user.created_at else 'unknown'}")
+        embed.set_footer(
+            text=f"Member since {user.created_at.strftime('%Y-%m-%d') if user.created_at else 'unknown'}"  # noqa: E501
+        )
         await interaction.response.send_message(embed=embed)
 
 

@@ -97,7 +97,7 @@ def aggregate_build(
     bs.engine_max_temp = _get_stat(engine_stats, "primary", "max_engine_temp")
     engine_weight = _get_stat(engine_stats, "secondary", "weight")
     engine_durability = _get_stat(engine_stats, "secondary", "durability")
-    engine_fuel_eff = _get_stat(engine_stats, "secondary", "fuel_efficiency")
+    _get_stat(engine_stats, "secondary", "fuel_efficiency")
     bs.slot_durabilities["engine"] = engine_durability
 
     # Transmission
@@ -126,7 +126,7 @@ def aggregate_build(
     susp_stats = susp_data.get("stats", {})
     susp_handling = _get_stat(susp_stats, "primary", "handling")
     susp_stability = _get_stat(susp_stats, "primary", "stability")
-    ride_height = _get_stat(susp_stats, "primary", "ride_height_modifier")
+    _get_stat(susp_stats, "primary", "ride_height_modifier")
     weight_balance = _get_stat(susp_stats, "secondary", "weight_balance_bonus")
     brake_eff_scaling = _get_stat(susp_stats, "secondary", "brake_efficiency_scaling")
     bs.slot_durabilities["suspension"] = susp_stability  # suspension uses stability as proxy
@@ -137,7 +137,7 @@ def aggregate_build(
     chassis_drag = _get_stat(chassis_stats, "primary", "drag")
     chassis_weight = _get_stat(chassis_stats, "primary", "weight")
     chassis_durability = _get_stat(chassis_stats, "primary", "durability")
-    chassis_style = _get_stat(chassis_stats, "primary", "style")
+    _get_stat(chassis_stats, "primary", "style")
     handling_cap_mod = _get_stat(chassis_stats, "secondary", "handling_cap_modifier")
     top_speed_mult = _get_stat(chassis_stats, "secondary", "top_speed_multiplier", default=1.0)
     bs.slot_durabilities["chassis"] = chassis_durability
@@ -186,14 +186,18 @@ def aggregate_build(
     # Handling: tires + suspension + brakes bonus + chassis cap modifier
     raw_handling = tire_handling * 0.4 + susp_handling * 0.4 + brakes_handling + corner_entry * 0.1
     handling_cap = 100 + handling_cap_mod
-    bs.effective_handling = min(bs.effective_handling + raw_handling + weight_balance * 0.5, handling_cap)
+    bs.effective_handling = min(
+        bs.effective_handling + raw_handling + weight_balance * 0.5, handling_cap
+    )
 
     # Grip
     bs.effective_grip += tire_grip + susp_stability * 0.2
 
     # Braking: brake force amplified by suspension scaling
     brake_eff_mult = 1 + brake_eff_scaling / 100
-    bs.effective_braking += (brake_force * brake_eff_mult + stability_decel * 0.3 + corner_entry * 0.2)
+    bs.effective_braking += (
+        brake_force * brake_eff_mult + stability_decel * 0.3 + corner_entry * 0.2
+    )
 
     # Stability
     bs.effective_stability += susp_stability + stability_decel * 0.2 + weight_balance * 0.3
@@ -211,6 +215,8 @@ def aggregate_build(
     # Overheat risk: turbo temp increase vs engine max temp
     if bs.engine_max_temp > 0 and engine_temp_inc > bs.engine_max_temp * 0.8:
         bs.overheat_risk = True
-        log.debug("Overheat risk flagged: temp_inc=%.1f > %.1f", engine_temp_inc, bs.engine_max_temp * 0.8)
+        log.debug(
+            "Overheat risk flagged: temp_inc=%.1f > %.1f", engine_temp_inc, bs.engine_max_temp * 0.8
+        )
 
     return bs

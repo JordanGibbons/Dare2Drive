@@ -95,7 +95,9 @@ def check_durability(
             roll = max(roll, random.uniform(0, 100) + overheat_penalty)
             log.debug(
                 "Turbo overheat penalty applied: temp_inc=%.1f, max_temp=%.1f, adj_roll=%.1f",
-                turbo_temp_increase, engine_max_temp, roll,
+                turbo_temp_increase,
+                engine_max_temp,
+                roll,
             )
 
         if roll > durability:
@@ -109,14 +111,24 @@ def check_durability(
                 narrative = f"The {card_name} stuttered mid-race — minor hiccup, lost some pace."
             elif severity == FailureSeverity.MAJOR:
                 worst_multiplier = min(worst_multiplier, 0.60)
-                narrative = f"The {card_name} took heavy damage — limping through the final stretch."
+                narrative = (
+                    f"The {card_name} took heavy damage — limping through the final stretch."
+                )
             else:  # DNF
                 worst_multiplier = 0.0
                 dnf_slot = slot
                 narrative = f"The {card_name} catastrophically failed — race over."
 
-            result.failures.append(FailureEvent(slot=slot, severity=severity, narrative_fragment=narrative))
-            log.info("Durability failure: slot=%s, severity=%s, roll=%.1f, dur=%.1f", slot, severity.value, roll, durability)
+            result.failures.append(
+                FailureEvent(slot=slot, severity=severity, narrative_fragment=narrative)
+            )
+            log.info(
+                "Durability failure: slot=%s, severity=%s, roll=%.1f, dur=%.1f",
+                slot,
+                severity.value,
+                roll,
+                durability,
+            )
 
     result.score_multiplier = worst_multiplier
     result.dnf = worst_multiplier == 0.0

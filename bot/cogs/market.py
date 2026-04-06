@@ -40,9 +40,7 @@ SALVAGE_VALUES: dict[str, int] = {
 
 async def _unequip_user_card(session: AsyncSession, user_id: str, user_card_id: str) -> None:
     """Remove a specific UserCard from the user's active build slots."""
-    result = await session.execute(
-        select(Build).where(Build.user_id == user_id, Build.is_active == True)
-    )
+    result = await session.execute(select(Build).where(Build.user_id == user_id, Build.is_active))
     build = result.scalar_one_or_none()
     if not build:
         return
@@ -59,10 +57,12 @@ async def _unequip_user_card(session: AsyncSession, user_id: str, user_card_id: 
 async def _has_active_listing(session: AsyncSession, user_card_id: uuid.UUID) -> bool:
     """Check if a UserCard is currently listed on the market (unsold)."""
     result = await session.execute(
-        select(MarketListing.id).where(
+        select(MarketListing.id)
+        .where(
             MarketListing.user_card_id == user_card_id,
-            MarketListing.sold_at == None,
-        ).limit(1)
+            MarketListing.sold_at is None,
+        )
+        .limit(1)
     )
     return result.scalar_one_or_none() is not None
 
@@ -95,7 +95,7 @@ def _build_market_embed(listing_data: list[dict]) -> discord.Embed:
         listing = entry["listing"]
         emoji = RARITY_EMOJI.get(card.rarity.value, "")
         lines.append(
-            f"{emoji} **{card.name}** #{uc.serial_number} [{card.slot.value}] ({card.rarity.value}) — "
+            f"{emoji} **{card.name}** #{uc.serial_number} [{card.slot.value}] ({card.rarity.value}) — "  # noqa: E501
             f"**{listing.price} Creds** — Seller: <@{listing.seller_id}>"
         )
 
@@ -138,7 +138,11 @@ def _build_market_detail_embed(entry: dict) -> discord.Embed:
             filled = int(abs(val) / 100 * 10) if isinstance(val, (int, float)) else 0
             filled = max(0, min(10, filled))
             bar = "█" * filled + "░" * (10 - filled)
-            delta = val - base if isinstance(val, (int, float)) and isinstance(base, (int, float)) else 0
+            delta = (
+                val - base
+                if isinstance(val, (int, float)) and isinstance(base, (int, float))
+                else 0
+            )
             delta_str = f" ({delta:+.1f})" if abs(delta) > 0.01 else ""
             bars.append(f"`{stat:>25s}` {bar} {val:.1f}{delta_str}")
         embed.add_field(name="Primary Stats", value="\n".join(bars), inline=False)
@@ -149,7 +153,11 @@ def _build_market_detail_embed(entry: dict) -> discord.Embed:
         bars = []
         for stat, val in secondary.items():
             base = base_secondary.get(stat, val)
-            delta = val - base if isinstance(val, (int, float)) and isinstance(base, (int, float)) else 0
+            delta = (
+                val - base
+                if isinstance(val, (int, float)) and isinstance(base, (int, float))
+                else 0
+            )
             delta_str = f" ({delta:+.1f})" if abs(delta) > 0.01 else ""
             if isinstance(val, float) and abs(val) < 2:
                 bars.append(f"`{stat:>25s}` {val:.2f}{delta_str}")
@@ -186,12 +194,14 @@ class _MarketBrowseView(discord.ui.View):
             emoji = RARITY_EMOJI.get(card.rarity.value, "")
             label = f"{card.name} #{uc.serial_number}"
             desc = f"{card.slot.value.title()} • {listing.price} Creds"
-            options.append(discord.SelectOption(
-                label=label[:100],
-                description=desc[:100],
-                value=key,
-                emoji=emoji or None,
-            ))
+            options.append(
+                discord.SelectOption(
+                    label=label[:100],
+                    description=desc[:100],
+                    value=key,
+                    emoji=emoji or None,
+                )
+            )
 
         if options:
             self.listing_select = discord.ui.Select(
@@ -274,7 +284,9 @@ class TradeView(discord.ui.View):
     @discord.ui.button(label="Accept Trade", style=discord.ButtonStyle.success)
     async def accept(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         if interaction.user.id != self.target_id:
-            await interaction.response.send_message("Only the trade target can accept.", ephemeral=True)
+            await interaction.response.send_message(
+                "Only the trade target can accept.", ephemeral=True
+            )
             return
 
         async with async_session() as session:
@@ -327,7 +339,9 @@ class TradeView(discord.ui.View):
     @discord.ui.button(label="Decline", style=discord.ButtonStyle.danger)
     async def decline(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         if interaction.user.id != self.target_id:
-            await interaction.response.send_message("Only the trade target can decline.", ephemeral=True)
+            await interaction.response.send_message(
+                "Only the trade target can decline.", ephemeral=True
+            )
             return
         await interaction.response.send_message("❌ Trade declined.")
         self.stop()
@@ -344,7 +358,7 @@ class MarketCog(commands.Cog):
         async with async_session() as session:
             result = await session.execute(
                 select(MarketListing)
-                .where(MarketListing.sold_at == None)
+                .where(MarketListing.sold_at is None)
                 .order_by(MarketListing.listed_at.desc())
                 .limit(25)
             )
@@ -363,11 +377,13 @@ class MarketCog(commands.Cog):
                 card = await session.get(Card, listing.card_id)
                 if not card or not uc:
                     continue
-                listing_data.append({
-                    "listing": listing,
-                    "card": card,
-                    "user_card": uc,
-                })
+                listing_data.append(
+                    {
+                        "listing": listing,
+                        "card": card,
+                        "user_card": uc,
+                    }
+                )
 
         if not listing_data:
             await interaction.response.send_message(
@@ -380,7 +396,9 @@ class MarketCog(commands.Cog):
         await interaction.response.send_message(embed=embed, view=view)
 
     @app_commands.command(name="list", description="List a card for sale on the market")
-    @app_commands.describe(card_name="Name of the card to sell (e.g. Card Name #3)", price="Asking price in Creds")
+    @app_commands.describe(
+        card_name="Name of the card to sell (e.g. Card Name #3)", price="Asking price in Creds"
+    )
     async def list_card(self, interaction: discord.Interaction, card_name: str, price: int) -> None:
         from bot.cogs.cards import _parse_card_input
 
@@ -399,17 +417,21 @@ class MarketCog(commands.Cog):
             card_result = await session.execute(select(Card).where(Card.name == parsed_name))
             card = card_result.scalar_one_or_none()
             if not card:
-                await interaction.response.send_message(f"Card `{parsed_name}` not found.", ephemeral=True)
+                await interaction.response.send_message(
+                    f"Card `{parsed_name}` not found.", ephemeral=True
+                )
                 return
 
             # If a specific serial was given, find that exact copy
             if parsed_serial is not None:
                 uc_result = await session.execute(
-                    select(UserCard).where(
+                    select(UserCard)
+                    .where(
                         UserCard.user_id == user.discord_id,
                         UserCard.card_id == card.id,
                         UserCard.serial_number == parsed_serial,
-                    ).limit(1)
+                    )
+                    .limit(1)
                 )
                 chosen = uc_result.scalar_one_or_none()
                 if not chosen:
@@ -425,18 +447,22 @@ class MarketCog(commands.Cog):
             else:
                 # Auto-pick: prefer unequipped, unlisted copies
                 uc_result = await session.execute(
-                    select(UserCard).where(
+                    select(UserCard)
+                    .where(
                         UserCard.user_id == user.discord_id,
                         UserCard.card_id == card.id,
-                    ).order_by(UserCard.serial_number)
+                    )
+                    .order_by(UserCard.serial_number)
                 )
                 copies = list(uc_result.scalars().all())
                 if not copies:
-                    await interaction.response.send_message("You don't own that card.", ephemeral=True)
+                    await interaction.response.send_message(
+                        "You don't own that card.", ephemeral=True
+                    )
                     return
 
                 build_result = await session.execute(
-                    select(Build).where(Build.user_id == user.discord_id, Build.is_active == True)
+                    select(Build).where(Build.user_id == user.discord_id, Build.is_active)
                 )
                 build = build_result.scalar_one_or_none()
                 equipped_ids = set()
@@ -461,7 +487,8 @@ class MarketCog(commands.Cog):
 
                 if chosen is None:
                     await interaction.response.send_message(
-                        "All your copies of that card are already listed on the market.", ephemeral=True
+                        "All your copies of that card are already listed on the market.",
+                        ephemeral=True,
                     )
                     return
 
@@ -478,7 +505,7 @@ class MarketCog(commands.Cog):
             await session.commit()
 
         await interaction.response.send_message(
-            f"📋 Listed **{card.name}** #{chosen.serial_number} for **{price} Creds** on the market!"
+            f"📋 Listed **{card.name}** #{chosen.serial_number} for **{price} Creds** on the market!"  # noqa: E501
         )
 
     @list_card.autocomplete("card_name")
@@ -486,6 +513,7 @@ class MarketCog(commands.Cog):
         self, interaction: discord.Interaction, current: str
     ) -> list[app_commands.Choice[str]]:
         from bot.cogs.cards import _card_copy_autocomplete
+
         return await _card_copy_autocomplete(interaction, current)
 
     @app_commands.command(name="buy", description="Buy a card from the market")
@@ -500,23 +528,32 @@ class MarketCog(commands.Cog):
             card_result = await session.execute(select(Card).where(Card.name == card_name))
             card = card_result.scalar_one_or_none()
             if not card:
-                await interaction.response.send_message(f"Card `{card_name}` not found.", ephemeral=True)
+                await interaction.response.send_message(
+                    f"Card `{card_name}` not found.", ephemeral=True
+                )
                 return
 
             # Find the cheapest unsold listing for this card
             listing_result = await session.execute(
-                select(MarketListing).where(
+                select(MarketListing)
+                .where(
                     MarketListing.card_id == card.id,
-                    MarketListing.sold_at == None,
-                ).order_by(MarketListing.price.asc()).limit(1)
+                    MarketListing.sold_at is None,
+                )
+                .order_by(MarketListing.price.asc())
+                .limit(1)
             )
             listing = listing_result.scalar_one_or_none()
             if not listing:
-                await interaction.response.send_message("No listings found for that card.", ephemeral=True)
+                await interaction.response.send_message(
+                    "No listings found for that card.", ephemeral=True
+                )
                 return
 
             if listing.seller_id == user.discord_id:
-                await interaction.response.send_message("You can't buy your own listing.", ephemeral=True)
+                await interaction.response.send_message(
+                    "You can't buy your own listing.", ephemeral=True
+                )
                 return
 
             if user.currency < listing.price:
@@ -561,7 +598,7 @@ class MarketCog(commands.Cog):
                 select(Card.name)
                 .join(MarketListing, MarketListing.card_id == Card.id)
                 .where(
-                    MarketListing.sold_at == None,
+                    MarketListing.sold_at is None,
                     Card.name.ilike(f"%{current}%"),
                 )
                 .distinct()
@@ -585,7 +622,9 @@ class MarketCog(commands.Cog):
         their_card: str,
     ) -> None:
         if target.id == interaction.user.id:
-            await interaction.response.send_message("You can't trade with yourself.", ephemeral=True)
+            await interaction.response.send_message(
+                "You can't trade with yourself.", ephemeral=True
+            )
             return
 
         async with async_session() as session:
@@ -596,15 +635,19 @@ class MarketCog(commands.Cog):
             their_card_obj = their_result.scalar_one_or_none()
 
             if not your_card_obj or not their_card_obj:
-                await interaction.response.send_message("One or both cards not found.", ephemeral=True)
+                await interaction.response.send_message(
+                    "One or both cards not found.", ephemeral=True
+                )
                 return
 
             # Find initiator's copy (prefer unequipped, unlisted)
             your_uc_result = await session.execute(
-                select(UserCard).where(
+                select(UserCard)
+                .where(
                     UserCard.user_id == str(interaction.user.id),
                     UserCard.card_id == your_card_obj.id,
-                ).order_by(UserCard.serial_number)
+                )
+                .order_by(UserCard.serial_number)
             )
             your_copies = list(your_uc_result.scalars().all())
             your_uc = None
@@ -621,10 +664,12 @@ class MarketCog(commands.Cog):
 
             # Find target's copy
             their_uc_result = await session.execute(
-                select(UserCard).where(
+                select(UserCard)
+                .where(
                     UserCard.user_id == str(target.id),
                     UserCard.card_id == their_card_obj.id,
-                ).order_by(UserCard.serial_number)
+                )
+                .order_by(UserCard.serial_number)
             )
             their_copies = list(their_uc_result.scalars().all())
             their_uc = None
@@ -652,9 +697,9 @@ class MarketCog(commands.Cog):
         embed = discord.Embed(
             title="🔄 Trade Offer",
             description=(
-                f"**{interaction.user.display_name}** offers: {your_emoji} **{your_card}** #{your_uc.serial_number} "
+                f"**{interaction.user.display_name}** offers: {your_emoji} **{your_card}** #{your_uc.serial_number} "  # noqa: E501
                 f"({your_card_obj.rarity.value.title()})\n"
-                f"**{target.display_name}** offers: {their_emoji} **{their_card}** #{their_uc.serial_number} "
+                f"**{target.display_name}** offers: {their_emoji} **{their_card}** #{their_uc.serial_number} "  # noqa: E501
                 f"({their_card_obj.rarity.value.title()})\n\n"
                 f"{target.mention}, accept or decline?"
             ),
@@ -662,8 +707,9 @@ class MarketCog(commands.Cog):
         )
         await interaction.response.send_message(embed=embed, view=view)
 
-
-    @app_commands.command(name="shop", description="Browse the NPC parts shop — common parts always in stock")
+    @app_commands.command(
+        name="shop", description="Browse the NPC parts shop — common parts always in stock"
+    )
     async def shop(self, interaction: discord.Interaction) -> None:
         async with async_session() as session:
             user = await session.get(User, str(interaction.user.id))
@@ -676,15 +722,19 @@ class MarketCog(commands.Cog):
                 price = NPC_SHOP_PRICES.get(slot.value, 100)
                 # Pick the first common card for this slot (alphabetically)
                 result = await session.execute(
-                    select(Card).where(Card.slot == slot.value, Card.rarity == "common")
-                    .order_by(Card.name).limit(1)
+                    select(Card)
+                    .where(Card.slot == slot.value, Card.rarity == "common")
+                    .order_by(Card.name)
+                    .limit(1)
                 )
                 card = result.scalar_one_or_none()
                 if card:
                     lines.append(f"⬜ **{card.name}** [{slot.value.title()}] — **{price} Creds**")
 
         if not lines:
-            await interaction.response.send_message("Shop is empty — no common cards in the database!", ephemeral=True)
+            await interaction.response.send_message(
+                "Shop is empty — no common cards in the database!", ephemeral=True
+            )
             return
 
         embed = discord.Embed(
@@ -701,9 +751,9 @@ class MarketCog(commands.Cog):
 
     @app_commands.command(name="shop_buy", description="Buy a common part from the NPC shop")
     @app_commands.describe(slot="Which slot to buy a part for")
-    @app_commands.choices(slot=[
-        app_commands.Choice(name=s.value.title(), value=s.value) for s in CardSlot
-    ])
+    @app_commands.choices(
+        slot=[app_commands.Choice(name=s.value.title(), value=s.value) for s in CardSlot]
+    )
     async def shop_buy(self, interaction: discord.Interaction, slot: str) -> None:
         from engine.card_mint import mint_card
 
@@ -723,12 +773,16 @@ class MarketCog(commands.Cog):
 
             # Pick the first common card for this slot
             result = await session.execute(
-                select(Card).where(Card.slot == slot, Card.rarity == "common")
-                .order_by(Card.name).limit(1)
+                select(Card)
+                .where(Card.slot == slot, Card.rarity == "common")
+                .order_by(Card.name)
+                .limit(1)
             )
             card = result.scalar_one_or_none()
             if not card:
-                await interaction.response.send_message(f"No common {slot} parts available.", ephemeral=True)
+                await interaction.response.send_message(
+                    f"No common {slot} parts available.", ephemeral=True
+                )
                 return
 
             user.currency -= price
@@ -755,17 +809,21 @@ class MarketCog(commands.Cog):
             card_result = await session.execute(select(Card).where(Card.name == parsed_name))
             card = card_result.scalar_one_or_none()
             if not card:
-                await interaction.response.send_message(f"Card `{parsed_name}` not found.", ephemeral=True)
+                await interaction.response.send_message(
+                    f"Card `{parsed_name}` not found.", ephemeral=True
+                )
                 return
 
             # Find the specific copy
             if parsed_serial is not None:
                 uc_result = await session.execute(
-                    select(UserCard).where(
+                    select(UserCard)
+                    .where(
                         UserCard.user_id == user.discord_id,
                         UserCard.card_id == card.id,
                         UserCard.serial_number == parsed_serial,
-                    ).limit(1)
+                    )
+                    .limit(1)
                 )
                 chosen = uc_result.scalar_one_or_none()
                 if not chosen:
@@ -776,18 +834,22 @@ class MarketCog(commands.Cog):
             else:
                 # Auto-pick: prefer unequipped, unlisted copies
                 uc_result = await session.execute(
-                    select(UserCard).where(
+                    select(UserCard)
+                    .where(
                         UserCard.user_id == user.discord_id,
                         UserCard.card_id == card.id,
-                    ).order_by(UserCard.serial_number)
+                    )
+                    .order_by(UserCard.serial_number)
                 )
                 copies = list(uc_result.scalars().all())
                 if not copies:
-                    await interaction.response.send_message("You don't own that card.", ephemeral=True)
+                    await interaction.response.send_message(
+                        "You don't own that card.", ephemeral=True
+                    )
                     return
 
                 build_result = await session.execute(
-                    select(Build).where(Build.user_id == user.discord_id, Build.is_active == True)
+                    select(Build).where(Build.user_id == user.discord_id, Build.is_active)
                 )
                 build = build_result.scalar_one_or_none()
                 equipped_ids = set()
@@ -805,7 +867,8 @@ class MarketCog(commands.Cog):
 
                 if chosen is None:
                     await interaction.response.send_message(
-                        "All copies are equipped or listed. Unequip or delist one first.", ephemeral=True
+                        "All copies are equipped or listed. Unequip or delist one first.",
+                        ephemeral=True,
                     )
                     return
 
@@ -834,6 +897,7 @@ class MarketCog(commands.Cog):
         self, interaction: discord.Interaction, current: str
     ) -> list[app_commands.Choice[str]]:
         from bot.cogs.cards import _card_copy_autocomplete
+
         return await _card_copy_autocomplete(interaction, current)
 
 

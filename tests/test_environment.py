@@ -41,6 +41,7 @@ class TestGetEnvironmentByName:
 
     def test_unknown_environment_raises(self):
         import pytest
+
         with pytest.raises(ValueError, match="Unknown environment"):
             get_environment_by_name("nonexistent_track")
 
@@ -61,15 +62,20 @@ class TestApplyEnvironmentWeights:
 
     def test_empty_stats(self):
         env = EnvironmentCondition(
-            name="test", display_name="Test", description="Test",
+            name="test",
+            display_name="Test",
+            description="Test",
             stat_weights={"power": 2.0},
         )
         assert apply_environment_weights({}, env) == {}
 
     def test_to_dict(self):
         env = EnvironmentCondition(
-            name="test", display_name="Test", description="Desc",
-            stat_weights={"a": 1.5}, variance_multiplier=2.0,
+            name="test",
+            display_name="Test",
+            description="Desc",
+            stat_weights={"a": 1.5},
+            variance_multiplier=2.0,
         )
         d = env.to_dict()
         assert d["name"] == "test"

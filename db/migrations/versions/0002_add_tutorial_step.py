@@ -4,11 +4,12 @@ Revision ID: 0002_add_tutorial_step
 Revises: 0001_initial
 Create Date: 2026-04-04
 """
+
 from typing import Sequence, Union
 
 import sqlalchemy as sa
-from sqlalchemy.dialects import postgresql
 from alembic import op
+from sqlalchemy.dialects import postgresql
 
 revision: str = "0002_add_tutorial_step"
 down_revision: Union[str, None] = "0001_initial"
@@ -16,7 +17,14 @@ branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 tutorialstep_enum = postgresql.ENUM(
-    "started", "inventory", "inspect", "equip", "garage", "race", "pack", "complete",
+    "started",
+    "inventory",
+    "inspect",
+    "equip",
+    "garage",
+    "race",
+    "pack",
+    "complete",
     name="tutorialstep",
     create_type=False,
 )
@@ -25,7 +33,14 @@ tutorialstep_enum = postgresql.ENUM(
 def upgrade() -> None:
     bind = op.get_bind()
     postgresql.ENUM(
-        "started", "inventory", "inspect", "equip", "garage", "race", "pack", "complete",
+        "started",
+        "inventory",
+        "inspect",
+        "equip",
+        "garage",
+        "race",
+        "pack",
+        "complete",
         name="tutorialstep",
     ).create(bind, checkfirst=True)
 

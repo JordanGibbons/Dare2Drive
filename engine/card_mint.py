@@ -40,7 +40,9 @@ def roll_stat_modifiers(base_stats: dict[str, Any]) -> dict[str, dict[str, float
     return modifiers
 
 
-async def mint_card(session: AsyncSession, user_id: str, card: Card, is_foil: bool = False) -> UserCard:
+async def mint_card(
+    session: AsyncSession, user_id: str, card: Card, is_foil: bool = False
+) -> UserCard:
     """
     Mint a new individual copy of a card for a user.
 
@@ -66,7 +68,10 @@ async def mint_card(session: AsyncSession, user_id: str, card: Card, is_foil: bo
 
     log.debug(
         "Minted %s #%d for user %s (foil=%s)",
-        card.name, serial, user_id, is_foil,
+        card.name,
+        serial,
+        user_id,
+        is_foil,
     )
     return uc
 
@@ -116,7 +121,7 @@ async def delete_tutorial_cards(session: AsyncSession, user_id: str) -> int:
 
     # Clear from active build slots
     build_result = await session.execute(
-        select(Build).where(Build.user_id == user_id, Build.is_active == True)
+        select(Build).where(Build.user_id == user_id, Build.is_active)
     )
     build = build_result.scalar_one_or_none()
     if build:
@@ -157,7 +162,9 @@ def degrade_stat_modifiers(
     return degraded
 
 
-def apply_stat_modifiers(base_stats: dict[str, Any], modifiers: dict[str, dict[str, float]]) -> dict[str, Any]:
+def apply_stat_modifiers(
+    base_stats: dict[str, Any], modifiers: dict[str, dict[str, float]]
+) -> dict[str, Any]:
     """
     Apply per-copy stat modifiers to base card stats.
 

@@ -141,8 +141,10 @@ class TestCheckDurability:
         # engine_temp_increase > engine_max_temp * 0.8
         random.seed(0)
         result = check_durability(
-            slot_durabilities, equipped,
-            turbo_temp_increase=50, engine_max_temp=40,
+            slot_durabilities,
+            equipped,
+            turbo_temp_increase=50,
+            engine_max_temp=40,
         )
         # Result varies by seed, but the code path should execute without error
         assert isinstance(result, DurabilityResult)

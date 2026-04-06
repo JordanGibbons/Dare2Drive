@@ -4,6 +4,7 @@ Revision ID: 0005_add_last_daily
 Revises: 0004_market_listing_user_card_id
 Create Date: 2026-04-04
 """
+
 from typing import Sequence, Union
 
 import sqlalchemy as sa

@@ -8,14 +8,14 @@ from typing import Any
 import discord
 from discord import app_commands
 from discord.ext import commands
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from bot.cogs.tutorial import _load_tutorial_data, build_npc_race_data, is_tutorial_complete
 from config.logging import get_logger
 from db.models import Build, Card, CardSlot, Race, TutorialStep, User, UserCard, WreckLog
 from db.session import async_session
 from engine.race_engine import RaceResult, compute_race
-from bot.cogs.tutorial import build_npc_race_data, is_tutorial_complete, _load_tutorial_data
 
 log = get_logger(__name__)
 
@@ -50,9 +50,7 @@ def get_part_lifespan(slot: str, rarity: str) -> int:
     return max(1, round(base * mult))
 
 
-async def _resolve_build_for_race(
-    session: AsyncSession, user: User
-) -> dict[str, Any] | str:
+async def _resolve_build_for_race(session: AsyncSession, user: User) -> dict[str, Any] | str:
     """
     Load a user's active build and resolve all card data for the race engine.
     Build.slots now maps slot_name → user_card_id (UUID of the specific copy).
@@ -61,7 +59,7 @@ async def _resolve_build_for_race(
     from engine.card_mint import apply_stat_modifiers
 
     result = await session.execute(
-        select(Build).where(Build.user_id == user.discord_id, Build.is_active == True)
+        select(Build).where(Build.user_id == user.discord_id, Build.is_active)
     )
     build = result.scalar_one_or_none()
     if not build:
@@ -107,7 +105,7 @@ async def _resolve_build_for_race(
     missing = required_slots - filled_slots
     if missing:
         missing_str = ", ".join(s.title() for s in sorted(missing))
-        return f"You need at least **Engine, Transmission, Tires, and Chassis** to race. Missing: **{missing_str}**."
+        return f"You need at least **Engine, Transmission, Tires, and Chassis** to race. Missing: **{missing_str}**."  # noqa: E501
 
     return {
         "user_id": user.discord_id,
@@ -117,7 +115,9 @@ async def _resolve_build_for_race(
     }
 
 
-async def _apply_wreck_results(session: AsyncSession, race_result: RaceResult, race_id: uuid.UUID) -> None:
+async def _apply_wreck_results(
+    session: AsyncSession, race_result: RaceResult, race_id: uuid.UUID
+) -> None:
     """Apply wreck part losses to the database and create WreckLog entries."""
     for placement in race_result.placements:
         if not placement.wrecked_parts:
@@ -134,7 +134,7 @@ async def _apply_wreck_results(session: AsyncSession, race_result: RaceResult, r
                     build_result = await session.execute(
                         select(Build).where(
                             Build.user_id == placement.user_id,
-                            Build.is_active == True,
+                            Build.is_active,
                         )
                     )
                     build = build_result.scalar_one_or_none()
@@ -169,7 +169,7 @@ async def _run_race_and_send(
     opp_user: User | None,
     wager: int = 0,
 ) -> None:
-    """Execute a race, save results, and send the result embed. Used by both PvP and tutorial flows."""
+    """Execute a race, save results, and send the result embed. Used by both PvP and tutorial flows."""  # noqa: E501
     async with async_session() as session:
         # Re-attach users to this session
         challenger = await session.get(User, challenger.discord_id)
@@ -233,6 +233,7 @@ async def _run_race_and_send(
 
         # Degrade equipped parts and track wear for all real players
         from engine.card_mint import degrade_stat_modifiers
+
         worn_out_parts: list[tuple[str, str, str]] = []  # (user_id, slot_name, card_name)
 
         for build_data in [challenger_build, opp_build]:
@@ -276,7 +277,7 @@ async def _run_race_and_send(
 
                     # Clear from build
                     build_result = await session.execute(
-                        select(Build).where(Build.user_id == uid, Build.is_active == True)
+                        select(Build).where(Build.user_id == uid, Build.is_active)
                     )
                     build = build_result.scalar_one_or_none()
                     if build:
@@ -286,7 +287,13 @@ async def _run_race_and_send(
 
                     await session.delete(uc)
                     worn_out_parts.append((uid, slot_name, card_name))
-                    log.info("Part worn out: user=%s slot=%s card=%s after %d races", uid, slot_name, card_name, lifespan)
+                    log.info(
+                        "Part worn out: user=%s slot=%s card=%s after %d races",
+                        uid,
+                        slot_name,
+                        card_name,
+                        lifespan,
+                    )
 
         await session.commit()
 
@@ -329,7 +336,9 @@ async def _run_race_and_send(
         )
 
     if wager > 0 and not is_tutorial_race:
-        winner_p = next((p for p in race_result.placements if p.position == 1 and not p.is_tie), None)
+        winner_p = next(
+            (p for p in race_result.placements if p.position == 1 and not p.is_tie), None
+        )
         if winner_p:
             winner_label = display_names.get(winner_p.user_id, "?")
             embed.add_field(
@@ -360,13 +369,17 @@ async def _run_race_and_send(
     # Tutorial progression
     if is_tutorial_race:
         from bot.cogs.tutorial import advance_tutorial
+
         player_placement = next(
             (p for p in race_result.placements if p.user_id == challenger.discord_id),
             None,
         )
         did_win = player_placement is not None and player_placement.position == 1
         await advance_tutorial(
-            interaction, challenger.discord_id, "race", did_win=did_win,
+            interaction,
+            challenger.discord_id,
+            "race",
+            did_win=did_win,
         )
 
 
@@ -416,14 +429,14 @@ class _RaceRequestView(discord.ui.View):
                 chall_user = await session.get(User, self.challenger.discord_id)
                 if chall_user and chall_user.currency < self.wager:
                     await interaction.followup.send(
-                        f"❌ Challenger no longer has enough Creds for the **{self.wager}** wager. Race cancelled."
+                        f"❌ Challenger no longer has enough Creds for the **{self.wager}** wager. Race cancelled."  # noqa: E501
                     )
                     self.stop()
                     return
 
                 if opp_user.currency < self.wager:
                     await interaction.followup.send(
-                        f"❌ {self.opponent_member.display_name} doesn't have enough Creds for the {self.wager} wager."
+                        f"❌ {self.opponent_member.display_name} doesn't have enough Creds for the {self.wager} wager."  # noqa: E501
                     )
                     self.stop()
                     return
@@ -518,7 +531,9 @@ class _MultiRaceView(discord.ui.View):
                 return
 
             if not is_tutorial_complete(user):
-                await interaction.response.send_message("Finish the tutorial first!", ephemeral=True)
+                await interaction.response.send_message(
+                    "Finish the tutorial first!", ephemeral=True
+                )
                 return
 
             if self.wager > 0 and user.currency < self.wager:
@@ -541,11 +556,15 @@ class _MultiRaceView(discord.ui.View):
             button.disabled = True
 
         names = ", ".join(m.display_name for _, _, m in self.entrants)
-        embed = self.original_interaction.message.embeds[0] if hasattr(self.original_interaction, 'message') else None
+        (
+            self.original_interaction.message.embeds[0]
+            if hasattr(self.original_interaction, "message")
+            else None
+        )
         # Just edit the view to update the button
         await interaction.response.edit_message(view=self)
         await interaction.followup.send(
-            f"**{interaction.user.display_name}** joined! ({len(self.entrants)}/3)\nRacers: {names}",
+            f"**{interaction.user.display_name}** joined! ({len(self.entrants)}/3)\nRacers: {names}",  # noqa: E501
         )
 
     async def on_timeout(self) -> None:
@@ -554,7 +573,9 @@ class _MultiRaceView(discord.ui.View):
         self.started = True
 
         if len(self.entrants) < 2:
-            await self.original_interaction.followup.send("Not enough racers joined. Race cancelled.")
+            await self.original_interaction.followup.send(
+                "Not enough racers joined. Race cancelled."
+            )
             return
 
         # Disable button
@@ -622,6 +643,7 @@ class _MultiRaceView(discord.ui.View):
 
             # Part degradation and wear tracking
             from engine.card_mint import degrade_stat_modifiers
+
             multi_worn_out: list[tuple[str, str, str]] = []
 
             for build_data in all_builds:
@@ -654,7 +676,7 @@ class _MultiRaceView(discord.ui.View):
                     if uc.races_used >= lifespan:
                         card_name = card_data.get("name", slot_name.title())
                         build_result = await session.execute(
-                            select(Build).where(Build.user_id == uid, Build.is_active == True)
+                            select(Build).where(Build.user_id == uid, Build.is_active)
                         )
                         build = build_result.scalar_one_or_none()
                         if build:
@@ -682,15 +704,27 @@ class _MultiRaceView(discord.ui.View):
             pos_emoji = POSITION_EMOJI.get(p.position, f"P{p.position}")
             label = display_names.get(p.user_id, p.user_id)
             if p.is_tie:
-                status = f"🤝 TIE — {p.distance_pct * 100:.0f}%" if p.dnf else f"🤝 TIE — {p.score:.1f} pts"
+                status = (
+                    f"🤝 TIE — {p.distance_pct * 100:.0f}%"
+                    if p.dnf
+                    else f"🤝 TIE — {p.score:.1f} pts"
+                )
             elif p.dnf:
-                status = f"💥 DNF — {p.distance_pct * 100:.0f}% complete" if race_result.all_dnf else "💥 DNF"
+                status = (
+                    f"💥 DNF — {p.distance_pct * 100:.0f}% complete"
+                    if race_result.all_dnf
+                    else "💥 DNF"
+                )
             else:
                 status = f"{p.score:.1f} pts"
-            embed.add_field(name=f"{pos_emoji} {status}", value=f"{label}\n{p.narrative}", inline=False)
+            embed.add_field(
+                name=f"{pos_emoji} {status}", value=f"{label}\n{p.narrative}", inline=False
+            )
 
         if self.wager > 0:
-            winner_p = next((p for p in race_result.placements if p.position == 1 and not p.is_tie), None)
+            winner_p = next(
+                (p for p in race_result.placements if p.position == 1 and not p.is_tie), None
+            )
             if winner_p:
                 total = self.wager * (len(self.entrants) - 1)
                 embed.add_field(
@@ -726,10 +760,19 @@ class RaceCog(commands.Cog):
         self.bot = bot
 
     @app_commands.command(name="race", description="Challenge another player to a race")
-    @app_commands.describe(opponent="The player to race against", wager="Creds to bet (min 10, winner takes all)")
-    async def race(self, interaction: discord.Interaction, opponent: discord.Member | None = None, wager: int = 0) -> None:
+    @app_commands.describe(
+        opponent="The player to race against", wager="Creds to bet (min 10, winner takes all)"
+    )
+    async def race(
+        self,
+        interaction: discord.Interaction,
+        opponent: discord.Member | None = None,
+        wager: int = 0,
+    ) -> None:
         if wager != 0 and wager < 10:
-            await interaction.response.send_message("Minimum wager is **10 Creds**.", ephemeral=True)
+            await interaction.response.send_message(
+                "Minimum wager is **10 Creds**.", ephemeral=True
+            )
             return
         if wager < 0:
             await interaction.response.send_message("Wager can't be negative.", ephemeral=True)
@@ -795,7 +838,7 @@ class RaceCog(commands.Cog):
 
             if wager > 0 and challenger.currency < wager:
                 await interaction.response.send_message(
-                    f"You don't have enough Creds for that wager! Have {challenger.currency}, need {wager}.",
+                    f"You don't have enough Creds for that wager! Have {challenger.currency}, need {wager}.",  # noqa: E501
                     ephemeral=True,
                 )
                 return
@@ -821,11 +864,15 @@ class RaceCog(commands.Cog):
         )
         await interaction.response.send_message(embed=embed, view=view)
 
-    @app_commands.command(name="multirace", description="Host a multi-player race event (2-min signup, max 3)")
+    @app_commands.command(
+        name="multirace", description="Host a multi-player race event (2-min signup, max 3)"
+    )
     @app_commands.describe(wager="Optional creds wager (min 10, winner takes all)")
     async def multirace(self, interaction: discord.Interaction, wager: int = 0) -> None:
         if wager != 0 and wager < 10:
-            await interaction.response.send_message("Minimum wager is **10 Creds**.", ephemeral=True)
+            await interaction.response.send_message(
+                "Minimum wager is **10 Creds**.", ephemeral=True
+            )
             return
         if wager < 0:
             await interaction.response.send_message("Wager can't be negative.", ephemeral=True)
@@ -838,7 +885,9 @@ class RaceCog(commands.Cog):
                 return
 
             if not is_tutorial_complete(host):
-                await interaction.response.send_message("Finish the tutorial first!", ephemeral=True)
+                await interaction.response.send_message(
+                    "Finish the tutorial first!", ephemeral=True
+                )
                 return
 
             host_build = await _resolve_build_for_race(session, host)
@@ -854,6 +903,7 @@ class RaceCog(commands.Cog):
 
         # Roll environment preview
         from engine.environment import roll_environment
+
         env = roll_environment()
 
         view = _MultiRaceView(
@@ -882,9 +932,7 @@ class RaceCog(commands.Cog):
     @app_commands.command(name="leaderboard", description="View the top racers")
     async def leaderboard(self, interaction: discord.Interaction) -> None:
         async with async_session() as session:
-            result = await session.execute(
-                select(User).order_by(User.xp.desc()).limit(10)
-            )
+            result = await session.execute(select(User).order_by(User.xp.desc()).limit(10))
             users = list(result.scalars().all())
 
         if not users:
@@ -915,7 +963,9 @@ class RaceCog(commands.Cog):
             logs = list(result.scalars().all())
 
         if not logs:
-            await interaction.response.send_message("No wreck history — keep it clean! 🏁", ephemeral=True)
+            await interaction.response.send_message(
+                "No wreck history — keep it clean! 🏁", ephemeral=True
+            )
             return
 
         lines = []

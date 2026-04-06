@@ -16,11 +16,12 @@ class TestLogging:
     def test_setup_logging_idempotent(self):
         """Calling setup_logging multiple times should not add duplicate handlers."""
         import config.logging as log_module
+
         original_state = log_module._configured
         log_module._configured = False
 
         setup_logging()
-        handler_count = len(logging.getLogger().handlers)
+        len(logging.getLogger().handlers)
         log_module._configured = False
         setup_logging()
         # Reset to avoid side effects

@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
-from scripts.generate_card_image import render_card, RARITY_PALETTE, _apply_ghost_shimmer
+from scripts.generate_card_image import RARITY_PALETTE, _apply_ghost_shimmer, render_card
 
 
 class TestRenderCard:

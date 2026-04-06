@@ -9,11 +9,12 @@ Revision ID: 0003_individual_card_copies
 Revises: 0002_add_tutorial_step
 Create Date: 2026-04-04
 """
+
 from typing import Sequence, Union
 
 import sqlalchemy as sa
-from sqlalchemy.dialects import postgresql
 from alembic import op
+from sqlalchemy.dialects import postgresql
 
 revision: str = "0003_individual_card_copies"
 down_revision: Union[str, None] = "0002_add_tutorial_step"
@@ -25,11 +26,18 @@ def upgrade() -> None:
     conn = op.get_bind()
 
     # 1. Add total_minted to cards
-    op.add_column("cards", sa.Column("total_minted", sa.Integer, nullable=False, server_default="0"))
+    op.add_column(
+        "cards", sa.Column("total_minted", sa.Integer, nullable=False, server_default="0")
+    )
 
     # 2. Add new columns to user_cards
-    op.add_column("user_cards", sa.Column("serial_number", sa.Integer, nullable=False, server_default="0"))
-    op.add_column("user_cards", sa.Column("stat_modifiers", postgresql.JSONB, nullable=False, server_default="{}"))
+    op.add_column(
+        "user_cards", sa.Column("serial_number", sa.Integer, nullable=False, server_default="0")
+    )
+    op.add_column(
+        "user_cards",
+        sa.Column("stat_modifiers", postgresql.JSONB, nullable=False, server_default="{}"),
+    )
 
     # 3. Expand quantity>1 rows into individual rows
     #    For each user_card with quantity>1, keep the original row (qty=1) and insert (qty-1) copies
@@ -43,7 +51,7 @@ def upgrade() -> None:
         for _ in range(qty - 1):
             conn.execute(
                 sa.text(
-                    "INSERT INTO user_cards (id, user_id, card_id, serial_number, stat_modifiers, is_foil, acquired_at) "
+                    "INSERT INTO user_cards (id, user_id, card_id, serial_number, stat_modifiers, is_foil, acquired_at) "  # noqa: E501
                     "VALUES (gen_random_uuid(), :user_id, :card_id, 0, '{}', :is_foil, now())"
                 ),
                 {"user_id": user_id, "card_id": card_id, "is_foil": is_foil},
@@ -95,6 +103,7 @@ def upgrade() -> None:
                 changed = True
         if changed:
             import json
+
             conn.execute(
                 sa.text("UPDATE builds SET slots = :slots::jsonb WHERE id = :id"),
                 {"slots": json.dumps(new_slots), "id": build_id},
@@ -106,7 +115,9 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     # Add quantity back
-    op.add_column("user_cards", sa.Column("quantity", sa.Integer, nullable=False, server_default="1"))
+    op.add_column(
+        "user_cards", sa.Column("quantity", sa.Integer, nullable=False, server_default="1")
+    )
 
     # Rebuild build slots from user_card_id → card_id is not trivially reversible.
     # Leave slots as-is; a full revert would need manual intervention.

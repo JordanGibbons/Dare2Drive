@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
 
 
 class TestHealthEndpoint:
@@ -11,8 +12,9 @@ class TestHealthEndpoint:
 
     @pytest.mark.asyncio
     async def test_health_returns_ok(self):
-        from api.main import app
         from httpx import ASGITransport, AsyncClient
+
+        from api.main import app
 
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -26,8 +28,9 @@ class TestCardRoutes:
 
     @pytest.mark.asyncio
     async def test_list_cards_endpoint_exists(self):
-        from api.main import app
         from httpx import ASGITransport, AsyncClient
+
+        from api.main import app
 
         # Mock the database dependency
         mock_session = AsyncMock()
@@ -39,6 +42,7 @@ class TestCardRoutes:
             yield mock_session
 
         from db.session import get_session
+
         app.dependency_overrides[get_session] = mock_get_session
 
         transport = ASGITransport(app=app)
@@ -51,8 +55,9 @@ class TestCardRoutes:
 
     @pytest.mark.asyncio
     async def test_get_card_invalid_id(self):
-        from api.main import app
         from httpx import ASGITransport, AsyncClient
+
+        from api.main import app
 
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -63,8 +68,9 @@ class TestCardRoutes:
 class TestUserRoutes:
     @pytest.mark.asyncio
     async def test_list_users_endpoint(self):
-        from api.main import app
         from httpx import ASGITransport, AsyncClient
+
+        from api.main import app
 
         mock_session = AsyncMock()
         mock_result = MagicMock()
@@ -75,6 +81,7 @@ class TestUserRoutes:
             yield mock_session
 
         from db.session import get_session
+
         app.dependency_overrides[get_session] = mock_get_session
 
         transport = ASGITransport(app=app)
@@ -86,8 +93,9 @@ class TestUserRoutes:
 
     @pytest.mark.asyncio
     async def test_get_user_not_found(self):
-        from api.main import app
         from httpx import ASGITransport, AsyncClient
+
+        from api.main import app
 
         mock_session = AsyncMock()
         mock_session.get.return_value = None
@@ -96,6 +104,7 @@ class TestUserRoutes:
             yield mock_session
 
         from db.session import get_session
+
         app.dependency_overrides[get_session] = mock_get_session
 
         transport = ASGITransport(app=app)
@@ -109,8 +118,9 @@ class TestUserRoutes:
 class TestRaceRoutes:
     @pytest.mark.asyncio
     async def test_list_races_endpoint(self):
-        from api.main import app
         from httpx import ASGITransport, AsyncClient
+
+        from api.main import app
 
         mock_session = AsyncMock()
         mock_result = MagicMock()
@@ -121,6 +131,7 @@ class TestRaceRoutes:
             yield mock_session
 
         from db.session import get_session
+
         app.dependency_overrides[get_session] = mock_get_session
 
         transport = ASGITransport(app=app)
@@ -132,8 +143,9 @@ class TestRaceRoutes:
 
     @pytest.mark.asyncio
     async def test_get_race_invalid_id(self):
-        from api.main import app
         from httpx import ASGITransport, AsyncClient
+
+        from api.main import app
 
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
