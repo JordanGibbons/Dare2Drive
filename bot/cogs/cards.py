@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
 import random
+import re
 from pathlib import Path
 from typing import Any
 
@@ -17,7 +17,7 @@ from sqlalchemy.orm import selectinload
 
 from config.logging import get_logger
 from config.settings import settings
-from db.models import Card, CardSlot, Rarity, User, UserCard
+from db.models import Card, CardSlot, User, UserCard
 from db.session import async_session
 
 log = get_logger(__name__)
@@ -43,8 +43,6 @@ RARITY_EMOJI = {
 }
 
 
-import re
-
 _SERIAL_SUFFIX_RE = re.compile(r"^(.+?)\s*#(\d+)$")
 
 
@@ -62,7 +60,9 @@ def _parse_card_input(card_name: str) -> tuple[str, int | None]:
 
 
 async def _card_copy_autocomplete(
-    interaction: discord.Interaction, current: str, slot_filter: str | None = None,
+    interaction: discord.Interaction,
+    current: str,
+    slot_filter: str | None = None,
 ) -> list[app_commands.Choice[str]]:
     """
     Autocomplete showing individual card copies as 'Card Name #serial'.
@@ -90,6 +90,7 @@ async def _card_copy_autocomplete(
 
     # Count copies per card name to decide display format
     from collections import Counter
+
     name_counts = Counter(name for name, _ in rows)
 
     choices = []
@@ -119,9 +120,7 @@ async def _roll_cards(session: AsyncSession, pack_type: str, count: int) -> list
     rolled_cards: list[Card] = []
     for _ in range(count):
         chosen_rarity = random.choices(rarities, weights=rarity_weights, k=1)[0]
-        result = await session.execute(
-            select(Card).where(Card.rarity == chosen_rarity)
-        )
+        result = await session.execute(select(Card).where(Card.rarity == chosen_rarity))
         pool = list(result.scalars().all())
         if pool:
             rolled_cards.append(random.choice(pool))
@@ -131,6 +130,7 @@ async def _roll_cards(session: AsyncSession, pack_type: str, count: int) -> list
 async def _grant_card(session: AsyncSession, user_id: str, card: Card) -> UserCard:
     """Mint a new individual copy of a card for a user."""
     from engine.card_mint import mint_card
+
     return await mint_card(session, user_id, card)
 
 
@@ -140,7 +140,9 @@ class CardsCog(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
 
-    @app_commands.command(name="daily", description="Claim your daily Creds and a full set of parts")
+    @app_commands.command(
+        name="daily", description="Claim your daily Creds and a full set of parts"
+    )
     async def daily(self, interaction: discord.Interaction) -> None:
         from datetime import datetime, timedelta, timezone
 
@@ -153,7 +155,15 @@ class CardsCog(commands.Cog):
             "legendary": 2.5,
             "ghost": 0.5,
         }
-        DAILY_SLOTS = ["engine", "transmission", "tires", "chassis", "brakes", "suspension", "turbo"]
+        DAILY_SLOTS = [
+            "engine",
+            "transmission",
+            "tires",
+            "chassis",
+            "brakes",
+            "suspension",
+            "turbo",
+        ]
 
         async with async_session() as session:
             user = await session.get(User, str(interaction.user.id))
@@ -205,7 +215,7 @@ class CardsCog(commands.Cog):
 
         embed = discord.Embed(
             title="💰 Daily Reward",
-            description=f"You earned **100 Creds** and a full set of parts!",
+            description="You earned **100 Creds** and a full set of parts!",
             color=0x22C55E,
         )
         embed.add_field(name="New Balance", value=f"{user.currency} Creds", inline=False)
@@ -214,18 +224,22 @@ class CardsCog(commands.Cog):
             part_lines = []
             for card, uc in granted_parts:
                 emoji = RARITY_EMOJI.get(card.rarity.value, "")
-                part_lines.append(f"{emoji} **{card.name}** #{uc.serial_number} [{card.slot.value}]")
+                part_lines.append(
+                    f"{emoji} **{card.name}** #{uc.serial_number} [{card.slot.value}]"
+                )
             embed.add_field(name="Today's Parts", value="\n".join(part_lines), inline=False)
 
         await interaction.response.send_message(embed=embed)
 
     @app_commands.command(name="pack", description="Open a card pack")
     @app_commands.describe(pack_type="Pack type: junkyard_pack, performance_pack, or legend_crate")
-    @app_commands.choices(pack_type=[
-        app_commands.Choice(name="Junkyard Pack (100 Creds)", value="junkyard_pack"),
-        app_commands.Choice(name="Performance Pack (350 Creds)", value="performance_pack"),
-        app_commands.Choice(name="Legend Crate (1200 Creds)", value="legend_crate"),
-    ])
+    @app_commands.choices(
+        pack_type=[
+            app_commands.Choice(name="Junkyard Pack (100 Creds)", value="junkyard_pack"),
+            app_commands.Choice(name="Performance Pack (350 Creds)", value="performance_pack"),
+            app_commands.Choice(name="Legend Crate (1200 Creds)", value="legend_crate"),
+        ]
+    )
     async def pack(self, interaction: discord.Interaction, pack_type: str) -> None:
         cost_map = {
             "junkyard_pack": settings.JUNKYARD_PACK_COST,
@@ -240,9 +254,7 @@ class CardsCog(commands.Cog):
         async with async_session() as session:
             user = await session.get(User, str(interaction.user.id))
             if not user:
-                await interaction.response.send_message(
-                    "Use `/start` first!", ephemeral=True
-                )
+                await interaction.response.send_message("Use `/start` first!", ephemeral=True)
                 return
             if user.currency < cost:
                 await interaction.response.send_message(
@@ -261,38 +273,12 @@ class CardsCog(commands.Cog):
 
             await session.commit()
 
-        # Staged reveal — send initial embed then follow up per card
         tables = _load_loot_tables()
         display_name = tables[pack_type]["display_name"]
-        await interaction.response.send_message(
-            embed=discord.Embed(
-                title=f"🎴 Opening {display_name}...",
-                description="Cards incoming...",
-                color=0xF59E0B,
-            )
+        view = _PackRevealView(
+            minted=minted, display_name=display_name, owner_id=interaction.user.id
         )
-
-        for card, uc in minted:
-            await asyncio.sleep(0.8)
-            color = RARITY_COLORS.get(card.rarity.value, 0x9CA3AF)
-            emoji = RARITY_EMOJI.get(card.rarity.value, "")
-            embed = discord.Embed(
-                title=f"{emoji} {card.name} #{uc.serial_number}",
-                description=f"**Slot:** {card.slot.value.title()}\n**Rarity:** {card.rarity.value.title()}",
-                color=color,
-            )
-            # Show primary stats
-            primary = card.stats.get("primary", {})
-            stat_lines = [f"`{k}`: {v}" for k, v in primary.items()]
-            if stat_lines:
-                embed.add_field(name="Primary Stats", value="\n".join(stat_lines), inline=True)
-            secondary = card.stats.get("secondary", {})
-            sec_lines = [f"`{k}`: {v}" for k, v in secondary.items()]
-            if sec_lines:
-                embed.add_field(name="Secondary Stats", value="\n".join(sec_lines), inline=True)
-            if card.print_max:
-                embed.set_footer(text=f"Limited Edition — {card.print_max} prints")
-            await interaction.followup.send(embed=embed)
+        await interaction.response.send_message(embed=view.build_embed(), view=view)
 
     @app_commands.command(name="inventory", description="View your card collection")
     async def inventory(self, interaction: discord.Interaction) -> None:
@@ -310,17 +296,28 @@ class CardsCog(commands.Cog):
             user_cards = list(result.scalars().all())
 
         if not user_cards:
-            await interaction.response.send_message("Your inventory is empty! Try `/pack`.", ephemeral=True)
+            await interaction.response.send_message(
+                "Your inventory is empty! Try `/pack`.", ephemeral=True
+            )
             return
 
         # Auto sort: by slot type, then rarity (best first), then serial
         slot_order = {s.value: i for i, s in enumerate(CardSlot)}
-        rarity_order = {"ghost": 0, "legendary": 1, "epic": 2, "rare": 3, "uncommon": 4, "common": 5}
-        user_cards.sort(key=lambda uc: (
-            slot_order.get(uc.card.slot.value, 99),
-            rarity_order.get(uc.card.rarity.value, 99),
-            uc.serial_number,
-        ))
+        rarity_order = {
+            "ghost": 0,
+            "legendary": 1,
+            "epic": 2,
+            "rare": 3,
+            "uncommon": 4,
+            "common": 5,
+        }
+        user_cards.sort(
+            key=lambda uc: (
+                slot_order.get(uc.card.slot.value, 99),
+                rarity_order.get(uc.card.rarity.value, 99),
+                uc.serial_number,
+            )
+        )
 
         view = _InventoryView(
             user_cards=user_cards,
@@ -332,6 +329,7 @@ class CardsCog(commands.Cog):
 
         # Tutorial progression
         from bot.cogs.tutorial import advance_tutorial
+
         await advance_tutorial(interaction, str(interaction.user.id), "inventory")
 
     @app_commands.command(name="inspect", description="Inspect a card's full stats")
@@ -366,9 +364,7 @@ class CardsCog(commands.Cog):
             user_copy = uc_result.scalar_one_or_none()
 
         if not user_copy:
-            await interaction.response.send_message(
-                f"You don't own `{card_name}`.", ephemeral=True
-            )
+            await interaction.response.send_message(f"You don't own `{card_name}`.", ephemeral=True)
             return
 
         # Apply per-copy stat modifiers
@@ -382,10 +378,13 @@ class CardsCog(commands.Cog):
         )
         embed.add_field(name="Slot", value=card.slot.value.title(), inline=True)
         embed.add_field(name="Rarity", value=card.rarity.value.title(), inline=True)
-        embed.add_field(name="Serial", value=f"#{user_copy.serial_number} of {card.total_minted}", inline=True)
+        embed.add_field(
+            name="Serial", value=f"#{user_copy.serial_number} of {card.total_minted}", inline=True
+        )
 
         # Wear indicator
         from bot.cogs.race import get_part_lifespan
+
         lifespan = get_part_lifespan(card.slot.value, card.rarity.value)
         races_left = max(0, lifespan - user_copy.races_used)
         if races_left <= 3:
@@ -404,7 +403,11 @@ class CardsCog(commands.Cog):
                 filled = max(0, min(10, filled))
                 bar = "█" * filled + "░" * (10 - filled)
                 # Show delta from base
-                delta = val - base if isinstance(val, (int, float)) and isinstance(base, (int, float)) else 0
+                delta = (
+                    val - base
+                    if isinstance(val, (int, float)) and isinstance(base, (int, float))
+                    else 0
+                )
                 delta_str = f" ({delta:+.1f})" if abs(delta) > 0.01 else ""
                 bars.append(f"`{stat:>25s}` {bar} {val:.1f}{delta_str}")
             embed.add_field(name="Primary Stats", value="\n".join(bars), inline=False)
@@ -415,7 +418,11 @@ class CardsCog(commands.Cog):
             bars = []
             for stat, val in secondary.items():
                 base = base_secondary.get(stat, val)
-                delta = val - base if isinstance(val, (int, float)) and isinstance(base, (int, float)) else 0
+                delta = (
+                    val - base
+                    if isinstance(val, (int, float)) and isinstance(base, (int, float))
+                    else 0
+                )
                 delta_str = f" ({delta:+.1f})" if abs(delta) > 0.01 else ""
                 if isinstance(val, float) and abs(val) < 2:
                     bars.append(f"`{stat:>25s}` {val:.2f}{delta_str}")
@@ -433,6 +440,7 @@ class CardsCog(commands.Cog):
 
         # Tutorial progression
         from bot.cogs.tutorial import advance_tutorial
+
         await advance_tutorial(interaction, str(interaction.user.id), "inspect")
 
     @inspect.autocomplete("card_name")
@@ -441,13 +449,19 @@ class CardsCog(commands.Cog):
     ) -> list[app_commands.Choice[str]]:
         return await _card_copy_autocomplete(interaction, current)
 
-    @app_commands.command(name="request_inspect", description="Ask to peek inside another player's garage")
+    @app_commands.command(
+        name="request_inspect", description="Ask to peek inside another player's garage"
+    )
     @app_commands.describe(target="The player whose garage you want to see")
     async def request_inspect(
-        self, interaction: discord.Interaction, target: discord.Member,
+        self,
+        interaction: discord.Interaction,
+        target: discord.Member,
     ) -> None:
         if target.id == interaction.user.id:
-            await interaction.response.send_message("Just use `/inventory` for your own cards.", ephemeral=True)
+            await interaction.response.send_message(
+                "Just use `/inventory` for your own cards.", ephemeral=True
+            )
             return
 
         if target.bot:
@@ -481,6 +495,81 @@ class CardsCog(commands.Cog):
 
 SLOT_ORDER = {s.value: i for i, s in enumerate(CardSlot)}
 RARITY_ORDER_DESC = {"ghost": 0, "legendary": 1, "epic": 2, "rare": 3, "uncommon": 4, "common": 5}
+
+
+class _PackRevealView(discord.ui.View):
+    """Single-message pack reveal widget — scroll through cards one at a time."""
+
+    def __init__(
+        self,
+        minted: list[tuple],
+        display_name: str,
+        owner_id: int,
+    ) -> None:
+        super().__init__(timeout=120)
+        self.minted = minted
+        self.display_name = display_name
+        self.owner_id = owner_id
+        self.index = 0
+        self._update_buttons()
+
+    def _update_buttons(self) -> None:
+        self.prev_card.disabled = self.index == 0
+        self.next_card.disabled = self.index == len(self.minted) - 1
+
+    def build_embed(self) -> discord.Embed:
+        card, uc = self.minted[self.index]
+        color = RARITY_COLORS.get(card.rarity.value, 0x9CA3AF)
+        emoji = RARITY_EMOJI.get(card.rarity.value, "")
+        embed = discord.Embed(
+            title=f"{emoji} {card.name} #{uc.serial_number}",
+            description=(
+                f"**Slot:** {card.slot.value.title()}\n**Rarity:** {card.rarity.value.title()}"
+            ),
+            color=color,
+        )
+        primary = card.stats.get("primary", {})
+        if primary:
+            embed.add_field(
+                name="Primary Stats",
+                value="\n".join(f"`{k}`: {v}" for k, v in primary.items()),
+                inline=True,
+            )
+        secondary = card.stats.get("secondary", {})
+        if secondary:
+            embed.add_field(
+                name="Secondary Stats",
+                value="\n".join(f"`{k}`: {v}" for k, v in secondary.items()),
+                inline=True,
+            )
+        if card.print_max:
+            footer = f"Limited Edition — {card.print_max} prints"
+        else:
+            footer = ""
+        card_counter = f"Card {self.index + 1} of {len(self.minted)} • {self.display_name}"
+        embed.set_footer(text=f"{footer}  {card_counter}".strip(" •"))
+        return embed
+
+    @discord.ui.button(label="◀ Prev", style=discord.ButtonStyle.secondary)
+    async def prev_card(self, interaction: discord.Interaction, _button: discord.ui.Button) -> None:
+        if interaction.user.id != self.owner_id:
+            await interaction.response.send_message("This isn't your pack.", ephemeral=True)
+            return
+        self.index -= 1
+        self._update_buttons()
+        await interaction.response.edit_message(embed=self.build_embed(), view=self)
+
+    @discord.ui.button(label="Next ▶", style=discord.ButtonStyle.secondary)
+    async def next_card(self, interaction: discord.Interaction, _button: discord.ui.Button) -> None:
+        if interaction.user.id != self.owner_id:
+            await interaction.response.send_message("This isn't your pack.", ephemeral=True)
+            return
+        self.index += 1
+        self._update_buttons()
+        await interaction.response.edit_message(embed=self.build_embed(), view=self)
+
+    async def on_timeout(self) -> None:
+        self.stop()
 
 
 class _InventoryView(discord.ui.View):
@@ -518,12 +607,16 @@ class _InventoryView(discord.ui.View):
             card = uc.card
             emoji = RARITY_EMOJI.get(card.rarity.value, "")
             foil = " ✨" if uc.is_foil else ""
-            options.append(discord.SelectOption(
-                label=f"{card.name} #{uc.serial_number}"[:100],
-                description=f"{card.slot.value.title()} • {card.rarity.value.title()}{foil}"[:100],
-                value=str(uc.id),
-                emoji=emoji or None,
-            ))
+            options.append(
+                discord.SelectOption(
+                    label=f"{card.name} #{uc.serial_number}"[:100],
+                    description=f"{card.slot.value.title()} • {card.rarity.value.title()}{foil}"[
+                        :100
+                    ],
+                    value=str(uc.id),
+                    emoji=emoji or None,
+                )
+            )
 
         self.card_select = discord.ui.Select(
             placeholder="Select a part to inspect...",
@@ -547,7 +640,9 @@ class _InventoryView(discord.ui.View):
             description="\n".join(lines) if lines else "Empty page.",
             color=0x3B82F6,
         )
-        embed.set_footer(text=f"Page {self.page}/{self.total_pages} • {len(self.user_cards)} cards total")
+        embed.set_footer(
+            text=f"Page {self.page}/{self.total_pages} • {len(self.user_cards)} cards total"
+        )
         return embed
 
     async def _on_select(self, interaction: discord.Interaction) -> None:
@@ -561,6 +656,7 @@ class _InventoryView(discord.ui.View):
             return
 
         from engine.card_mint import apply_stat_modifiers
+
         card = uc.card
         effective_stats = apply_stat_modifiers(card.stats, uc.stat_modifiers or {})
 
@@ -572,7 +668,9 @@ class _InventoryView(discord.ui.View):
         )
         embed.add_field(name="Slot", value=card.slot.value.title(), inline=True)
         embed.add_field(name="Rarity", value=card.rarity.value.title(), inline=True)
-        embed.add_field(name="Serial", value=f"#{uc.serial_number} of {card.total_minted}", inline=True)
+        embed.add_field(
+            name="Serial", value=f"#{uc.serial_number} of {card.total_minted}", inline=True
+        )
 
         primary = effective_stats.get("primary", {})
         if primary:
@@ -583,7 +681,11 @@ class _InventoryView(discord.ui.View):
                 filled = int(abs(val) / 100 * 10) if isinstance(val, (int, float)) else 0
                 filled = max(0, min(10, filled))
                 bar = "█" * filled + "░" * (10 - filled)
-                delta = val - base if isinstance(val, (int, float)) and isinstance(base, (int, float)) else 0
+                delta = (
+                    val - base
+                    if isinstance(val, (int, float)) and isinstance(base, (int, float))
+                    else 0
+                )
                 delta_str = f" ({delta:+.1f})" if abs(delta) > 0.01 else ""
                 bars.append(f"`{stat:>25s}` {bar} {val:.1f}{delta_str}")
             embed.add_field(name="Primary Stats", value="\n".join(bars), inline=False)
@@ -594,7 +696,11 @@ class _InventoryView(discord.ui.View):
             bars = []
             for stat, val in secondary.items():
                 base = base_secondary.get(stat, val)
-                delta = val - base if isinstance(val, (int, float)) and isinstance(base, (int, float)) else 0
+                delta = (
+                    val - base
+                    if isinstance(val, (int, float)) and isinstance(base, (int, float))
+                    else 0
+                )
                 delta_str = f" ({delta:+.1f})" if abs(delta) > 0.01 else ""
                 if isinstance(val, float) and abs(val) < 2:
                     bars.append(f"`{stat:>25s}` {val:.2f}{delta_str}")
@@ -647,19 +753,21 @@ class _InventoryDetailView(discord.ui.View):
         if interaction.user.id != self.inv_view.owner_id:
             await interaction.response.send_message("This isn't your inventory.", ephemeral=True)
             return
-        await interaction.response.edit_message(embed=self.inv_view.build_page_embed(), view=self.inv_view)
+        await interaction.response.edit_message(
+            embed=self.inv_view.build_page_embed(), view=self.inv_view
+        )
 
 
-def _build_inventory_embed(target_name: str, requester_id: int, user_cards: list, flavor: str) -> discord.Embed:
+def _build_inventory_embed(
+    target_name: str, requester_id: int, user_cards: list, flavor: str
+) -> discord.Embed:
     """Build the garage inventory list embed."""
     lines = []
     for uc in user_cards:
         card = uc.card
         emoji = RARITY_EMOJI.get(card.rarity.value, "")
         foil = " ✨" if uc.is_foil else ""
-        lines.append(
-            f"{emoji} **{card.name}** #{uc.serial_number} [{card.slot.value}]{foil}"
-        )
+        lines.append(f"{emoji} **{card.name}** #{uc.serial_number} [{card.slot.value}]{foil}")
 
     description = f"*{flavor}*\n\n<@{requester_id}>, here's what's in the garage:\n\n"
     description += "\n".join(lines[:30])
@@ -701,7 +809,11 @@ def _build_card_detail_embed(card: Card, uc: UserCard, target_name: str) -> disc
             filled = int(abs(val) / 100 * 10) if isinstance(val, (int, float)) else 0
             filled = max(0, min(10, filled))
             bar = "█" * filled + "░" * (10 - filled)
-            delta = val - base if isinstance(val, (int, float)) and isinstance(base, (int, float)) else 0
+            delta = (
+                val - base
+                if isinstance(val, (int, float)) and isinstance(base, (int, float))
+                else 0
+            )
             delta_str = f" ({delta:+.1f})" if abs(delta) > 0.01 else ""
             bars.append(f"`{stat:>25s}` {bar} {val:.1f}{delta_str}")
         embed.add_field(name="Primary Stats", value="\n".join(bars), inline=False)
@@ -712,7 +824,11 @@ def _build_card_detail_embed(card: Card, uc: UserCard, target_name: str) -> disc
         bars = []
         for stat, val in secondary.items():
             base = base_secondary.get(stat, val)
-            delta = val - base if isinstance(val, (int, float)) and isinstance(base, (int, float)) else 0
+            delta = (
+                val - base
+                if isinstance(val, (int, float)) and isinstance(base, (int, float))
+                else 0
+            )
             delta_str = f" ({delta:+.1f})" if abs(delta) > 0.01 else ""
             if isinstance(val, float) and abs(val) < 2:
                 bars.append(f"`{stat:>25s}` {val:.2f}{delta_str}")
@@ -730,7 +846,7 @@ def _build_card_detail_embed(card: Card, uc: UserCard, target_name: str) -> disc
 
 
 class _GarageBrowseView(discord.ui.View):
-    """Interactive garage browser — select dropdown to inspect individual cards, back button to return."""
+    """Interactive garage browser — select dropdown to inspect individual cards, back button to return."""  # noqa: E501
 
     def __init__(
         self,
@@ -760,12 +876,14 @@ class _GarageBrowseView(discord.ui.View):
             foil = " ✨" if uc.is_foil else ""
             label = f"{card.name} #{uc.serial_number}"
             desc = f"{card.slot.value.title()} • {card.rarity.value.title()}{foil}"
-            options.append(discord.SelectOption(
-                label=label[:100],
-                description=desc[:100],
-                value=str(uc.id),
-                emoji=emoji_str or None,
-            ))
+            options.append(
+                discord.SelectOption(
+                    label=label[:100],
+                    description=desc[:100],
+                    value=str(uc.id),
+                    emoji=emoji_str or None,
+                )
+            )
 
         if not options:
             return
@@ -780,7 +898,9 @@ class _GarageBrowseView(discord.ui.View):
 
     async def _on_select(self, interaction: discord.Interaction) -> None:
         if interaction.user.id != self.requester_id:
-            await interaction.response.send_message("This isn't your peek — hands off.", ephemeral=True)
+            await interaction.response.send_message(
+                "This isn't your peek — hands off.", ephemeral=True
+            )
             return
 
         uc_id = self.card_select.values[0]
@@ -855,19 +975,19 @@ class _GarageRequestView(discord.ui.View):
     """Approve / deny another player peeking at your full garage."""
 
     DENY_LINES = [
-        "The garage door stays shut. You hear a muffled \"go away\" from inside.",
+        'The garage door stays shut. You hear a muffled "go away" from inside.',
         "A padlock clicks. That's a no.",
         "You hear power tools rev up. Probably best to leave.",
         "A sign flips to CLOSED. Real subtle.",
-        "\"Come back with a warrant.\" The slot in the door slams shut.",
+        '"Come back with a warrant." The slot in the door slams shut.',
     ]
 
     APPROVE_LINES = [
-        "The garage door creaks open. \"Make it quick.\"",
+        'The garage door creaks open. "Make it quick."',
         "You knock twice. The door swings open and you're waved in.",
-        "\"Don't touch anything.\" They step aside and let you look.",
-        "The lights flicker on. \"Alright, feast your eyes.\"",
-        "A grease-stained hand pulls you inside. \"Check this out.\"",
+        '"Don\'t touch anything." They step aside and let you look.',
+        'The lights flicker on. "Alright, feast your eyes."',
+        'A grease-stained hand pulls you inside. "Check this out."',
     ]
 
     def __init__(self, requester_id: int, target_id: int, target_name: str) -> None:
@@ -902,7 +1022,7 @@ class _GarageRequestView(discord.ui.View):
         if not user_cards:
             embed = discord.Embed(
                 title=f"🔍 {self.target_name}'s Garage",
-                description=f"*{flavor}*\n\n<@{self.requester_id}>, the garage is... empty. Awkward.",
+                description=f"*{flavor}*\n\n<@{self.requester_id}>, the garage is... empty. Awkward.",  # noqa: E501
                 color=0x9CA3AF,
             )
             await interaction.followup.send(embed=embed)

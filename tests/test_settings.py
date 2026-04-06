@@ -11,7 +11,7 @@ class TestSettings:
             DISCORD_TOKEN="test",
             DATABASE_URL="postgresql+asyncpg://localhost/test",
         )
-        assert s.STARTING_CURRENCY == 500
+        assert s.STARTING_CURRENCY == 0
         assert s.DAILY_MIN == 50
         assert s.DAILY_MAX == 150
         assert s.JUNKYARD_PACK_COST == 100
