@@ -1,0 +1,152 @@
+{
+  "body_type_base_stats": {
+    "muscle": {
+      "power": 15,
+      "acceleration": 8,
+      "top_speed": 12,
+      "handling": 6,
+      "grip": 8,
+      "braking": 8,
+      "stability": 10,
+      "durability": 14,
+      "weather_performance": 6
+    },
+    "sport": {
+      "power": 10,
+      "acceleration": 12,
+      "top_speed": 14,
+      "handling": 12,
+      "grip": 10,
+      "braking": 10,
+      "stability": 8,
+      "durability": 8,
+      "weather_performance": 8
+    },
+    "compact": {
+      "power": 6,
+      "acceleration": 14,
+      "top_speed": 10,
+      "handling": 15,
+      "grip": 12,
+      "braking": 12,
+      "stability": 10,
+      "durability": 10,
+      "weather_performance": 10
+    }
+  },
+  "starter_cards": [
+    "Rustbucket Inline-4",
+    "Clunker 3-Speed",
+    "Bald Eagles",
+    "Scrapheap Frame",
+    "Drum Stoppers"
+  ],
+  "npc_opponent": {
+    "name": "Sketchy Dave",
+    "user_id": "NPC_SKETCHY_DAVE",
+    "cards": {
+      "engine": {
+        "name": "Sketchy Dave's Taped-Together V4",
+        "stats": {
+          "primary": {"power": 15, "acceleration": 14, "torque": 16, "max_engine_temp": 55},
+          "secondary": {"weight": -8, "durability": 20, "fuel_efficiency": 30}
+        }
+      },
+      "transmission": {
+        "name": "Dave's Mystery Gearbox",
+        "stats": {
+          "primary": {"acceleration_scaling": 16, "top_speed_ceiling": 18, "shift_efficiency": 14},
+          "secondary": {"durability": 30, "torque_transfer_pct": 35}
+        }
+      },
+      "tires": {
+        "name": "Mismatched Retreads",
+        "stats": {
+          "primary": {"grip": 14, "handling": 12, "launch_acceleration": 10},
+          "secondary": {"durability": 18, "weather_performance": 12, "drag": 15}
+        }
+      },
+      "chassis": {
+        "name": "Dave's Dented Cage",
+        "stats": {
+          "primary": {"drag": 18, "weight": 14, "durability": 25, "style": 5},
+          "secondary": {"handling_cap_modifier": -6, "top_speed_multiplier": 0.88}
+        }
+      },
+      "brakes": {
+        "name": "Rusty Squeakers",
+        "stats": {
+          "primary": {"brake_force": 14, "corner_entry_speed": 10, "stability_under_decel": 12},
+          "secondary": {"handling_bonus": 1, "durability": 20}
+        }
+      }
+    }
+  },
+  "dialogue": {
+    "intro_inherited": [
+      "Your uncle just died. The good news? He left you everything.",
+      "A fat stack of cash, a garage with a questionable roof, and a car that... well, it's got four wheels. Mostly.",
+      "Time to hit the streets and make a name for yourself."
+    ],
+    "robbed": [
+      "You pull up to the strip with your windows down and your wallet out like an absolute tourist.",
+      "Three guys you've never seen before box you in. It's over before your engine stops ticking.",
+      "They took everything. Every last credit. Even your good sunglasses.",
+      "You limp home on fumes with nothing but your dignity. Actually, they took that too."
+    ],
+    "junkyard": [
+      "On the walk of shame home, you pass a junkyard. The fence has a hole. You have nothing to lose.",
+      "After an hour of tetanus-risk digging, you drag out some parts that almost look functional.",
+      "It's not much, but it's yours. Well, it's the junkyard's. But they won't miss it."
+    ],
+    "teach_inventory": [
+      "You've got parts now. Questionable parts, but parts.",
+      "Use `/inventory` to see what you dragged out of that dumpster. You can tap any part in the list to inspect it."
+    ],
+    "teach_inspect": [
+      "Not bad. Not good either, but not bad.",
+      "Want a closer look? Use `/inspect {card_name}` to check the stats. Each copy rolls slightly different — some are better than others."
+    ],
+    "teach_equip": [
+      "Knowledge is power. Unfortunately, power is also power, and yours is currently sitting on the floor.",
+      "Use `/equip` to bolt these parts onto your ride. You'll need at least an **Engine**, **Transmission**, **Tires**, and **Chassis** to race.",
+      "Try: `/equip slot:Engine card_name:{engine_card}`",
+      "Or skip the grease work — `/autoequip best` will install your best parts automatically."
+    ],
+    "teach_garage": [
+      "Alright, she's coming together. Kind of.",
+      "Use `/garage` to admire your masterpiece. Or cry. Both are valid.",
+      "Want to scout the competition? `/peek @player` lets you see anyone's build."
+    ],
+    "teach_race": [
+      "She runs. She stops. She turns. That's three whole features.",
+      "Remember that strip where you got jumped? Time to go back.",
+      "Use `/race @player` to send a challenge. They'll have to accept before you line up.",
+      "Feeling bold? Add a wager — `/race @player wager:50` puts Creds on the line."
+    ],
+    "race_win": [
+      "HOLY SHIT. You actually won. In THAT thing.",
+      "Your opponent is staring at their steering wheel trying to figure out what just happened.",
+      "Word on the street travels fast. Someone tosses you a pack as a \"welcome to the scene\" gift."
+    ],
+    "race_lose": [
+      "You lost. Obviously. Look at your car.",
+      "But hey, you finished. That's more than your car's warranty would have predicted.",
+      "Some old guy in the crowd saw your effort and tosses you a pack. \"Everyone starts somewhere, kid.\""
+    ],
+    "teach_pack": [
+      "A free **Junkyard Pack**. Inside could be anything. Probably junk, but maybe slightly better junk.",
+      "It's already been opened for you. Let's see what you got..."
+    ],
+    "teach_daily": [
+      "One more thing. Every day you can use `/daily` to collect **100 Creds** and a **full set of parts** — one for every slot.",
+      "The rarity is random. Mostly junk, but every once in a while you pull something nasty."
+    ],
+    "outro": [
+      "That's the basics. Build your ride, race the streets, trade cards, and try not to wreck.",
+      "The `/market` has parts for sale. `/trade` if you want to deal with other players directly.",
+      "Use `/multirace` to host a bigger event. Parts degrade each race, so keep an eye on your build.",
+      "Good luck out there. You're gonna need it."
+    ]
+  }
+}

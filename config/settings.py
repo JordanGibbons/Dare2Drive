@@ -34,7 +34,7 @@ class Settings(BaseSettings):
     ENVIRONMENT: Environment = Environment.DEVELOPMENT
 
     # Economy constants
-    STARTING_CURRENCY: int = 500
+    STARTING_CURRENCY: int = 0
     DAILY_MIN: int = 50
     DAILY_MAX: int = 150
     JUNKYARD_PACK_COST: int = 100
