@@ -310,5 +310,3 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the git workflow, commit standards, a
 ---
 
 ## License
-
-MIT

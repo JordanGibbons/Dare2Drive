@@ -4,11 +4,12 @@ Revision ID: 0004_market_listing_user_card_id
 Revises: 0003_individual_card_copies
 Create Date: 2026-04-04
 """
+
 from typing import Sequence, Union
 
 import sqlalchemy as sa
-from sqlalchemy.dialects import postgresql
 from alembic import op
+from sqlalchemy.dialects import postgresql
 
 revision: str = "0004_market_listing_user_card_id"
 down_revision: Union[str, None] = "0003_individual_card_copies"
@@ -50,17 +51,13 @@ def upgrade() -> None:
 
     # Delete any listings that couldn't be matched (orphaned)
     conn.execute(
-        sa.text(
-            "DELETE FROM market_listings WHERE user_card_id IS NULL AND sold_at IS NULL"
-        )
+        sa.text("DELETE FROM market_listings WHERE user_card_id IS NULL AND sold_at IS NULL")
     )
 
     # For sold listings without a user_card_id, set a placeholder or delete
     # Since sold listings are historical, we can leave them NULL or clean up
     # We'll just delete unmatched sold listings too since they're from old system
-    conn.execute(
-        sa.text("DELETE FROM market_listings WHERE user_card_id IS NULL")
-    )
+    conn.execute(sa.text("DELETE FROM market_listings WHERE user_card_id IS NULL"))
 
     # Now make it NOT NULL and add the FK
     op.alter_column("market_listings", "user_card_id", nullable=False)

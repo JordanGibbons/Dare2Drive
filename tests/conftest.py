@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import asyncio
 import uuid
-from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -32,7 +30,11 @@ def sample_transmission_card():
         "slot": "transmission",
         "rarity": "rare",
         "stats": {
-            "primary": {"acceleration_scaling": 60, "top_speed_ceiling": 62, "shift_efficiency": 65},
+            "primary": {
+                "acceleration_scaling": 60,
+                "top_speed_ceiling": 62,
+                "shift_efficiency": 65,
+            },
             "secondary": {"durability": 68, "torque_transfer_pct": 72},
         },
     }
@@ -88,7 +90,11 @@ def sample_turbo_card():
         "slot": "turbo",
         "rarity": "rare",
         "stats": {
-            "primary": {"power_boost_pct": 28, "acceleration_boost_pct": 18, "engine_temp_increase": 25},
+            "primary": {
+                "power_boost_pct": 28,
+                "acceleration_boost_pct": 18,
+                "engine_temp_increase": 25,
+            },
             "secondary": {"durability": 65, "torque_spike_modifier": 18},
         },
     }

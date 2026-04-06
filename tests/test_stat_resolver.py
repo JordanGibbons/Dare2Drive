@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 
-from engine.stat_resolver import BuildStats, aggregate_build, _get_stat
+from engine.stat_resolver import _get_stat, aggregate_build
 
 
 class TestGetStat:
@@ -77,20 +77,34 @@ class TestAggregateBuild:
         cards = {
             engine_id: {
                 "stats": {
-                    "primary": {"power": 50, "acceleration": 50, "torque": 50, "max_engine_temp": 50},
+                    "primary": {
+                        "power": 50,
+                        "acceleration": 50,
+                        "torque": 50,
+                        "max_engine_temp": 50,
+                    },
                     "secondary": {"weight": -10, "durability": 50, "fuel_efficiency": 50},
                 }
             },
             turbo_id: {
                 "stats": {
-                    "primary": {"power_boost_pct": 20, "acceleration_boost_pct": 10, "engine_temp_increase": 45},
+                    "primary": {
+                        "power_boost_pct": 20,
+                        "acceleration_boost_pct": 10,
+                        "engine_temp_increase": 45,
+                    },
                     "secondary": {"durability": 50, "torque_spike_modifier": 10},
                 }
             },
         }
         slots = {
-            "engine": engine_id, "transmission": None, "tires": None,
-            "suspension": None, "chassis": None, "turbo": turbo_id, "brakes": None,
+            "engine": engine_id,
+            "transmission": None,
+            "tires": None,
+            "suspension": None,
+            "chassis": None,
+            "turbo": turbo_id,
+            "brakes": None,
         }
         bs = aggregate_build(slots, cards)
         assert bs.overheat_risk is True
@@ -101,27 +115,53 @@ class TestAggregateBuild:
         cards = {
             engine_id: {
                 "stats": {
-                    "primary": {"power": 50, "acceleration": 50, "torque": 50, "max_engine_temp": 90},
+                    "primary": {
+                        "power": 50,
+                        "acceleration": 50,
+                        "torque": 50,
+                        "max_engine_temp": 90,
+                    },
                     "secondary": {"weight": -10, "durability": 50, "fuel_efficiency": 50},
                 }
             },
             turbo_id: {
                 "stats": {
-                    "primary": {"power_boost_pct": 20, "acceleration_boost_pct": 10, "engine_temp_increase": 10},
+                    "primary": {
+                        "power_boost_pct": 20,
+                        "acceleration_boost_pct": 10,
+                        "engine_temp_increase": 10,
+                    },
                     "secondary": {"durability": 50, "torque_spike_modifier": 10},
                 }
             },
         }
         slots = {
-            "engine": engine_id, "transmission": None, "tires": None,
-            "suspension": None, "chassis": None, "turbo": turbo_id, "brakes": None,
+            "engine": engine_id,
+            "transmission": None,
+            "tires": None,
+            "suspension": None,
+            "chassis": None,
+            "turbo": turbo_id,
+            "brakes": None,
         }
         bs = aggregate_build(slots, cards)
         assert bs.overheat_risk is False
 
+    def test_body_type_applies_base_stats(self, full_build):
+        """Passing a body_type should add non-zero base stats to the build."""
+        bs_no_body = aggregate_build(full_build["slots"], full_build["cards"])
+        bs_muscle = aggregate_build(full_build["slots"], full_build["cards"], body_type="muscle")
+        # muscle body type should contribute extra power
+        assert bs_muscle.effective_power != bs_no_body.effective_power
+
+    def test_body_type_unknown_does_not_crash(self, full_build):
+        """Unknown body type silently contributes zero base stats."""
+        bs = aggregate_build(full_build["slots"], full_build["cards"], body_type="unicorn")
+        assert bs.effective_power >= 0  # no crash, stats from cards still applied
+
     def test_handling_capped_by_chassis_modifier(self):
         """Effective handling should not exceed 100 + handling_cap_modifier."""
-        engine_id = str(uuid.uuid4())
+        str(uuid.uuid4())
         tires_id = str(uuid.uuid4())
         susp_id = str(uuid.uuid4())
         chassis_id = str(uuid.uuid4())
@@ -148,15 +188,23 @@ class TestAggregateBuild:
             },
             brakes_id: {
                 "stats": {
-                    "primary": {"brake_force": 99, "corner_entry_speed": 99, "stability_under_decel": 99},
+                    "primary": {
+                        "brake_force": 99,
+                        "corner_entry_speed": 99,
+                        "stability_under_decel": 99,
+                    },
                     "secondary": {"handling_bonus": 20, "durability": 99},
                 }
             },
         }
         slots = {
-            "engine": None, "transmission": None,
-            "tires": tires_id, "suspension": susp_id,
-            "chassis": chassis_id, "turbo": None, "brakes": brakes_id,
+            "engine": None,
+            "transmission": None,
+            "tires": tires_id,
+            "suspension": susp_id,
+            "chassis": chassis_id,
+            "turbo": None,
+            "brakes": brakes_id,
         }
         bs = aggregate_build(slots, cards)
         assert bs.effective_handling <= 100 + (-20)  # cap is 100 + handling_cap_modifier

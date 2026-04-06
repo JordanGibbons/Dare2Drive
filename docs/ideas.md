@@ -2,7 +2,7 @@
 
 Dump thoughts here. Tag each idea with a **Status** and **Area** so we can triage later.
 
-**Status tags:** `raw` · `exploring` · `planned` · `rejected`  
+**Status tags:** `raw` · `exploring` · `planned` · `rejected`
 **Area tags:** `gameplay` · `economy` · `cards` · `social` · `tech` · `ux`
 
 ---
@@ -12,7 +12,8 @@ Dump thoughts here. Tag each idea with a **Status** and **Area** so we can triag
 | # | Idea | Area | Status | Notes |
 |---|------|------|--------|-------|
 | 1 | | | `raw` | |
-| 2 |Part Versioning|cards|Raw|Create card 'print' number, create rare parts with lower machine number for trading| 
+| 2 |Part Versioning|cards|Raw|Create card 'print' number, create rare parts with lower machine number for trading|
+
 ---
 
 ## In Discussion

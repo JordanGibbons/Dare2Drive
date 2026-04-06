@@ -5,7 +5,7 @@ from __future__ import annotations
 import discord
 from discord import app_commands
 from discord.ext import commands
-from sqlalchemy import delete, select
+from sqlalchemy import delete
 
 from config.logging import get_logger
 from db.models import Build, MarketListing, TutorialStep, User, UserCard, WreckLog
@@ -16,6 +16,7 @@ log = get_logger(__name__)
 
 def is_admin():
     """Check that the user has administrator permission in the server."""
+
     async def predicate(interaction: discord.Interaction) -> bool:
         if not interaction.guild:
             await interaction.response.send_message(
@@ -28,6 +29,7 @@ def is_admin():
             )
             return False
         return True
+
     return app_commands.check(predicate)
 
 
@@ -43,9 +45,7 @@ class AdminCog(commands.Cog):
     )
     @app_commands.describe(target="The player to reset")
     @is_admin()
-    async def reset_player(
-        self, interaction: discord.Interaction, target: discord.Member
-    ) -> None:
+    async def reset_player(self, interaction: discord.Interaction, target: discord.Member) -> None:
         await interaction.response.defer(ephemeral=True)
 
         user_id = str(target.id)
@@ -66,7 +66,9 @@ class AdminCog(commands.Cog):
             await session.delete(user)
             await session.commit()
 
-        log.info("Admin %s wiped account for %s (%s)", interaction.user.id, target.display_name, user_id)
+        log.info(
+            "Admin %s wiped account for %s (%s)", interaction.user.id, target.display_name, user_id
+        )
         await interaction.followup.send(
             f"✅ Wiped **{target.display_name}**'s account. They can use `/start` again.",
             ephemeral=True,
@@ -80,9 +82,9 @@ class AdminCog(commands.Cog):
         target="The player to update",
         step="Tutorial step to set",
     )
-    @app_commands.choices(step=[
-        app_commands.Choice(name=s.value, value=s.value) for s in TutorialStep
-    ])
+    @app_commands.choices(
+        step=[app_commands.Choice(name=s.value, value=s.value) for s in TutorialStep]
+    )
     @is_admin()
     async def set_tutorial_step(
         self, interaction: discord.Interaction, target: discord.Member, step: str
@@ -105,7 +107,6 @@ class AdminCog(commands.Cog):
             ephemeral=True,
         )
 
-
     @app_commands.command(
         name="admin_give_creds",
         description="[ADMIN] Add or remove Creds from a player's balance",
@@ -116,7 +117,10 @@ class AdminCog(commands.Cog):
     )
     @is_admin()
     async def give_creds(
-        self, interaction: discord.Interaction, target: discord.Member, amount: int,
+        self,
+        interaction: discord.Interaction,
+        target: discord.Member,
+        amount: int,
     ) -> None:
         async with async_session() as session:
             user = await session.get(User, str(target.id))
@@ -134,8 +138,12 @@ class AdminCog(commands.Cog):
         action = "Added" if amount >= 0 else "Removed"
         log.info(
             "Admin %s %s %d creds for %s (%s → %s)",
-            interaction.user.id, action.lower(), abs(amount),
-            target.display_name, old_balance, new_balance,
+            interaction.user.id,
+            action.lower(),
+            abs(amount),
+            target.display_name,
+            old_balance,
+            new_balance,
         )
         await interaction.response.send_message(
             f"✅ {action} **{abs(amount)} Creds** for **{target.display_name}** "

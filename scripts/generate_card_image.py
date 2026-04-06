@@ -130,7 +130,7 @@ def render_card(
     """
     rarity = card_data.get("rarity", "common")
     bg_color = RARITY_PALETTE.get(rarity, "#9CA3AF")
-    text_color = RARITY_TEXT_COLOR.get(rarity, "#FFFFFF")
+    RARITY_TEXT_COLOR.get(rarity, "#FFFFFF")
 
     img = Image.new("RGBA", (CARD_WIDTH, CARD_HEIGHT), (30, 30, 30, 255))
     draw = ImageDraw.Draw(img)
@@ -239,8 +239,15 @@ def render_card(
         elif "modifier" in stat_name or "height" in stat_name:
             max_val = 30
         y_cursor = _draw_stat_bar(
-            draw, stat_x, y_cursor, stat_w, value, max_val,
-            fill_color=bg_color, font=stat_font, label=stat_name,
+            draw,
+            stat_x,
+            y_cursor,
+            stat_w,
+            value,
+            max_val,
+            fill_color=bg_color,
+            font=stat_font,
+            label=stat_name,
         )
 
     # 7. Print number badge

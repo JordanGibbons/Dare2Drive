@@ -35,7 +35,14 @@ STEP_ALLOWED_COMMANDS: dict[TutorialStep, set[str]] = {
 }
 
 # Commands that are always allowed regardless of tutorial step
-ALWAYS_ALLOWED = {"start", "profile", "admin_reset_player", "admin_set_tutorial_step", "admin_give_creds", "skip_tutorial"}
+ALWAYS_ALLOWED = {
+    "start",
+    "profile",
+    "admin_reset_player",
+    "admin_set_tutorial_step",
+    "admin_give_creds",
+    "skip_tutorial",
+}
 
 
 def _load_tutorial_data() -> dict[str, Any]:
@@ -61,19 +68,18 @@ def is_command_allowed(user: User, command_name: str) -> bool:
 def get_blocked_message(user: User, command_name: str) -> str:
     """Get a snarky message explaining why a command is blocked."""
     step = user.tutorial_step
-    data = _load_tutorial_data()
-    dialogue = data["dialogue"]
-
     step_hints = {
         TutorialStep.STARTED: "Hold on, your story's still unfolding. Sit tight.",
-        TutorialStep.INVENTORY: "Easy there. Use `/inventory` first — gotta know what you've got before you do anything with it.",
-        TutorialStep.INSPECT: "You've got parts but haven't looked at them. Try `/inspect` on one of your cards first.",
-        TutorialStep.EQUIP: "Parts on the floor don't make the car go. Use `/equip` or `/autoequip best` to install them.",
-        TutorialStep.GARAGE: "Almost there. Use `/garage` to check your build before you do anything else.",
+        TutorialStep.INVENTORY: "Easy there. Use `/inventory` first — gotta know what you've got before you do anything with it.",  # noqa: E501
+        TutorialStep.INSPECT: "You've got parts but haven't looked at them. Try `/inspect` on one of your cards first.",  # noqa: E501
+        TutorialStep.EQUIP: "Parts on the floor don't make the car go. Use `/equip` or `/autoequip best` to install them.",  # noqa: E501
+        TutorialStep.GARAGE: "Almost there. Use `/garage` to check your build before you do anything else.",  # noqa: E501
         TutorialStep.RACE: "Your car's ready. Stop stalling and use `/race` already.",
         TutorialStep.PACK: "You've got a pack to open. Patience.",
     }
-    return step_hints.get(step, f"You can't use `/{command_name}` yet. Keep following the tutorial.")
+    return step_hints.get(
+        step, f"You can't use `/{command_name}` yet. Keep following the tutorial."
+    )
 
 
 class ContinueView(discord.ui.View):
@@ -85,7 +91,9 @@ class ContinueView(discord.ui.View):
         self._event = asyncio.Event()
 
     @discord.ui.button(label="Continue ▶", style=discord.ButtonStyle.primary)
-    async def continue_btn(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+    async def continue_btn(
+        self, interaction: discord.Interaction, _button: discord.ui.Button
+    ) -> None:  # noqa: E501
         if interaction.user.id != self.user_id:
             await interaction.response.send_message("This isn't your tutorial.", ephemeral=True)
             return
@@ -212,10 +220,7 @@ async def advance_tutorial(
             # Pick the first starter card name for the hint
             starter_cards = data["starter_cards"]
             card_name = starter_cards[0] if starter_cards else "your card"
-            lines = [
-                line.replace("{card_name}", card_name)
-                for line in dialogue["teach_inspect"]
-            ]
+            lines = [line.replace("{card_name}", card_name) for line in dialogue["teach_inspect"]]
             user.tutorial_step = TutorialStep.INSPECT
             await session.commit()
             await send_dialogue(interaction, lines, title="🔍 Check Your Parts")
@@ -224,10 +229,7 @@ async def advance_tutorial(
             # They inspected a card — teach equip
             starter_cards = data["starter_cards"]
             engine_card = starter_cards[0] if starter_cards else "your engine"
-            lines = [
-                line.replace("{engine_card}", engine_card)
-                for line in dialogue["teach_equip"]
-            ]
+            lines = [line.replace("{engine_card}", engine_card) for line in dialogue["teach_equip"]]
             user.tutorial_step = TutorialStep.EQUIP
             await session.commit()
             await send_dialogue(interaction, lines, title="🔧 Install Your Parts")
@@ -235,10 +237,11 @@ async def advance_tutorial(
         elif step == TutorialStep.EQUIP and command_name == "equip":
             # Check if they have minimum slots filled (engine + tires + brakes)
             from db.models import Build
+
             build_result = await session.execute(
                 select(Build).where(
                     Build.user_id == user.discord_id,
-                    Build.is_active == True,
+                    Build.is_active,
                 )
             )
             build = build_result.scalar_one_or_none()
@@ -271,7 +274,9 @@ async def advance_tutorial(
                         missing.append("Chassis")
                     await send_dialogue(
                         interaction,
-                        [f"Good, that's bolted on. Still need: **{', '.join(missing)}**. Keep going."],
+                        [
+                            f"Good, that's bolted on. Still need: **{', '.join(missing)}**. Keep going."  # noqa: E501
+                        ],
                         title="🔧 Not Done Yet",
                     )
 
@@ -299,7 +304,8 @@ async def advance_tutorial(
             await session.commit()
             await view.wait_for_click()
 
-            from bot.cogs.cards import RARITY_COLORS, RARITY_EMOJI
+            from bot.cogs.cards import RARITY_COLORS, RARITY_EMOJI, _PackRevealView
+
             starter_cards, pack_cards = await _grant_tutorial_completion(session, user)
             await session.commit()
 
@@ -307,7 +313,9 @@ async def advance_tutorial(
             if starter_cards:
                 await send_dialogue(
                     interaction,
-                    ["Those junkyard parts? They're yours for real now. Not much, but enough to race."],
+                    [
+                        "Those junkyard parts? They're yours for real now. Not much, but enough to race."  # noqa: E501
+                    ],
                     title="🔧 Starter Parts",
                 )
                 for card in starter_cards:
@@ -316,7 +324,10 @@ async def advance_tutorial(
                     emoji = RARITY_EMOJI.get(card.rarity.value, "")
                     embed = discord.Embed(
                         title=f"{emoji} {card.name}",
-                        description=f"**Slot:** {card.slot.value.title()}\n**Rarity:** {card.rarity.value.title()}",
+                        description=(
+                            f"**Slot:** {card.slot.value.title()}\n"
+                            f"**Rarity:** {card.rarity.value.title()}"
+                        ),
                         color=color,
                     )
                     await interaction.followup.send(embed=embed, ephemeral=True)
@@ -327,25 +338,13 @@ async def advance_tutorial(
                 title="🎴 Junkyard Pack",
             )
 
-            # Show the pack cards one by one
-            for card in pack_cards:
-                await asyncio.sleep(0.8)
-                color = RARITY_COLORS.get(card.rarity.value, 0x9CA3AF)
-                emoji = RARITY_EMOJI.get(card.rarity.value, "")
-                embed = discord.Embed(
-                    title=f"{emoji} {card.name}",
-                    description=f"**Slot:** {card.slot.value.title()}\n**Rarity:** {card.rarity.value.title()}",
-                    color=color,
-                )
-                primary = card.stats.get("primary", {})
-                stat_lines = [f"`{k}`: {v}" for k, v in primary.items()]
-                if stat_lines:
-                    embed.add_field(name="Primary Stats", value="\n".join(stat_lines), inline=True)
-                secondary = card.stats.get("secondary", {})
-                sec_lines = [f"`{k}`: {v}" for k, v in secondary.items()]
-                if sec_lines:
-                    embed.add_field(name="Secondary Stats", value="\n".join(sec_lines), inline=True)
-                await interaction.followup.send(embed=embed, ephemeral=True)
+            # Show the pack cards in the scrollable reveal widget
+            pack_view = _PackRevealView(
+                minted=pack_cards, display_name="Junkyard Pack", owner_id=interaction.user.id
+            )
+            await interaction.followup.send(
+                embed=pack_view.build_embed(), view=pack_view, ephemeral=True
+            )
 
             view = await send_dialogue(
                 interaction,
@@ -365,15 +364,18 @@ async def advance_tutorial(
             )
 
 
-async def _grant_tutorial_completion(session: AsyncSession, user: User) -> tuple[list[Card], list[Card]]:
+async def _grant_tutorial_completion(
+    session: AsyncSession, user: User
+) -> tuple[list[Card], list[tuple[Card, UserCard]]]:
     """
     Grant all rewards a player gets from completing the tutorial.
 
-    Returns (starter_cards, pack_cards) so callers can display them.
+    Returns (starter_cards, pack_minted) where pack_minted is a list of
+    (Card, UserCard) tuples — ready to pass directly to _PackRevealView.
     Caller must commit the session afterward.
     """
+    from bot.cogs.cards import _grant_card, _roll_cards
     from engine.card_mint import delete_tutorial_cards, mint_card
-    from bot.cogs.cards import _roll_cards, _grant_card
 
     data = _load_tutorial_data()
 
@@ -392,14 +394,16 @@ async def _grant_tutorial_completion(session: AsyncSession, user: User) -> tuple
 
     # Roll and grant 3 bonus cards from junkyard loot table
     pack_cards = await _roll_cards(session, "junkyard_pack", 3)
+    pack_minted: list[tuple[Card, UserCard]] = []
     for card in pack_cards:
-        await _grant_card(session, user.discord_id, card)
+        uc = await _grant_card(session, user.discord_id, card)
+        pack_minted.append((card, uc))
 
     # Mark complete and grant creds
     user.tutorial_step = TutorialStep.COMPLETE
     user.currency += 1000
 
-    return starter_cards, pack_cards
+    return starter_cards, pack_minted
 
 
 class TutorialCog(commands.Cog):
@@ -408,9 +412,11 @@ class TutorialCog(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
 
-    @app_commands.command(name="skip_tutorial", description="Skip the tutorial and jump straight into racing")
+    @app_commands.command(
+        name="skip_tutorial", description="Skip the tutorial and jump straight into racing"
+    )  # noqa: E501
     async def skip_tutorial(self, interaction: discord.Interaction) -> None:
-        from bot.cogs.cards import RARITY_COLORS, RARITY_EMOJI
+        from bot.cogs.cards import RARITY_EMOJI
 
         async with async_session() as session:
             user = await session.get(User, str(interaction.user.id))
@@ -419,7 +425,9 @@ class TutorialCog(commands.Cog):
                 return
 
             if is_tutorial_complete(user):
-                await interaction.response.send_message("You already finished the tutorial.", ephemeral=True)
+                await interaction.response.send_message(
+                    "You already finished the tutorial.", ephemeral=True
+                )
                 return
 
             await interaction.response.defer(ephemeral=True)
@@ -434,14 +442,15 @@ class TutorialCog(commands.Cog):
             parts_lines.append(f"{emoji} **{card.name}** [{card.slot.value.title()}]")
 
         pack_lines = []
-        for card in pack_cards:
+        for card, _ in pack_cards:
             emoji = RARITY_EMOJI.get(card.rarity.value, "")
             pack_lines.append(f"{emoji} **{card.name}** [{card.slot.value.title()}]")
 
         embed = discord.Embed(
             title="⏩ Tutorial Skipped",
             description=(
-                "No story for you. Here's the short version: your uncle died, you got robbed, you raided a junkyard.\n\n"
+                "No story for you. Here's the short version: your uncle died, you got robbed, "  # noqa: E501
+                "you raided a junkyard.\n\n"
                 "**Starter Parts:**\n" + "\n".join(parts_lines) + "\n\n"
                 "**Junkyard Pack:**\n" + "\n".join(pack_lines) + "\n\n"
                 "💰 **+1,000 Creds**\n\n"

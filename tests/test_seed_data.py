@@ -87,12 +87,12 @@ class TestCardDataIntegrity:
             stats = card["stats"]
             primary_keys = set(stats.get("primary", {}).keys())
             secondary_keys = set(stats.get("secondary", {}).keys())
-            assert primary_keys == schema["primary"], (
-                f"{card['name']} primary stats mismatch: {primary_keys} != {schema['primary']}"
-            )
-            assert secondary_keys == schema["secondary"], (
-                f"{card['name']} secondary stats mismatch: {secondary_keys} != {schema['secondary']}"
-            )
+            assert (
+                primary_keys == schema["primary"]
+            ), f"{card['name']} primary stats mismatch: {primary_keys} != {schema['primary']}"
+            assert (
+                secondary_keys == schema["secondary"]
+            ), f"{card['name']} secondary stats mismatch: {secondary_keys} != {schema['secondary']}"
 
     @pytest.mark.parametrize("filename,expected_slot", SLOT_FILES.items())
     def test_legendary_cards_have_print_max_500(self, filename, expected_slot):
@@ -166,7 +166,14 @@ class TestEnvironmentData:
         with open(DATA_DIR / "environments.json") as f:
             envs = json.load(f)
         names = {e["name"] for e in envs}
-        expected = {"wet_track", "night_race", "mountain_pass", "drag_strip", "city_circuit", "off_road"}
+        expected = {
+            "wet_track",
+            "night_race",
+            "mountain_pass",
+            "drag_strip",
+            "city_circuit",
+            "off_road",
+        }
         assert names == expected
 
 
