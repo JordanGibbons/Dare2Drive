@@ -34,6 +34,18 @@ class BodyType(str, enum.Enum):
     COMPACT = "compact"
 
 
+class TutorialStep(str, enum.Enum):
+    """Tracks player progress through the onboarding tutorial."""
+    STARTED = "started"              # Just picked body type, story playing
+    INVENTORY = "inventory"          # Told to use /inventory
+    INSPECT = "inspect"              # Told to use /inspect
+    EQUIP = "equip"                  # Told to use /equip
+    GARAGE = "garage"                # Told to check /garage
+    RACE = "race"                    # Told to /race the NPC
+    PACK = "pack"                    # Won/lost, opening reward pack
+    COMPLETE = "complete"            # Tutorial done, all commands unlocked
+
+
 class CardSlot(str, enum.Enum):
     ENGINE = "engine"
     TRANSMISSION = "transmission"
@@ -62,8 +74,16 @@ class User(Base):
     discord_id: Mapped[str] = mapped_column(String(20), primary_key=True)
     username: Mapped[str] = mapped_column(String(100), nullable=False)
     body_type: Mapped[BodyType] = mapped_column(Enum(BodyType, values_callable=lambda x: [e.value for e in x]), nullable=False)
-    currency: Mapped[int] = mapped_column(Integer, default=500, nullable=False)
+    currency: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     xp: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    tutorial_step: Mapped[TutorialStep] = mapped_column(
+        Enum(TutorialStep, values_callable=lambda x: [e.value for e in x]),
+        nullable=False,
+        default=TutorialStep.STARTED,
+    )
+    last_daily: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None,
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -90,6 +110,7 @@ class Card(Base):
     art_path: Mapped[str | None] = mapped_column(String(255), nullable=True)
     print_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
     print_max: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    total_minted: Mapped[int] = mapped_column(Integer, default=0, nullable=False, server_default="0")
 
     user_cards: Mapped[list[UserCard]] = relationship(back_populates="card", lazy="selectin")
 
@@ -106,8 +127,10 @@ class UserCard(Base):
     card_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("cards.id"), nullable=False
     )
-    quantity: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    serial_number: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    stat_modifiers: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
     is_foil: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    races_used: Mapped[int] = mapped_column(Integer, default=0, nullable=False, server_default="0")
     acquired_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -172,6 +195,9 @@ class MarketListing(Base):
     card_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("cards.id"), nullable=False
     )
+    user_card_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("user_cards.id"), nullable=False
+    )
     price: Mapped[int] = mapped_column(Integer, nullable=False)
     listed_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
@@ -180,6 +206,7 @@ class MarketListing(Base):
 
     seller: Mapped[User] = relationship(back_populates="market_listings")
     card: Mapped[Card] = relationship()
+    user_card: Mapped[UserCard] = relationship()
 
 
 class WreckLog(Base):

@@ -2,12 +2,28 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 from config.logging import get_logger
 
 log = get_logger(__name__)
+
+_TUTORIAL_DATA_PATH = Path(__file__).resolve().parent.parent / "data" / "tutorial.json"
+
+_body_type_stats_cache: dict[str, dict[str, float]] | None = None
+
+
+def _get_body_type_stats() -> dict[str, dict[str, float]]:
+    """Load body type base stats from tutorial data (cached)."""
+    global _body_type_stats_cache
+    if _body_type_stats_cache is None:
+        with open(_TUTORIAL_DATA_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        _body_type_stats_cache = data["body_type_base_stats"]
+    return _body_type_stats_cache
 
 
 @dataclass
@@ -43,6 +59,7 @@ def _get_stat(stats: dict[str, Any], section: str, key: str, default: float = 0.
 def aggregate_build(
     slots: dict[str, str | None],
     cards: dict[str, dict[str, Any]],
+    body_type: str | None = None,
 ) -> BuildStats:
     """
     Combine all 7 equipped card stats into composite BuildStats.
@@ -51,8 +68,23 @@ def aggregate_build(
     ----------
     slots : dict mapping slot name → card_id (or None if empty)
     cards : dict mapping card_id → full card data dict (must include 'stats' key)
+    body_type : optional body type string ("muscle", "sport", "compact")
+                adds base stats from the chassis before card contributions
     """
     bs = BuildStats()
+
+    # Apply body type base stats
+    if body_type:
+        base = _get_body_type_stats().get(body_type, {})
+        bs.effective_power = base.get("power", 0.0)
+        bs.effective_acceleration = base.get("acceleration", 0.0)
+        bs.effective_top_speed = base.get("top_speed", 0.0)
+        bs.effective_handling = base.get("handling", 0.0)
+        bs.effective_grip = base.get("grip", 0.0)
+        bs.effective_braking = base.get("braking", 0.0)
+        bs.effective_stability = base.get("stability", 0.0)
+        bs.effective_durability = base.get("durability", 0.0)
+        bs.effective_weather_performance = base.get("weather_performance", 0.0)
 
     # ── Extract raw stats from each slot ──
 
@@ -131,16 +163,16 @@ def aggregate_build(
     brakes_durability = _get_stat(brakes_stats, "secondary", "durability")
     bs.slot_durabilities["brakes"] = brakes_durability
 
-    # ── Composite stat computations ──
+    # ── Composite stat computations (added to body type base) ──
 
     # Power: engine base + turbo boost + torque contribution
     boosted_power = raw_power * (1 + power_boost_pct / 100)
     effective_torque = raw_torque * (torque_transfer / 100 if torque_transfer else 1.0)
-    bs.effective_power = boosted_power + effective_torque * 0.3 + torque_spike * 0.2
+    bs.effective_power += boosted_power + effective_torque * 0.3 + torque_spike * 0.2
 
     # Acceleration: engine accel + turbo boost + transmission scaling + tire launch
     boosted_accel = raw_accel * (1 + accel_boost_pct / 100)
-    bs.effective_acceleration = (
+    bs.effective_acceleration += (
         boosted_accel * (accel_scaling / 100 if accel_scaling else 1.0)
         + tire_launch * 0.4
         + shift_efficiency * 0.2
@@ -149,29 +181,30 @@ def aggregate_build(
     # Top speed: ceiling from transmission × chassis multiplier - drag penalties
     base_top_speed = top_speed_ceiling + raw_power * 0.3
     total_drag = max(chassis_drag + tire_drag + engine_weight + chassis_weight, -50)
-    bs.effective_top_speed = base_top_speed * top_speed_mult - total_drag * 0.3
+    bs.effective_top_speed += base_top_speed * top_speed_mult - total_drag * 0.3
 
     # Handling: tires + suspension + brakes bonus + chassis cap modifier
     raw_handling = tire_handling * 0.4 + susp_handling * 0.4 + brakes_handling + corner_entry * 0.1
     handling_cap = 100 + handling_cap_mod
-    bs.effective_handling = min(raw_handling + weight_balance * 0.5, handling_cap)
+    bs.effective_handling = min(bs.effective_handling + raw_handling + weight_balance * 0.5, handling_cap)
 
     # Grip
-    bs.effective_grip = tire_grip + susp_stability * 0.2
+    bs.effective_grip += tire_grip + susp_stability * 0.2
 
     # Braking: brake force amplified by suspension scaling
     brake_eff_mult = 1 + brake_eff_scaling / 100
-    bs.effective_braking = (brake_force * brake_eff_mult + stability_decel * 0.3 + corner_entry * 0.2)
+    bs.effective_braking += (brake_force * brake_eff_mult + stability_decel * 0.3 + corner_entry * 0.2)
 
     # Stability
-    bs.effective_stability = susp_stability + stability_decel * 0.2 + weight_balance * 0.3
+    bs.effective_stability += susp_stability + stability_decel * 0.2 + weight_balance * 0.3
 
     # Weather performance
-    bs.effective_weather_performance = tire_weather
+    bs.effective_weather_performance += tire_weather
 
-    # Durability: average of all slot durabilities
+    # Durability: average of all slot durabilities + body type base
     durabilities = [v for v in bs.slot_durabilities.values() if v > 0]
-    bs.effective_durability = sum(durabilities) / len(durabilities) if durabilities else 0
+    card_durability = sum(durabilities) / len(durabilities) if durabilities else 0
+    bs.effective_durability += card_durability
 
     # ── Cross-slot interactions ──
 

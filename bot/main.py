@@ -5,13 +5,41 @@ from __future__ import annotations
 import asyncio
 
 import discord
+from discord import app_commands
 from discord.ext import commands
 
 from config.logging import get_logger, setup_logging
 from config.settings import settings
+from db.session import async_session
 
 setup_logging()
 log = get_logger(__name__)
+
+
+class TutorialCommandTree(app_commands.CommandTree):
+    """CommandTree subclass that gates commands during the tutorial."""
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        from bot.cogs.tutorial import is_command_allowed, get_blocked_message
+        from db.models import User
+
+        if not interaction.command:
+            return True
+
+        command_name = interaction.command.name
+
+        async with async_session() as session:
+            user = await session.get(User, str(interaction.user.id))
+
+        if not user:
+            return True
+
+        if is_command_allowed(user, command_name):
+            return True
+
+        msg = get_blocked_message(user, command_name)
+        await interaction.response.send_message(msg, ephemeral=True)
+        return False
 
 
 class Dare2DriveBot(commands.Bot):
@@ -19,15 +47,17 @@ class Dare2DriveBot(commands.Bot):
         intents = discord.Intents.default()
         intents.message_content = True
         intents.members = True
-        super().__init__(command_prefix="!", intents=intents)
+        super().__init__(command_prefix="!", intents=intents, tree_cls=TutorialCommandTree)
 
     async def setup_hook(self) -> None:
         """Load all cog extensions."""
         cog_modules = [
+            "bot.cogs.tutorial",
             "bot.cogs.cards",
             "bot.cogs.garage",
             "bot.cogs.race",
             "bot.cogs.market",
+            "bot.cogs.admin",
         ]
         for module in cog_modules:
             await self.load_extension(module)

@@ -22,6 +22,8 @@ class Placement:
     dnf: bool
     narrative: str
     wrecked_parts: list[WreckPart] = field(default_factory=list)
+    distance_pct: float = 1.0  # 0.0–1.0; only meaningful when dnf=True
+    is_tie: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -30,7 +32,9 @@ class Placement:
             "position": self.position,
             "dnf": self.dnf,
             "narrative": self.narrative,
+            "distance_pct": round(self.distance_pct, 3),
             "wrecked_parts": [wp.to_dict() for wp in self.wrecked_parts],
+            "is_tie": self.is_tie,
         }
 
 
@@ -38,12 +42,14 @@ class Placement:
 class RaceResult:
     placements: list[Placement]
     environment: EnvironmentCondition
+    all_dnf: bool = False
     wrecks: list[dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "placements": [p.to_dict() for p in self.placements],
             "environment": self.environment.to_dict(),
+            "all_dnf": self.all_dnf,
             "wrecks": self.wrecks,
         }
 
@@ -75,6 +81,7 @@ def _generate_narrative(
     score: float,
     position: int,
     environment: EnvironmentCondition,
+    distance_pct: float = 1.0,
 ) -> str:
     """Generate a race narrative referencing actual part names."""
     parts_mentioned = []
@@ -86,14 +93,15 @@ def _generate_narrative(
     intro = f"Racing on the {environment.display_name}. "
 
     if durability_result.dnf:
-        # DNF narrative
         fail_frags = [f.narrative_fragment for f in durability_result.failures]
         wreck_names = [wp.card_name for wp in durability_result.wrecked_parts]
+        dist_str = f"{distance_pct * 100:.0f}%"
         narrative = intro + " ".join(fail_frags)
+        narrative += f" Made it {dist_str} through before it all fell apart."
         if wreck_names:
             narrative += f" Wreck on the course. Lost: {', '.join(wreck_names)}."
         else:
-            narrative += " The build couldn't finish but all parts survived the crash."
+            narrative += " All parts survived the crash somehow."
         return narrative
 
     if durability_result.failures:
@@ -146,7 +154,8 @@ def compute_race(
                 equipped_cards[slot_name] = cards[card_id]
 
         # 1. Aggregate build stats
-        build_stats = aggregate_build(slots, cards)
+        body_type = build.get("body_type")
+        build_stats = aggregate_build(slots, cards, body_type=body_type)
 
         # 2. Convert to flat dict and apply environment weights
         flat = _build_stats_to_flat(build_stats)
@@ -172,23 +181,52 @@ def compute_race(
             variance = random.uniform(-variance_pct, variance_pct)
             score *= 1 + variance
 
+        # 7. Compute distance_pct for DNF — how far they got before breaking down.
+        #    Better builds (higher base_score) get further. Reference of 500 is
+        #    roughly what a mid-tier full build scores; tune as card power scales.
+        if dur_result.dnf:
+            reference = 500.0
+            raw_dist = (base_score / reference) * random.uniform(0.5, 1.1)
+            distance_pct = round(min(0.97, max(0.03, raw_dist)), 3)
+        else:
+            distance_pct = 1.0
+
         raw_results.append({
             "user_id": user_id,
             "score": max(score, 0),
             "dnf": dur_result.dnf,
+            "distance_pct": distance_pct,
             "durability_result": dur_result,
             "equipped_cards": equipped_cards,
         })
 
-    # Sort: DNFs last, then by score descending
-    raw_results.sort(key=lambda r: (r["dnf"], -r["score"]))
+    # Sort: finishers first (by score desc), DNFs last (by distance desc)
+    raw_results.sort(key=lambda r: (r["dnf"], -r["distance_pct"] if r["dnf"] else -r["score"]))
 
-    # Assign positions and generate narratives
+    # Determine if every racer DNF'd — affects display in the embed
+    all_dnf = all(r["dnf"] for r in raw_results)
+
+    # Assign positions — detect ties (same score for finishers, same distance for DNFs)
     placements: list[Placement] = []
     wrecks: list[dict[str, Any]] = []
 
     for i, r in enumerate(raw_results):
-        position = i + 1
+        if i == 0:
+            position = 1
+        else:
+            prev = raw_results[i - 1]
+            if r["dnf"] and prev["dnf"] and abs(r["distance_pct"] - prev["distance_pct"]) < 0.001:
+                # DNF tie — same position
+                position = placements[-1].position
+                r["is_tie"] = True
+                # Mark previous placement as tie too
+                placements[-1].is_tie = True
+            elif not r["dnf"] and not prev["dnf"] and abs(r["score"] - prev["score"]) < 0.01:
+                position = placements[-1].position
+                r["is_tie"] = True
+                placements[-1].is_tie = True
+            else:
+                position = i + 1
         narrative = _generate_narrative(
             user_id=r["user_id"],
             equipped_cards=r["equipped_cards"],
@@ -196,6 +234,7 @@ def compute_race(
             score=r["score"],
             position=position,
             environment=environment,
+            distance_pct=r["distance_pct"],
         )
         placement = Placement(
             user_id=r["user_id"],
@@ -204,6 +243,8 @@ def compute_race(
             dnf=r["dnf"],
             narrative=narrative,
             wrecked_parts=r["durability_result"].wrecked_parts,
+            distance_pct=r["distance_pct"],
+            is_tie=r.get("is_tie", False),
         )
         placements.append(placement)
 
@@ -218,4 +259,4 @@ def compute_race(
         len(placements), environment.name, len(wrecks),
     )
 
-    return RaceResult(placements=placements, environment=environment, wrecks=wrecks)
+    return RaceResult(placements=placements, environment=environment, all_dnf=all_dnf, wrecks=wrecks)
