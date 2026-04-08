@@ -4,64 +4,120 @@
     "slot": "turbo",
     "rarity": "common",
     "stats": {
-      "primary": {"power_boost_pct": 5, "acceleration_boost_pct": 3, "engine_temp_increase": 8},
-      "secondary": {"durability": 32, "torque_spike_modifier": 4}
-    }
+      "primary": {
+        "power_boost_pct": 5,
+        "acceleration_boost_pct": 3,
+        "engine_temp_increase": 8
+      },
+      "secondary": {
+        "durability": 32,
+        "torque_spike_modifier": 4
+      }
+    },
+    "compatible_body_types": null
   },
   {
     "name": "Budget Blower",
     "slot": "turbo",
     "rarity": "common",
     "stats": {
-      "primary": {"power_boost_pct": 8, "acceleration_boost_pct": 5, "engine_temp_increase": 12},
-      "secondary": {"durability": 36, "torque_spike_modifier": 6}
-    }
+      "primary": {
+        "power_boost_pct": 8,
+        "acceleration_boost_pct": 5,
+        "engine_temp_increase": 12
+      },
+      "secondary": {
+        "durability": 36,
+        "torque_spike_modifier": 6
+      }
+    },
+    "compatible_body_types": null
   },
   {
     "name": "Cyclone Charger",
     "slot": "turbo",
     "rarity": "uncommon",
     "stats": {
-      "primary": {"power_boost_pct": 18, "acceleration_boost_pct": 12, "engine_temp_increase": 18},
-      "secondary": {"durability": 52, "torque_spike_modifier": 12}
-    }
+      "primary": {
+        "power_boost_pct": 18,
+        "acceleration_boost_pct": 12,
+        "engine_temp_increase": 18
+      },
+      "secondary": {
+        "durability": 52,
+        "torque_spike_modifier": 12
+      }
+    },
+    "compatible_body_types": null
   },
   {
     "name": "Blastcore Turbo",
     "slot": "turbo",
     "rarity": "rare",
     "stats": {
-      "primary": {"power_boost_pct": 28, "acceleration_boost_pct": 18, "engine_temp_increase": 25},
-      "secondary": {"durability": 65, "torque_spike_modifier": 18}
-    }
+      "primary": {
+        "power_boost_pct": 28,
+        "acceleration_boost_pct": 18,
+        "engine_temp_increase": 25
+      },
+      "secondary": {
+        "durability": 65,
+        "torque_spike_modifier": 18
+      }
+    },
+    "compatible_body_types": null
   },
   {
     "name": "Tempest Twin-Scroll",
     "slot": "turbo",
     "rarity": "epic",
     "stats": {
-      "primary": {"power_boost_pct": 38, "acceleration_boost_pct": 24, "engine_temp_increase": 30},
-      "secondary": {"durability": 80, "torque_spike_modifier": 24}
-    }
+      "primary": {
+        "power_boost_pct": 38,
+        "acceleration_boost_pct": 24,
+        "engine_temp_increase": 30
+      },
+      "secondary": {
+        "durability": 80,
+        "torque_spike_modifier": 24
+      }
+    },
+    "compatible_body_types": null
   },
   {
     "name": "Voidhowl Supercharger",
     "slot": "turbo",
     "rarity": "legendary",
     "stats": {
-      "primary": {"power_boost_pct": 46, "acceleration_boost_pct": 28, "engine_temp_increase": 35},
-      "secondary": {"durability": 90, "torque_spike_modifier": 28}
+      "primary": {
+        "power_boost_pct": 46,
+        "acceleration_boost_pct": 28,
+        "engine_temp_increase": 35
+      },
+      "secondary": {
+        "durability": 90,
+        "torque_spike_modifier": 28
+      }
     },
-    "print_max": 500
+    "print_max": 500,
+    "compatible_body_types": null
   },
   {
     "name": "Ghostwhisper Compressor",
     "slot": "turbo",
     "rarity": "ghost",
     "stats": {
-      "primary": {"power_boost_pct": 50, "acceleration_boost_pct": 30, "engine_temp_increase": 15},
-      "secondary": {"durability": 98, "torque_spike_modifier": 30}
+      "primary": {
+        "power_boost_pct": 50,
+        "acceleration_boost_pct": 30,
+        "engine_temp_increase": 15
+      },
+      "secondary": {
+        "durability": 98,
+        "torque_spike_modifier": 30
+      }
     },
-    "print_max": 100
+    "print_max": 100,
+    "compatible_body_types": null
   }
 ]

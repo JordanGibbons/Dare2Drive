@@ -40,6 +40,9 @@ class BuildStats:
     effective_stability: float = 0.0
     effective_weather_performance: float = 0.0
 
+    # Torque exposed separately (used by drift class calculation)
+    effective_torque: float = 0.0
+
     # Flags set by cross-slot interactions
     overheat_risk: bool = False
 
@@ -167,8 +170,8 @@ def aggregate_build(
 
     # Power: engine base + turbo boost + torque contribution
     boosted_power = raw_power * (1 + power_boost_pct / 100)
-    effective_torque = raw_torque * (torque_transfer / 100 if torque_transfer else 1.0)
-    bs.effective_power += boosted_power + effective_torque * 0.3 + torque_spike * 0.2
+    bs.effective_torque = raw_torque * (torque_transfer / 100 if torque_transfer else 1.0)
+    bs.effective_power += boosted_power + bs.effective_torque * 0.3 + torque_spike * 0.2
 
     # Acceleration: engine accel + turbo boost + transmission scaling + tire launch
     boosted_accel = raw_accel * (1 + accel_boost_pct / 100)

@@ -159,6 +159,27 @@ class TestAggregateBuild:
         bs = aggregate_build(full_build["slots"], full_build["cards"], body_type="unicorn")
         assert bs.effective_power >= 0  # no crash, stats from cards still applied
 
+    def test_effective_torque_exposed(self, full_build):
+        """effective_torque should be non-zero when an engine is equipped."""
+        bs = aggregate_build(full_build["slots"], full_build["cards"])
+        assert bs.effective_torque > 0
+
+    def test_effective_torque_zero_when_no_engine(self):
+        """No engine → effective_torque should be zero."""
+        bs = aggregate_build(
+            {
+                "engine": None,
+                "transmission": None,
+                "tires": None,
+                "suspension": None,
+                "chassis": None,
+                "turbo": None,
+                "brakes": None,
+            },
+            {},
+        )
+        assert bs.effective_torque == 0.0
+
     def test_handling_capped_by_chassis_modifier(self):
         """Effective handling should not exceed 100 + handling_cap_modifier."""
         str(uuid.uuid4())

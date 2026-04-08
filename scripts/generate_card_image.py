@@ -250,7 +250,19 @@ def render_card(
             label=stat_name,
         )
 
-    # 7. Print number badge
+    # 7. Secondary stats (text-only, smaller font, dimmed color)
+    secondary = stats.get("secondary", {})
+    if secondary:
+        sep_y = y_cursor + 4
+        draw.line((stat_x, sep_y, stat_x + stat_w, sep_y), fill="#374151", width=1)
+        y_cursor = sep_y + 8
+        sec_font = _get_font(10)
+        for stat_name, value in secondary.items():
+            val_str = f"{value:.2f}" if isinstance(value, float) and abs(value) < 10 else str(value)
+            draw.text((stat_x, y_cursor), f"{stat_name}: {val_str}", fill="#9CA3AF", font=sec_font)
+            y_cursor += 15
+
+    # 8. Print number badge
     print_max = card_data.get("print_max")
     if print_max and print_number:
         badge_text = f"{print_number:03d} / {print_max}"
@@ -300,7 +312,9 @@ if __name__ == "__main__":
         with open(json_file, "r", encoding="utf-8") as f:
             cards = json.load(f)
         for card in cards:
+            slot_dir = output_dir / card["slot"]
+            slot_dir.mkdir(exist_ok=True)
             safe_name = card["name"].replace(" ", "_").lower()
-            out = output_dir / f"{safe_name}.png"
+            out = slot_dir / f"{safe_name}.png"
             save_card_image(card, str(out), print_number=42)
             print(f"Rendered: {out}")

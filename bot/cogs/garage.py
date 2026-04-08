@@ -1,8 +1,9 @@
-"""Garage cog — /start, /garage, /equip, /build commands."""
+"""Garage cog — /start, /garage, /equip, /build, /rig commands."""
 
 from __future__ import annotations
 
 import uuid
+from datetime import datetime, timezone
 
 import discord
 from discord import app_commands
@@ -10,8 +11,24 @@ from discord.ext import commands
 from sqlalchemy import select
 
 from config.logging import get_logger
-from db.models import BodyType, Build, Card, CardSlot, TutorialStep, User, UserCard
+from db.models import (
+    BodyType,
+    Build,
+    CarClass,
+    Card,
+    CardSlot,
+    RigRelease,
+    RigStatus,
+    RigTitle,
+    TutorialStep,
+    User,
+    UserCard,
+)
 from db.session import async_session
+from engine.card_mint import apply_stat_modifiers
+from engine.class_engine import calculate_class, trending_toward
+from engine.rig_namer import generate_rig_name
+from engine.stat_resolver import aggregate_build
 
 log = get_logger(__name__)
 
@@ -38,6 +55,18 @@ RARITY_COLORS = {
     "legendary": 0xF59E0B,
     "ghost": 0xFFFFFF,
 }
+
+CLASS_EMOJI = {
+    CarClass.STREET: "🛣️",
+    CarClass.DRAG: "💨",
+    CarClass.CIRCUIT: "🏁",
+    CarClass.DRIFT: "🌀",
+    CarClass.RALLY: "⛰️",
+    CarClass.ELITE: "👑",
+}
+
+# Slots that define the rig's identity — locked once a title is minted
+CORE_SLOTS = {CardSlot.ENGINE.value, CardSlot.CHASSIS.value}
 
 
 class BodyTypeSelect(discord.ui.View):
@@ -80,6 +109,7 @@ class BodyTypeSelect(discord.ui.View):
                 name="My Build",
                 slots={slot.value: None for slot in CardSlot},
                 is_active=True,
+                body_type=body_type,
             )
             session.add(build)
             await session.commit()
@@ -303,6 +333,27 @@ class GarageCog(commands.Cog):
                 await interaction.response.send_message("No active build found.", ephemeral=True)
                 return
 
+            # Check body type compatibility
+            build_bt = build.body_type or user.body_type
+            if card.compatible_body_types is not None:
+                if build_bt and build_bt.value not in card.compatible_body_types:
+                    compat_str = ", ".join(t.title() for t in card.compatible_body_types)
+                    await interaction.response.send_message(
+                        f"⚠️ **{card.name}** only fits **{compat_str}** builds. "
+                        f"Your build is **{build_bt.value.title()}**.",
+                        ephemeral=True,
+                    )
+                    return
+
+            # Core-lock check — can't swap engine or chassis while a title is active
+            if build.core_locked and slot in CORE_SLOTS:
+                await interaction.response.send_message(
+                    f"🔒 Your rig has a Car Title. You can't replace the **{slot.title()}** "
+                    f"without disassembling first (`/build disassemble`).",
+                    ephemeral=True,
+                )
+                return
+
             # Get IDs of copies already equipped in other slots
             equipped_uc_ids = {uc_id for uc_id in build.slots.values() if uc_id is not None}
 
@@ -349,10 +400,36 @@ class GarageCog(commands.Cog):
                 if chosen is None:
                     chosen = copies[0]
 
+            # If a title is active and this is a wear slot, log the swap
+            old_card_name: str | None = None
+            if build.core_locked and build.rig_title_id:
+                old_uc_id = build.slots.get(slot)
+                if old_uc_id:
+                    old_uc = await session.get(UserCard, uuid.UUID(old_uc_id))
+                    if old_uc:
+                        old_card_obj = await session.get(Card, old_uc.card_id)
+                        old_card_name = old_card_obj.name if old_card_obj else None
+
             # Equip the specific copy
             new_slots = dict(build.slots)
             new_slots[slot] = str(chosen.id)
             build.slots = new_slots
+
+            # Append to part_swap_log on the active title
+            if build.core_locked and build.rig_title_id:
+                title = await session.get(RigTitle, build.rig_title_id)
+                if title:
+                    swap_log = list(title.part_swap_log or [])
+                    swap_log.append(
+                        {
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
+                            "slot": slot,
+                            "old_card_name": old_card_name,
+                            "new_card_name": card.name,
+                        }
+                    )
+                    title.part_swap_log = swap_log
+
             await session.commit()
 
         await interaction.response.send_message(
@@ -535,6 +612,362 @@ class GarageCog(commands.Cog):
             text=f"Member since {user.created_at.strftime('%Y-%m-%d') if user.created_at else 'unknown'}"  # noqa: E501
         )
         await interaction.response.send_message(embed=embed)
+
+    # ── /build subcommands ─────────────────────────────────────────────────────
+
+    build_group = app_commands.Group(name="build", description="Manage your rig build")
+
+    @build_group.command(name="preview", description="Preview your build's class and stats")
+    async def build_preview(self, interaction: discord.Interaction) -> None:
+        await interaction.response.defer(ephemeral=True)
+
+        async with async_session() as session:
+            user = await session.get(User, str(interaction.user.id))
+            if not user:
+                await interaction.followup.send("Use `/start` first!", ephemeral=True)
+                return
+
+            build_result = await session.execute(
+                select(Build).where(Build.user_id == user.discord_id, Build.is_active)
+            )
+            build = build_result.scalar_one_or_none()
+            if not build:
+                await interaction.followup.send("No active build found.", ephemeral=True)
+                return
+
+            # Load cards for stat resolution
+            cards: dict = {}
+            for slot in CardSlot:
+                uc_id_str = build.slots.get(slot.value)
+                if not uc_id_str:
+                    continue
+                uc = await session.get(UserCard, uuid.UUID(uc_id_str))
+                if not uc:
+                    continue
+                card = await session.get(Card, uc.card_id)
+                if not card:
+                    continue
+                effective_stats = apply_stat_modifiers(card.stats, uc.stat_modifiers or {})
+                cards[uc_id_str] = {"slot": card.slot.value, "stats": effective_stats}
+
+            body_type = build.body_type or user.body_type
+            stats = aggregate_build(
+                build.slots, cards, body_type=body_type.value if body_type else None
+            )
+
+            filled = sum(1 for v in build.slots.values() if v is not None)
+            all_filled = filled == len(CardSlot)
+
+            trending = trending_toward(stats, body_type)
+
+            def bar(pct: float, width: int = 10) -> str:
+                filled_blocks = round(pct * width)
+                return "█" * filled_blocks + "░" * (width - filled_blocks)
+
+            lines = []
+            for car_class, pct in trending[:5]:
+                emoji = CLASS_EMOJI.get(car_class, "")
+                pct_display = f"{int(pct * 100)}%"
+                lines.append(f"{emoji} **{car_class.value.upper()}** {bar(pct)} {pct_display}")
+
+            body_str = body_type.value.title() if body_type else "Unknown"
+            title_str = "🔒 Minted Rig" if build.core_locked else f"🔧 {build.name}"
+
+            if all_filled:
+                actual_class = calculate_class(stats, body_type)
+                class_emoji = CLASS_EMOJI.get(actual_class, "")
+                desc = f"**Assigned Class:** {class_emoji} {actual_class.value.upper()}\n\n"
+            else:
+                desc = f"**Slots filled:** {filled}/7 — fill all slots to mint\n\n"
+
+            desc += "\n".join(lines)
+
+            embed = discord.Embed(
+                title=f"{title_str} · {body_str}",
+                description=desc,
+                color=0x3B82F6,
+            )
+            embed.set_footer(text="Use /build mint to lock in your class and mint a Car Title")
+            await interaction.followup.send(embed=embed, ephemeral=True)
+
+    @build_group.command(name="mint", description="Mint a Car Title for your completed build")
+    async def build_mint(self, interaction: discord.Interaction) -> None:
+        await interaction.response.defer(ephemeral=True)
+
+        async with async_session() as session:
+            user = await session.get(User, str(interaction.user.id))
+            if not user:
+                await interaction.followup.send("Use `/start` first!", ephemeral=True)
+                return
+
+            build_result = await session.execute(
+                select(Build).where(Build.user_id == user.discord_id, Build.is_active)
+            )
+            build = build_result.scalar_one_or_none()
+            if not build:
+                await interaction.followup.send("No active build found.", ephemeral=True)
+                return
+
+            if build.core_locked:
+                await interaction.followup.send(
+                    "Your build already has a Car Title. "
+                    "Use `/build disassemble` first to rebuild.",
+                    ephemeral=True,
+                )
+                return
+
+            # All 7 slots must be filled
+            missing = [s.value for s in CardSlot if not build.slots.get(s.value)]
+            if missing:
+                missing_str = ", ".join(s.title() for s in missing)
+                await interaction.followup.send(
+                    f"❌ Fill all 7 slots before minting. Missing: **{missing_str}**",
+                    ephemeral=True,
+                )
+                return
+
+            # Load cards for stats + snapshot
+            cards: dict = {}
+            snapshot: dict = {}
+            for slot in CardSlot:
+                uc_id_str = build.slots[slot.value]
+                uc = await session.get(UserCard, uuid.UUID(uc_id_str))
+                if not uc:
+                    await interaction.followup.send(
+                        f"❌ Missing part in **{slot.value}** slot (wrecked?). "
+                        "Re-equip before minting.",
+                        ephemeral=True,
+                    )
+                    return
+                card = await session.get(Card, uc.card_id)
+                if not card:
+                    await interaction.followup.send(
+                        f"❌ Card data missing for **{slot.value}** slot.", ephemeral=True
+                    )
+                    return
+                effective_stats = apply_stat_modifiers(card.stats, uc.stat_modifiers or {})
+                cards[uc_id_str] = {"slot": card.slot.value, "stats": effective_stats}
+                snapshot[slot.value] = {
+                    "card_id": str(card.id),
+                    "user_card_id": uc_id_str,
+                    "serial": uc.serial_number,
+                    "name": card.name,
+                    "rarity": card.rarity.value,
+                }
+
+            body_type = build.body_type or user.body_type
+            stats = aggregate_build(
+                build.slots, cards, body_type=body_type.value if body_type else None
+            )
+            car_class = calculate_class(stats, body_type)
+            auto_name = generate_rig_name(car_class, body_type, stats)
+
+            # Get the active release and atomically increment its serial
+            release_result = await session.execute(
+                select(RigRelease)
+                .where(RigRelease.ended_at.is_(None))
+                .order_by(RigRelease.started_at)
+                .limit(1)
+                .with_for_update()
+            )
+            release = release_result.scalar_one_or_none()
+            if not release:
+                await interaction.followup.send(
+                    "❌ No active release found. Contact an admin.", ephemeral=True
+                )
+                return
+
+            release.serial_counter += 1
+            serial = release.serial_counter
+
+            title = RigTitle(
+                id=uuid.uuid4(),
+                release_id=release.id,
+                release_serial=serial,
+                owner_id=user.discord_id,
+                build_id=build.id,
+                body_type=body_type,
+                car_class=car_class,
+                status=RigStatus.ACTIVE,
+                auto_name=auto_name,
+                custom_name=None,
+                build_snapshot=snapshot,
+                pedigree_bonus=0.0,
+                ownership_log=[
+                    {
+                        "owner_id": user.discord_id,
+                        "acquired_at": datetime.now(timezone.utc).isoformat(),
+                        "transferred_at": None,
+                    }
+                ],
+                part_swap_log=[],
+                race_record={"wins": 0, "losses": 0},
+            )
+            session.add(title)
+            await session.flush()  # get title.id before updating build
+
+            build.core_locked = True
+            build.rig_title_id = title.id
+            await session.commit()
+
+        class_emoji = CLASS_EMOJI.get(car_class, "")
+        body_str = body_type.value.title() if body_type else "Unknown"
+        embed = discord.Embed(
+            title="🏆 Car Title Minted!",
+            description=(
+                f'**"{auto_name}"**\n'
+                f"{release.name} #{serial:03d}\n\n"
+                f"{class_emoji} Class: **{car_class.value.upper()}**\n"
+                f"Body: **{body_str}**"
+            ),
+            color=0xF59E0B,
+        )
+        slot_lines = [
+            f"**{slot.title()}:** {data['name']} (#{data['serial']})"
+            for slot, data in snapshot.items()
+        ]
+        embed.add_field(name="Build", value="\n".join(slot_lines), inline=False)
+        embed.set_footer(
+            text="Wear parts (tires, brakes, etc.) can still be swapped. "
+            "Core parts (engine, chassis) are locked."
+        )
+        await interaction.followup.send(embed=embed)
+
+    @build_group.command(
+        name="disassemble", description="Scrap your Car Title and unlock your build"
+    )
+    async def build_disassemble(self, interaction: discord.Interaction) -> None:
+        async with async_session() as session:
+            user = await session.get(User, str(interaction.user.id))
+            if not user:
+                await interaction.response.send_message("Use `/start` first!", ephemeral=True)
+                return
+
+            build_result = await session.execute(
+                select(Build).where(Build.user_id == user.discord_id, Build.is_active)
+            )
+            build = build_result.scalar_one_or_none()
+            if not build or not build.core_locked or not build.rig_title_id:
+                await interaction.response.send_message(
+                    "You don't have an active Car Title to disassemble.", ephemeral=True
+                )
+                return
+
+            title = await session.get(RigTitle, build.rig_title_id)
+            if not title:
+                await interaction.response.send_message("Car Title not found.", ephemeral=True)
+                return
+
+        title_display = title.custom_name or title.auto_name
+        serial_str = f"#{title.release_serial:03d}"
+
+        view = _ConfirmView(interaction.user.id)
+        embed = discord.Embed(
+            title="⚠️ Disassemble Rig?",
+            description=(
+                f'This will permanently scrap **"{title_display}"** {serial_str}.\n\n'
+                "The title's history is preserved but it can no longer be raced.\n"
+                "All parts stay in your inventory."
+            ),
+            color=0xEF4444,
+        )
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+        await view.wait()
+
+        if not view.confirmed:
+            await interaction.edit_original_response(
+                content="Disassembly cancelled.", embed=None, view=None
+            )
+            return
+
+        async with async_session() as session:
+            build = await session.get(Build, build.id)
+            title = await session.get(RigTitle, build.rig_title_id)
+            if build and title:
+                title.status = RigStatus.SCRAPPED
+                title.build_id = None
+                build.core_locked = False
+                build.rig_title_id = None
+                await session.commit()
+
+        await interaction.edit_original_response(
+            content=f'✅ **"{title_display}"** {serial_str} has been scrapped. Parts unlocked.',
+            embed=None,
+            view=None,
+        )
+
+    # ── /rig subcommands ───────────────────────────────────────────────────────
+
+    rig_group = app_commands.Group(name="rig", description="Manage your Car Title")
+
+    @rig_group.command(name="rename", description="Set a custom name for your Car Title")
+    @app_commands.describe(name="Your custom name (max 50 characters)")
+    async def rig_rename(self, interaction: discord.Interaction, name: str) -> None:
+        if len(name) > 50:
+            await interaction.response.send_message(
+                "Name must be 50 characters or fewer.", ephemeral=True
+            )
+            return
+
+        async with async_session() as session:
+            user = await session.get(User, str(interaction.user.id))
+            if not user:
+                await interaction.response.send_message("Use `/start` first!", ephemeral=True)
+                return
+
+            build_result = await session.execute(
+                select(Build).where(Build.user_id == user.discord_id, Build.is_active)
+            )
+            build = build_result.scalar_one_or_none()
+            if not build or not build.core_locked or not build.rig_title_id:
+                await interaction.response.send_message(
+                    "You don't have an active Car Title to rename. Mint one with `/build mint`.",
+                    ephemeral=True,
+                )
+                return
+
+            title = await session.get(RigTitle, build.rig_title_id)
+            if not title:
+                await interaction.response.send_message("Car Title not found.", ephemeral=True)
+                return
+
+            old_name = title.custom_name or title.auto_name
+            title.custom_name = name
+            await session.commit()
+
+        await interaction.response.send_message(
+            f'✅ Renamed **"{old_name}"** → **"{name}"**', ephemeral=True
+        )
+
+
+class _ConfirmView(discord.ui.View):
+    """Simple two-button confirmation."""
+
+    def __init__(self, user_id: int) -> None:
+        super().__init__(timeout=30)
+        self.user_id = user_id
+        self.confirmed = False
+
+    @discord.ui.button(label="Confirm", style=discord.ButtonStyle.danger)
+    async def confirm_btn(
+        self, interaction: discord.Interaction, _button: discord.ui.Button
+    ) -> None:
+        if interaction.user.id != self.user_id:
+            await interaction.response.send_message("Not your action!", ephemeral=True)
+            return
+        self.confirmed = True
+        await interaction.response.defer()
+        self.stop()
+
+    @discord.ui.button(label="Cancel", style=discord.ButtonStyle.secondary)
+    async def cancel_btn(
+        self, interaction: discord.Interaction, _button: discord.ui.Button
+    ) -> None:
+        if interaction.user.id != self.user_id:
+            await interaction.response.send_message("Not your action!", ephemeral=True)
+            return
+        await interaction.response.defer()
+        self.stop()
 
 
 async def setup(bot: commands.Bot) -> None:

@@ -13,7 +13,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.cogs.tutorial import _load_tutorial_data, build_npc_race_data, is_tutorial_complete
 from config.logging import get_logger
-from db.models import Build, Card, CardSlot, Race, TutorialStep, User, UserCard, WreckLog
+from db.models import (
+    Build,
+    CarClass,
+    Card,
+    CardSlot,
+    Race,
+    RigTitle,
+    TutorialStep,
+    User,
+    UserCard,
+    WreckLog,
+)
 from db.session import async_session
 from engine.race_engine import RaceResult, compute_race
 
@@ -48,6 +59,39 @@ def get_part_lifespan(slot: str, rarity: str) -> int:
     base = SLOT_BASE_LIFESPAN.get(slot, 10)
     mult = RARITY_LIFESPAN_MULT.get(rarity, 1.0)
     return max(1, round(base * mult))
+
+
+async def _check_class_gate(
+    session: AsyncSession, build_dict: dict[str, Any], required_class: CarClass
+) -> str | None:
+    """
+    Return an error string if the build doesn't meet the class requirement,
+    or None if it passes. STREET is always open — no title required.
+    """
+    if required_class == CarClass.STREET:
+        return None
+
+    # Non-STREET races require a minted Car Title with the matching class
+    build_result = await session.execute(
+        select(Build).where(
+            Build.user_id == build_dict["user_id"],
+            Build.is_active,
+        )
+    )
+    build = build_result.scalar_one_or_none()
+    if not build or not build.core_locked or not build.rig_title_id:
+        return (
+            f"❌ **{required_class.value.upper()}** races require a minted Car Title. "
+            f"Fill all 7 slots and use `/build mint` first."
+        )
+
+    title = await session.get(RigTitle, build.rig_title_id)
+    if not title or title.car_class != required_class:
+        actual = title.car_class.value.upper() if title else "none"
+        required = required_class.value.upper()
+        return f"❌ Your rig is class **{actual}** — this race requires **{required}**."
+
+    return None
 
 
 async def _resolve_build_for_race(session: AsyncSession, user: User) -> dict[str, Any] | str:
@@ -111,7 +155,7 @@ async def _resolve_build_for_race(session: AsyncSession, user: User) -> dict[str
         "user_id": user.discord_id,
         "slots": build.slots,
         "cards": cards,
-        "body_type": user.body_type.value,
+        "body_type": (build.body_type or user.body_type).value,
     }
 
 
@@ -761,13 +805,26 @@ class RaceCog(commands.Cog):
 
     @app_commands.command(name="race", description="Challenge another player to a race")
     @app_commands.describe(
-        opponent="The player to race against", wager="Creds to bet (min 10, winner takes all)"
+        opponent="The player to race against",
+        wager="Creds to bet (min 10, winner takes all)",
+        race_class="Race class (default: Street — open to all builds)",
+    )
+    @app_commands.choices(
+        race_class=[
+            app_commands.Choice(name="🛣️ Street (open)", value="street"),
+            app_commands.Choice(name="💨 Drag", value="drag"),
+            app_commands.Choice(name="🏁 Circuit", value="circuit"),
+            app_commands.Choice(name="🌀 Drift", value="drift"),
+            app_commands.Choice(name="⛰️ Rally", value="rally"),
+            app_commands.Choice(name="👑 Elite", value="elite"),
+        ]
     )
     async def race(
         self,
         interaction: discord.Interaction,
         opponent: discord.Member | None = None,
         wager: int = 0,
+        race_class: str = "street",
     ) -> None:
         if wager != 0 and wager < 10:
             await interaction.response.send_message(
@@ -789,6 +846,14 @@ class RaceCog(commands.Cog):
             if isinstance(challenger_build, str):
                 await interaction.response.send_message(challenger_build, ephemeral=True)
                 return
+
+            # --- Class gate (skip for tutorial races) ---
+            required_class = CarClass(race_class)
+            if not is_tutorial_race and required_class != CarClass.STREET:
+                gate_error = await _check_class_gate(session, challenger_build, required_class)
+                if gate_error:
+                    await interaction.response.send_message(gate_error, ephemeral=True)
+                    return
 
             # --- Tutorial NPC race (instant, no request needed) ---
             if is_tutorial_race:
