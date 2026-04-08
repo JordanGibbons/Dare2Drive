@@ -4,82 +4,172 @@
     "slot": "engine",
     "rarity": "common",
     "stats": {
-      "primary": {"power": 20, "acceleration": 18, "torque": 22, "max_engine_temp": 65},
-      "secondary": {"weight": -10, "durability": 35, "fuel_efficiency": 50}
-    }
+      "primary": {
+        "power": 20,
+        "acceleration": 18,
+        "torque": 22,
+        "max_engine_temp": 65
+      },
+      "secondary": {
+        "weight": -10,
+        "durability": 35,
+        "fuel_efficiency": 50
+      }
+    },
+    "compatible_body_types": null
   },
   {
     "name": "Workhorse V6",
     "slot": "engine",
     "rarity": "common",
     "stats": {
-      "primary": {"power": 28, "acceleration": 22, "torque": 30, "max_engine_temp": 60},
-      "secondary": {"weight": -15, "durability": 40, "fuel_efficiency": 45}
-    }
+      "primary": {
+        "power": 28,
+        "acceleration": 22,
+        "torque": 30,
+        "max_engine_temp": 60
+      },
+      "secondary": {
+        "weight": -15,
+        "durability": 40,
+        "fuel_efficiency": 45
+      }
+    },
+    "compatible_body_types": null
   },
   {
     "name": "Streethawk V6",
     "slot": "engine",
     "rarity": "uncommon",
     "stats": {
-      "primary": {"power": 42, "acceleration": 38, "torque": 40, "max_engine_temp": 70},
-      "secondary": {"weight": -14, "durability": 52, "fuel_efficiency": 55}
-    }
+      "primary": {
+        "power": 42,
+        "acceleration": 38,
+        "torque": 40,
+        "max_engine_temp": 70
+      },
+      "secondary": {
+        "weight": -14,
+        "durability": 52,
+        "fuel_efficiency": 55
+      }
+    },
+    "compatible_body_types": null
   },
   {
     "name": "Thunderclap V8",
     "slot": "engine",
     "rarity": "uncommon",
     "stats": {
-      "primary": {"power": 48, "acceleration": 35, "torque": 50, "max_engine_temp": 68},
-      "secondary": {"weight": -20, "durability": 50, "fuel_efficiency": 40}
-    }
+      "primary": {
+        "power": 48,
+        "acceleration": 35,
+        "torque": 50,
+        "max_engine_temp": 68
+      },
+      "secondary": {
+        "weight": -20,
+        "durability": 50,
+        "fuel_efficiency": 40
+      }
+    },
+    "compatible_body_types": null
   },
   {
     "name": "Ironforge V8",
     "slot": "engine",
     "rarity": "rare",
     "stats": {
-      "primary": {"power": 65, "acceleration": 55, "torque": 68, "max_engine_temp": 78},
-      "secondary": {"weight": -22, "durability": 65, "fuel_efficiency": 38}
-    }
+      "primary": {
+        "power": 65,
+        "acceleration": 55,
+        "torque": 68,
+        "max_engine_temp": 78
+      },
+      "secondary": {
+        "weight": -22,
+        "durability": 65,
+        "fuel_efficiency": 38
+      }
+    },
+    "compatible_body_types": null
   },
   {
     "name": "Vortex Flat-6",
     "slot": "engine",
     "rarity": "rare",
     "stats": {
-      "primary": {"power": 60, "acceleration": 62, "torque": 55, "max_engine_temp": 80},
-      "secondary": {"weight": -12, "durability": 68, "fuel_efficiency": 52}
-    }
+      "primary": {
+        "power": 60,
+        "acceleration": 62,
+        "torque": 55,
+        "max_engine_temp": 80
+      },
+      "secondary": {
+        "weight": -12,
+        "durability": 68,
+        "fuel_efficiency": 52
+      }
+    },
+    "compatible_body_types": null
   },
   {
     "name": "Hellion V12",
     "slot": "engine",
     "rarity": "epic",
     "stats": {
-      "primary": {"power": 82, "acceleration": 70, "torque": 85, "max_engine_temp": 85},
-      "secondary": {"weight": -28, "durability": 78, "fuel_efficiency": 30}
-    }
+      "primary": {
+        "power": 82,
+        "acceleration": 70,
+        "torque": 85,
+        "max_engine_temp": 85
+      },
+      "secondary": {
+        "weight": -28,
+        "durability": 78,
+        "fuel_efficiency": 30
+      }
+    },
+    "compatible_body_types": null
   },
   {
     "name": "Apex Titan V10",
     "slot": "engine",
     "rarity": "legendary",
     "stats": {
-      "primary": {"power": 94, "acceleration": 88, "torque": 92, "max_engine_temp": 92},
-      "secondary": {"weight": -25, "durability": 90, "fuel_efficiency": 35}
+      "primary": {
+        "power": 94,
+        "acceleration": 88,
+        "torque": 92,
+        "max_engine_temp": 92
+      },
+      "secondary": {
+        "weight": -25,
+        "durability": 90,
+        "fuel_efficiency": 35
+      }
     },
-    "print_max": 500
+    "print_max": 500,
+    "compatible_body_types": null
   },
   {
     "name": "Phantom Pulse Engine",
     "slot": "engine",
     "rarity": "ghost",
     "stats": {
-      "primary": {"power": 98, "acceleration": 95, "torque": 96, "max_engine_temp": 98},
-      "secondary": {"weight": -8, "durability": 96, "fuel_efficiency": 70}
+      "primary": {
+        "power": 98,
+        "acceleration": 95,
+        "torque": 96,
+        "max_engine_temp": 98
+      },
+      "secondary": {
+        "weight": -8,
+        "durability": 96,
+        "fuel_efficiency": 70
+      }
     },
-    "print_max": 100
+    "print_max": 100,
+    "compatible_body_types": null
   }
 ]

@@ -1,0 +1,75 @@
+{
+  "_comment": "Word pools for RNG rig name generation. Each entry is [adjectives, nouns]. Class+body combos are checked first; fallback pools used when no specific match exists.",
+  "drag_muscle": [
+    ["Iron", "Thunder", "Hammer", "Steel", "Titan", "Boulder", "Fury", "Wrath"],
+    ["Fist", "Brute", "Cannon", "Crusher", "Bull", "Hauler", "Slab", "Beast"]
+  ],
+  "drag_sport": [
+    ["Rocket", "Blitz", "Surge", "Volt", "Flash", "Nitro", "Apex", "Zero"],
+    ["Shot", "Burst", "Streak", "Bolt", "Sprint", "Launch", "Arrow", "Strike"]
+  ],
+  "drag_compact": [
+    ["Pocket", "Feather", "Dart", "Wasp", "Snap", "Blitz", "Quick", "Zip"],
+    ["Rocket", "Sting", "Punch", "Dart", "Bullet", "Hornet", "Spark", "Flash"]
+  ],
+  "circuit_muscle": [
+    ["Heavy", "Iron", "Chrome", "Steady", "Stone", "Solid", "Gravel", "Brute"],
+    ["Circuit", "Lap", "Track", "Loop", "Baron", "Stalwart", "Endure", "King"]
+  ],
+  "circuit_sport": [
+    ["Apex", "Carbon", "Razor", "Voltage", "Precise", "Clean", "Sharp", "Laser"],
+    ["Hawk", "Edge", "Strike", "Line", "Curve", "Apex", "Vector", "Blade"]
+  ],
+  "circuit_compact": [
+    ["Nimble", "Tight", "Swift", "Agile", "Light", "Clean", "Precise", "Quick"],
+    ["Corner", "Curve", "Arc", "Turn", "Weave", "Clip", "Thread", "Needle"]
+  ],
+  "drift_muscle": [
+    ["Heavy", "Torque", "Sliding", "Iron", "Brutal", "Grinding", "Smoke", "Roar"],
+    ["Slab", "Anchor", "Drift", "Grind", "Bear", "Slide", "Beast", "Wall"]
+  ],
+  "drift_sport": [
+    ["Smoke", "Sideways", "Sliding", "Fluid", "Flowing", "Graceful", "Silk", "Ghost"],
+    ["Runner", "Dancer", "Glide", "Flow", "Drift", "Weave", "Slip", "Float"]
+  ],
+  "drift_compact": [
+    ["Ghost", "Phantom", "Wraith", "Shadow", "Specter", "Mist", "Wisp", "Vapor"],
+    ["Runner", "Stalker", "Drifter", "Shade", "Drift", "Trace", "Whisper", "Haunt"]
+  ],
+  "rally_muscle": [
+    ["Gravel", "Mud", "Dirt", "Rocky", "Rough", "Rugged", "Heavy", "Tank"],
+    ["Crusher", "Hauler", "Brawler", "Plow", "Force", "Trek", "Endure", "Storm"]
+  ],
+  "rally_sport": [
+    ["All-Road", "Cross", "Trail", "Wild", "Venture", "Scout", "Roam", "Traverse"],
+    ["Runner", "Chaser", "Hunter", "Tracker", "Scout", "Ranger", "Seeker", "Rover"]
+  ],
+  "rally_compact": [
+    ["Nimble", "Quick", "Agile", "Light", "Swift", "Lean", "Sharp", "Keen"],
+    ["Scout", "Fox", "Terrier", "Weasel", "Rabbit", "Lynx", "Ferret", "Dart"]
+  ],
+  "elite_muscle": [
+    ["Legendary", "Ancient", "Mythic", "Prime", "Supreme", "Apex", "Ultimate", "Pure"],
+    ["Titan", "Colossus", "Champion", "Legend", "Monument", "Relic", "Crown", "Icon"]
+  ],
+  "elite_sport": [
+    ["Legendary", "Mythic", "Prime", "Supreme", "Perfect", "Flawless", "Elite", "Apex"],
+    ["Legend", "Champion", "Crown", "Icon", "Peak", "Zenith", "Pinnacle", "Summit"]
+  ],
+  "elite_compact": [
+    ["Legendary", "Mythic", "Prime", "Supreme", "Perfect", "Flawless", "Pure", "True"],
+    ["Legend", "Icon", "Gem", "Jewel", "Crown", "Relic", "Pinnacle", "Zenith"]
+  ],
+  "street_muscle": [
+    ["Old", "Heavy", "Solid", "Reliable", "Road", "Cruising", "Easy", "Steady"],
+    ["Cruiser", "Roller", "Barge", "Boat", "Tank", "Drifter", "Rumbler", "Hauler"]
+  ],
+  "street_sport": [
+    ["Daily", "Road", "Smooth", "Easy", "Casual", "Cruising", "Open", "Free"],
+    ["Cruiser", "Glider", "Tourer", "Rider", "Runner", "Roller", "Coaster", "Floater"]
+  ],
+  "street_compact": [
+    ["Little", "Pocket", "Nimble", "Zippy", "Handy", "Easy", "Smooth", "Daily"],
+    ["Rocket", "Ripper", "Zinger", "Nip", "Dart", "Zip", "Buzz", "Whip"]
+  ]
+}

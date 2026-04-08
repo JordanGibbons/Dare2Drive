@@ -10,6 +10,7 @@ from sqlalchemy import (
     Boolean,
     DateTime,
     Enum,
+    Float,
     ForeignKey,
     Integer,
     String,
@@ -30,6 +31,20 @@ class BodyType(str, enum.Enum):
     MUSCLE = "muscle"
     SPORT = "sport"
     COMPACT = "compact"
+
+
+class CarClass(str, enum.Enum):
+    STREET = "street"
+    DRAG = "drag"
+    CIRCUIT = "circuit"
+    DRIFT = "drift"
+    RALLY = "rally"
+    ELITE = "elite"
+
+
+class RigStatus(str, enum.Enum):
+    ACTIVE = "active"
+    SCRAPPED = "scrapped"
 
 
 class TutorialStep(str, enum.Enum):
@@ -118,6 +133,7 @@ class Card(Base):
     total_minted: Mapped[int] = mapped_column(
         Integer, default=0, nullable=False, server_default="0"
     )
+    compatible_body_types: Mapped[list | None] = mapped_column(JSONB, nullable=True, default=None)
 
     user_cards: Mapped[list[UserCard]] = relationship(back_populates="card", lazy="selectin")
 
@@ -162,8 +178,19 @@ class Build(Base):
         },
     )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    body_type: Mapped[BodyType] = mapped_column(
+        Enum(BodyType, values_callable=lambda x: [e.value for e in x]),
+        nullable=True,
+    )
+    core_locked: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    rig_title_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("rig_titles.id"), nullable=True
+    )
 
     user: Mapped[User] = relationship(back_populates="builds")
+    rig_title: Mapped[RigTitle | None] = relationship(  # type: ignore[name-defined]
+        "RigTitle", foreign_keys="[Build.rig_title_id]", lazy="selectin"
+    )
 
 
 class Race(Base):
@@ -219,3 +246,66 @@ class WreckLog(Base):
 
     race: Mapped[Race] = relationship(back_populates="wreck_logs")
     user: Mapped[User] = relationship(back_populates="wreck_logs")
+
+
+class RigRelease(Base):
+    __tablename__ = "rig_releases"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    description: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    serial_counter: Mapped[int] = mapped_column(
+        Integer, default=0, nullable=False, server_default="0"
+    )
+
+    titles: Mapped[list[RigTitle]] = relationship(  # type: ignore[name-defined]
+        "RigTitle", back_populates="release", lazy="selectin"
+    )
+
+
+class RigTitle(Base):
+    __tablename__ = "rig_titles"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    release_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("rig_releases.id"), nullable=False
+    )
+    release_serial: Mapped[int] = mapped_column(Integer, nullable=False)
+    owner_id: Mapped[str] = mapped_column(
+        String(20), ForeignKey("users.discord_id"), nullable=False
+    )
+    build_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("builds.id"), nullable=True
+    )
+    body_type: Mapped[BodyType] = mapped_column(
+        Enum(BodyType, values_callable=lambda x: [e.value for e in x]), nullable=False
+    )
+    car_class: Mapped[CarClass] = mapped_column(
+        Enum(CarClass, values_callable=lambda x: [e.value for e in x]), nullable=False
+    )
+    status: Mapped[RigStatus] = mapped_column(
+        Enum(RigStatus, values_callable=lambda x: [e.value for e in x]),
+        nullable=False,
+        default=RigStatus.ACTIVE,
+    )
+    auto_name: Mapped[str] = mapped_column(String(120), nullable=False)
+    custom_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    build_snapshot: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    pedigree_bonus: Mapped[float] = mapped_column(
+        Float, default=0.0, nullable=False, server_default="0.0"
+    )
+    ownership_log: Mapped[list] = mapped_column(JSONB, nullable=False, server_default="[]")
+    part_swap_log: Mapped[list] = mapped_column(JSONB, nullable=False, server_default="[]")
+    race_record: Mapped[dict] = mapped_column(
+        JSONB, nullable=False, server_default='{"wins": 0, "losses": 0}'
+    )
+    minted_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    release: Mapped[RigRelease] = relationship(back_populates="titles")
+    owner: Mapped[User] = relationship("User", foreign_keys=[owner_id])

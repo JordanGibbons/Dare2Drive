@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import io
 import json
 import random
 import re
@@ -17,8 +18,21 @@ from sqlalchemy.orm import selectinload
 
 from config.logging import get_logger
 from config.settings import settings
-from db.models import Card, CardSlot, User, UserCard
+from db.models import Build, Card, CardSlot, Rarity, User, UserCard
 from db.session import async_session
+
+_SALVAGE_RATES_PATH = Path(__file__).resolve().parent.parent.parent / "data" / "salvage_rates.json"
+
+_salvage_rates_cache: dict[str, int] | None = None
+
+
+def _get_salvage_rates() -> dict[str, int]:
+    global _salvage_rates_cache
+    if _salvage_rates_cache is None:
+        with open(_SALVAGE_RATES_PATH, "r", encoding="utf-8") as f:
+            _salvage_rates_cache = json.load(f)
+    return _salvage_rates_cache
+
 
 log = get_logger(__name__)
 
@@ -436,7 +450,24 @@ class CardsCog(commands.Cog):
         if user_copy.is_foil:
             embed.set_footer(text="✨ Foil Edition")
 
-        await interaction.response.send_message(embed=embed)
+        # Render card image and attach it
+        from scripts.generate_card_image import render_card
+
+        card_data = {
+            "name": card.name,
+            "slot": card.slot.value,
+            "rarity": card.rarity.value,
+            "stats": effective_stats,
+            "print_max": card.print_max,
+        }
+        img = render_card(card_data, print_number=user_copy.serial_number)
+        buf = io.BytesIO()
+        img.save(buf, "PNG")
+        buf.seek(0)
+        file = discord.File(buf, filename="card.png")
+        embed.set_image(url="attachment://card.png")
+
+        await interaction.response.send_message(embed=embed, file=file)
 
         # Tutorial progression
         from bot.cogs.tutorial import advance_tutorial
@@ -1061,6 +1092,84 @@ class _GarageRequestView(discord.ui.View):
     async def on_timeout(self) -> None:
         for item in self.children:
             item.disabled = True
+
+    @app_commands.command(name="salvage", description="Salvage a part for Creds")
+    @app_commands.describe(card_name="Name of the card to salvage (e.g. Card Name #3)")
+    async def salvage(self, interaction: discord.Interaction, card_name: str) -> None:
+        parsed_name, parsed_serial = _parse_card_input(card_name)
+
+        async with async_session() as session:
+            user = await session.get(User, str(interaction.user.id))
+            if not user:
+                await interaction.response.send_message("Use `/start` first!", ephemeral=True)
+                return
+
+            card_result = await session.execute(select(Card).where(Card.name == parsed_name))
+            card = card_result.scalar_one_or_none()
+            if not card:
+                await interaction.response.send_message(
+                    f"Card `{parsed_name}` not found.", ephemeral=True
+                )
+                return
+
+            # Find the specific copy
+            uc_query = (
+                select(UserCard)
+                .where(
+                    UserCard.user_id == user.discord_id,
+                    UserCard.card_id == card.id,
+                )
+                .order_by(UserCard.serial_number)
+            )
+            if parsed_serial is not None:
+                uc_query = uc_query.where(UserCard.serial_number == parsed_serial)
+
+            uc_result = await session.execute(uc_query.limit(1))
+            uc = uc_result.scalar_one_or_none()
+            if not uc:
+                serial_hint = f" #{parsed_serial}" if parsed_serial is not None else ""
+                await interaction.response.send_message(
+                    f"You don't own `{card.name}`{serial_hint}.", ephemeral=True
+                )
+                return
+
+            # Block if the card is equipped in any active build
+            build_result = await session.execute(
+                select(Build).where(Build.user_id == user.discord_id, Build.is_active)
+            )
+            build = build_result.scalar_one_or_none()
+            if build and str(uc.id) in (build.slots or {}).values():
+                await interaction.response.send_message(
+                    f"⚠️ **{card.name}** is currently equipped. Unequip it first before salvaging.",
+                    ephemeral=True,
+                )
+                return
+
+            payout = _get_salvage_rates().get(card.rarity.value, 0)
+
+            await session.delete(uc)
+            user.currency += payout
+            await session.commit()
+
+        rarity_emoji = {
+            Rarity.COMMON: "⬜",
+            Rarity.UNCOMMON: "🟩",
+            Rarity.RARE: "🟦",
+            Rarity.EPIC: "🟪",
+            Rarity.LEGENDARY: "🟨",
+            Rarity.GHOST: "👻",
+        }.get(card.rarity, "")
+        serial_str = f" #{uc.serial_number}" if uc.serial_number else ""
+        await interaction.response.send_message(
+            f"🔧 Salvaged {rarity_emoji} **{card.name}**{serial_str} for **{payout} Creds**.",
+            ephemeral=True,
+        )
+
+    @salvage.autocomplete("card_name")
+    async def salvage_autocomplete(
+        self, interaction: discord.Interaction, current: str
+    ) -> list[app_commands.Choice[str]]:
+        return await _card_copy_autocomplete(interaction, current)
 
 
 async def setup(bot: commands.Bot) -> None:
