@@ -1,6 +1,6 @@
 """Add compatible_body_types to cards table
 
-Revision ID: 0008_add_compatible_body_types_to_cards
+Revision ID: 0008_card_compat_body_types
 Revises: 0007_add_body_type_to_builds
 Create Date: 2026-04-08
 """
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects.postgresql import JSONB
 
-revision: str = "0008_add_compatible_body_types_to_cards"
+revision: str = "0008_card_compat_body_types"
 down_revision: Union[str, None] = "0007_add_body_type_to_builds"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None

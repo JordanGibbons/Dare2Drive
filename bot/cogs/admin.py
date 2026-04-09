@@ -5,13 +5,38 @@ from __future__ import annotations
 import discord
 from discord import app_commands
 from discord.ext import commands
-from sqlalchemy import delete
+from sqlalchemy import delete, update
 
 from config.logging import get_logger
-from db.models import Build, MarketListing, TutorialStep, User, UserCard, WreckLog
+from db.models import Build, MarketListing, RigTitle, TutorialStep, User, UserCard, WreckLog
 from db.session import async_session
 
 log = get_logger(__name__)
+
+
+async def _delete_player_data(session, user_id: str, user: User) -> None:
+    """
+    Delete all rows owned by *user_id* in the correct FK order, then the user row.
+
+    builds ↔ rig_titles form a circular FK:
+      builds.rig_title_id → rig_titles.id
+      rig_titles.build_id → builds.id
+
+    Breaking the cycle: NULL out builds.rig_title_id first so rig_titles can
+    be deleted, then delete builds, then the user.
+
+    Full order:
+      wreck_logs → market_listings → user_cards
+      → NULL builds.rig_title_id → rig_titles → builds → user
+    """
+    await session.execute(delete(WreckLog).where(WreckLog.user_id == user_id))
+    await session.execute(delete(MarketListing).where(MarketListing.seller_id == user_id))
+    await session.execute(delete(UserCard).where(UserCard.user_id == user_id))
+    # Break the circular FK before deleting either side
+    await session.execute(update(Build).where(Build.user_id == user_id).values(rig_title_id=None))
+    await session.execute(delete(RigTitle).where(RigTitle.owner_id == user_id))
+    await session.execute(delete(Build).where(Build.user_id == user_id))
+    await session.delete(user)
 
 
 def is_admin():
@@ -58,12 +83,7 @@ class AdminCog(commands.Cog):
                 )
                 return
 
-            # Delete in FK order: wreck_logs → market_listings → user_cards → builds → user
-            await session.execute(delete(WreckLog).where(WreckLog.user_id == user_id))
-            await session.execute(delete(MarketListing).where(MarketListing.seller_id == user_id))
-            await session.execute(delete(UserCard).where(UserCard.user_id == user_id))
-            await session.execute(delete(Build).where(Build.user_id == user_id))
-            await session.delete(user)
+            await _delete_player_data(session, user_id, user)
             await session.commit()
 
         log.info(

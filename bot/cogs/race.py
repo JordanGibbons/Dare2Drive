@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from bot.cogs.tutorial import _load_tutorial_data, build_npc_race_data, is_tutorial_complete
 from config.logging import get_logger
 from db.models import (
+    BodyType,
     Build,
     CarClass,
     Card,
@@ -61,50 +62,81 @@ def get_part_lifespan(slot: str, rarity: str) -> int:
     return max(1, round(base * mult))
 
 
+def _subclass_str(car_class: CarClass, body_type: BodyType | None) -> str:
+    """Format a subclass label for error messages, e.g. 'Drift Compact'."""
+    body = body_type.value.title() if body_type else ""
+    return f"{car_class.value.title()} {body}".strip()
+
+
 async def _check_class_gate(
-    session: AsyncSession, build_dict: dict[str, Any], required_class: CarClass
+    session: AsyncSession,
+    build_dict: dict[str, Any],
+    required_class: CarClass,
+    required_body: BodyType | None = None,
 ) -> str | None:
     """
-    Return an error string if the build doesn't meet the class requirement,
-    or None if it passes. STREET is always open — no title required.
+    Return an error string if the build doesn't meet the race requirements, or None if it passes.
+
+    STREET with no body type requirement is always open (no title needed).
+    Any other class or a body type requirement needs a minted Car Title.
     """
-    if required_class == CarClass.STREET:
+    street_open = required_class == CarClass.STREET and required_body is None
+    if street_open:
         return None
 
-    # Non-STREET races require a minted Car Title with the matching class
-    build_result = await session.execute(
-        select(Build).where(
-            Build.user_id == build_dict["user_id"],
-            Build.is_active,
-        )
-    )
-    build = build_result.scalar_one_or_none()
+    build = await session.get(Build, uuid.UUID(build_dict["build_id"]))
     if not build or not build.core_locked or not build.rig_title_id:
+        req_str = _subclass_str(required_class, required_body)
         return (
-            f"❌ **{required_class.value.upper()}** races require a minted Car Title. "
-            f"Fill all 7 slots and use `/build mint` first."
+            f"❌ **{req_str}** races require a minted Car Title. "
+            "Fill all 7 slots and use `/build mint` first."
         )
 
     title = await session.get(RigTitle, build.rig_title_id)
-    if not title or title.car_class != required_class:
-        actual = title.car_class.value.upper() if title else "none"
-        required = required_class.value.upper()
-        return f"❌ Your rig is class **{actual}** — this race requires **{required}**."
+    if not title:
+        return "❌ Car Title not found. Try `/build mint` again."
+
+    errors = []
+    if title.car_class != required_class:
+        errors.append(
+            f"class **{title.car_class.value.title()}** "
+            f"(need **{required_class.value.title()}**)"
+        )
+    if required_body and title.body_type != required_body:
+        errors.append(
+            f"body **{title.body_type.value.title()}** " f"(need **{required_body.value.title()}**)"
+        )
+
+    if errors:
+        req_str = _subclass_str(required_class, required_body)
+        return f"❌ Your rig doesn't qualify for **{req_str}** — wrong {' and '.join(errors)}."
 
     return None
 
 
-async def _resolve_build_for_race(session: AsyncSession, user: User) -> dict[str, Any] | str:
+async def _resolve_build_for_race(
+    session: AsyncSession, user: User, build_id: str | None = None
+) -> dict[str, Any] | str:
     """
-    Load a user's active build and resolve all card data for the race engine.
-    Build.slots now maps slot_name → user_card_id (UUID of the specific copy).
+    Load a build for the race engine, resolving all card data.
+    Build.slots maps slot_name → user_card_id (UUID of the specific copy).
+    If build_id is given, loads that specific build; otherwise loads the default (is_active).
     Returns the build dict or an error string.
     """
     from engine.card_mint import apply_stat_modifiers
 
-    result = await session.execute(
-        select(Build).where(Build.user_id == user.discord_id, Build.is_active)
-    )
+    if build_id:
+        try:
+            bid = uuid.UUID(build_id)
+        except ValueError:
+            return "Invalid build selection."
+        result = await session.execute(
+            select(Build).where(Build.id == bid, Build.user_id == user.discord_id)
+        )
+    else:
+        result = await session.execute(
+            select(Build).where(Build.user_id == user.discord_id, Build.is_active)
+        )
     build = result.scalar_one_or_none()
     if not build:
         return "No active build found."
@@ -156,11 +188,15 @@ async def _resolve_build_for_race(session: AsyncSession, user: User) -> dict[str
         "slots": build.slots,
         "cards": cards,
         "body_type": (build.body_type or user.body_type).value,
+        "build_id": str(build.id),
     }
 
 
 async def _apply_wreck_results(
-    session: AsyncSession, race_result: RaceResult, race_id: uuid.UUID
+    session: AsyncSession,
+    race_result: RaceResult,
+    race_id: uuid.UUID,
+    build_id_map: dict[str, str] | None = None,
 ) -> None:
     """Apply wreck part losses to the database and create WreckLog entries."""
     for placement in race_result.placements:
@@ -174,14 +210,18 @@ async def _apply_wreck_results(
             if uc_id_str:
                 uc = await session.get(UserCard, uuid.UUID(uc_id_str))
                 if uc:
-                    # Clear the slot in the active build
-                    build_result = await session.execute(
-                        select(Build).where(
-                            Build.user_id == placement.user_id,
-                            Build.is_active,
+                    # Clear the slot in the raced build
+                    bid_str = build_id_map.get(placement.user_id) if build_id_map else None
+                    if bid_str:
+                        build = await session.get(Build, uuid.UUID(bid_str))
+                    else:
+                        build_result = await session.execute(
+                            select(Build).where(
+                                Build.user_id == placement.user_id,
+                                Build.is_active,
+                            )
                         )
-                    )
-                    build = build_result.scalar_one_or_none()
+                        build = build_result.scalar_one_or_none()
                     if build:
                         new_slots = dict(build.slots)
                         for slot_name, slot_uc_id in new_slots.items():
@@ -220,6 +260,12 @@ async def _run_race_and_send(
 
         race_result = compute_race([challenger_build, opp_build])
 
+        build_id_map = {
+            bd["user_id"]: bd["build_id"]
+            for bd in [challenger_build, opp_build]
+            if "build_id" in bd
+        }
+
         if not is_tutorial_race:
             # Store race record
             race_record = Race(
@@ -233,7 +279,7 @@ async def _run_race_and_send(
             await session.flush()
 
             # Apply wreck results
-            await _apply_wreck_results(session, race_result, race_record.id)
+            await _apply_wreck_results(session, race_result, race_record.id, build_id_map)
 
         # Award XP and placement creds
         # When a wager is active, skip cred bonuses — the wager IS the reward
@@ -319,11 +365,9 @@ async def _run_race_and_send(
                 if uc.races_used >= lifespan:
                     card_name = card_data.get("name", slot_name.title())
 
-                    # Clear from build
-                    build_result = await session.execute(
-                        select(Build).where(Build.user_id == uid, Build.is_active)
-                    )
-                    build = build_result.scalar_one_or_none()
+                    # Clear from raced build
+                    bid_str = build_id_map.get(uid)
+                    build = await session.get(Build, uuid.UUID(bid_str)) if bid_str else None
                     if build:
                         new_slots = dict(build.slots)
                         new_slots[slot_name] = None
@@ -338,6 +382,31 @@ async def _run_race_and_send(
                         card_name,
                         lifespan,
                     )
+
+        # Update race_record on minted rigs
+        if not is_tutorial_race:
+            for bd in [challenger_build, opp_build]:
+                uid = bd["user_id"]
+                if uid.startswith("NPC_"):
+                    continue
+                bid_str = build_id_map.get(uid)
+                if not bid_str:
+                    continue
+                b = await session.get(Build, uuid.UUID(bid_str))
+                if not b or not b.rig_title_id:
+                    continue
+                rig_title = await session.get(RigTitle, b.rig_title_id)
+                if not rig_title:
+                    continue
+                placement = next((p for p in race_result.placements if p.user_id == uid), None)
+                if not placement or placement.is_tie:
+                    continue
+                rec = dict(rig_title.race_record or {"wins": 0, "losses": 0})
+                if placement.position == 1:
+                    rec["wins"] = rec.get("wins", 0) + 1
+                else:
+                    rec["losses"] = rec.get("losses", 0) + 1
+                rig_title.race_record = rec
 
         await session.commit()
 
@@ -634,6 +703,8 @@ class _MultiRaceView(discord.ui.View):
         all_builds = [build for _, build, _ in self.entrants]
         race_result = compute_race(all_builds)
 
+        build_id_map = {bd["user_id"]: bd["build_id"] for bd in all_builds if "build_id" in bd}
+
         async with async_session() as session:
             # Store race record
             race_record = Race(
@@ -644,7 +715,7 @@ class _MultiRaceView(discord.ui.View):
             session.add(race_record)
             await session.flush()
 
-            await _apply_wreck_results(session, race_result, race_record.id)
+            await _apply_wreck_results(session, race_result, race_record.id, build_id_map)
 
             # Award XP and placement creds
             # When a wager is active, skip cred bonuses — the wager IS the reward
@@ -719,16 +790,38 @@ class _MultiRaceView(discord.ui.View):
                     lifespan = get_part_lifespan(slot_name, card_rarity)
                     if uc.races_used >= lifespan:
                         card_name = card_data.get("name", slot_name.title())
-                        build_result = await session.execute(
-                            select(Build).where(Build.user_id == uid, Build.is_active)
-                        )
-                        build = build_result.scalar_one_or_none()
+                        bid_str = build_id_map.get(uid)
+                        build = await session.get(Build, uuid.UUID(bid_str)) if bid_str else None
                         if build:
                             new_slots = dict(build.slots)
                             new_slots[slot_name] = None
                             build.slots = new_slots
                         await session.delete(uc)
                         multi_worn_out.append((uid, slot_name, card_name))
+
+            # Update race_record on minted rigs
+            for bd in all_builds:
+                uid = bd["user_id"]
+                if uid.startswith("NPC_"):
+                    continue
+                bid_str = build_id_map.get(uid)
+                if not bid_str:
+                    continue
+                b = await session.get(Build, uuid.UUID(bid_str))
+                if not b or not b.rig_title_id:
+                    continue
+                rig_title = await session.get(RigTitle, b.rig_title_id)
+                if not rig_title:
+                    continue
+                placement = next((p for p in race_result.placements if p.user_id == uid), None)
+                if not placement or placement.is_tie:
+                    continue
+                rec = dict(rig_title.race_record or {"wins": 0, "losses": 0})
+                if placement.position == 1:
+                    rec["wins"] = rec.get("wins", 0) + 1
+                else:
+                    rec["losses"] = rec.get("losses", 0) + 1
+                rig_title.race_record = rec
 
             await session.commit()
 
@@ -797,6 +890,65 @@ class _MultiRaceView(discord.ui.View):
         await self.original_interaction.followup.send(embed=embed)
 
 
+async def _race_build_autocomplete(
+    interaction: discord.Interaction, current: str
+) -> list[app_commands.Choice[str]]:
+    """Autocomplete for /race build param — shows only eligible builds."""
+    race_class_val = getattr(interaction.namespace, "race_class", None) or "street"
+    race_body_val = getattr(interaction.namespace, "race_body", None)
+
+    required_class = CarClass(race_class_val)
+    required_body = BodyType(race_body_val) if race_body_val else None
+    street_open = required_class == CarClass.STREET and required_body is None
+
+    async with async_session() as session:
+        result = await session.execute(
+            select(Build)
+            .where(Build.user_id == str(interaction.user.id))
+            .order_by(Build.is_active.desc())
+        )
+        builds = list(result.scalars().all())
+
+        min_slots = {"engine", "transmission", "tires", "chassis"}
+        choices = []
+
+        for b in builds:
+            filled = {k for k, v in b.slots.items() if v is not None}
+            if not min_slots.issubset(filled):
+                continue
+
+            if not street_open:
+                if not b.rig_title_id or not b.core_locked:
+                    continue
+                title = await session.get(RigTitle, b.rig_title_id)
+                if not title or title.car_class != required_class:
+                    continue
+                if required_body and title.body_type != required_body:
+                    continue
+                name = title.custom_name or title.auto_name or "Unnamed"
+                cls_str = title.car_class.value.title()
+                body_str = title.body_type.value.title() if title.body_type else ""
+                label = f"{name} — {cls_str} {body_str}".strip()
+            else:
+                title = await session.get(RigTitle, b.rig_title_id) if b.rig_title_id else None
+                if title:
+                    name = title.custom_name or title.auto_name or "Unnamed"
+                    label = f"{name} — {title.car_class.value.title()}"
+                else:
+                    bt_str = b.body_type.value.title() if b.body_type else "Unknown"
+                    label = f"{b.name or 'Build'} · {bt_str} ({len(filled)}/7)"
+
+            if b.is_active:
+                label += " ★"
+
+            if current and current.lower() not in label.lower():
+                continue
+
+            choices.append(app_commands.Choice(name=label[:100], value=str(b.id)))
+
+    return choices[:25]
+
+
 class RaceCog(commands.Cog):
     """Racing, challenges, and leaderboards."""
 
@@ -808,6 +960,8 @@ class RaceCog(commands.Cog):
         opponent="The player to race against",
         wager="Creds to bet (min 10, winner takes all)",
         race_class="Race class (default: Street — open to all builds)",
+        race_body="Body type filter (optional — combine with class for subclass events)",
+        build="Which of your eligible rigs to race with (default: your default build)",
     )
     @app_commands.choices(
         race_class=[
@@ -817,14 +971,22 @@ class RaceCog(commands.Cog):
             app_commands.Choice(name="🌀 Drift", value="drift"),
             app_commands.Choice(name="⛰️ Rally", value="rally"),
             app_commands.Choice(name="👑 Elite", value="elite"),
-        ]
+        ],
+        race_body=[
+            app_commands.Choice(name="💪 Muscle", value="muscle"),
+            app_commands.Choice(name="🏎️ Sport", value="sport"),
+            app_commands.Choice(name="🚗 Compact", value="compact"),
+        ],
     )
+    @app_commands.autocomplete(build=_race_build_autocomplete)
     async def race(
         self,
         interaction: discord.Interaction,
         opponent: discord.Member | None = None,
         wager: int = 0,
         race_class: str = "street",
+        race_body: str | None = None,
+        build: str | None = None,
     ) -> None:
         if wager != 0 and wager < 10:
             await interaction.response.send_message(
@@ -842,15 +1004,19 @@ class RaceCog(commands.Cog):
 
             is_tutorial_race = challenger.tutorial_step == TutorialStep.RACE
 
-            challenger_build = await _resolve_build_for_race(session, challenger)
+            challenger_build = await _resolve_build_for_race(session, challenger, build_id=build)
             if isinstance(challenger_build, str):
                 await interaction.response.send_message(challenger_build, ephemeral=True)
                 return
 
             # --- Class gate (skip for tutorial races) ---
             required_class = CarClass(race_class)
-            if not is_tutorial_race and required_class != CarClass.STREET:
-                gate_error = await _check_class_gate(session, challenger_build, required_class)
+            required_body = BodyType(race_body) if race_body else None
+            has_requirements = required_class != CarClass.STREET or required_body is not None
+            if not is_tutorial_race and has_requirements:
+                gate_error = await _check_class_gate(
+                    session, challenger_build, required_class, required_body
+                )
                 if gate_error:
                     await interaction.response.send_message(gate_error, ephemeral=True)
                     return

@@ -54,6 +54,7 @@ class TutorialStep(str, enum.Enum):
     INVENTORY = "inventory"  # Told to use /inventory
     INSPECT = "inspect"  # Told to use /inspect
     EQUIP = "equip"  # Told to use /equip
+    MINT = "mint"  # All 7 slots filled — learn /build preview + /build mint
     GARAGE = "garage"  # Told to check /garage
     RACE = "race"  # Told to /race the NPC
     PACK = "pack"  # Won/lost, opening reward pack
