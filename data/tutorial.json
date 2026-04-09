@@ -39,7 +39,9 @@
     "Clunker 3-Speed",
     "Bald Eagles",
     "Scrapheap Frame",
-    "Drum Stoppers"
+    "Drum Stoppers",
+    "Springboard Basics",
+    "Junkyard Snail"
   ],
   "npc_opponent": {
     "name": "Sketchy Dave",
@@ -66,6 +68,13 @@
           "secondary": {"durability": 18, "weather_performance": 12, "drag": 15}
         }
       },
+      "suspension": {
+        "name": "Dave's Bent Struts",
+        "stats": {
+          "primary": {"handling": 10, "stability": 12, "ride_height_modifier": 8},
+          "secondary": {"weight_balance_bonus": 2, "brake_efficiency_scaling": 2}
+        }
+      },
       "chassis": {
         "name": "Dave's Dented Cage",
         "stats": {
@@ -78,6 +87,13 @@
         "stats": {
           "primary": {"brake_force": 14, "corner_entry_speed": 10, "stability_under_decel": 12},
           "secondary": {"handling_bonus": 1, "durability": 20}
+        }
+      },
+      "turbo": {
+        "name": "Dave's Taped-On Snail",
+        "stats": {
+          "primary": {"power_boost_pct": 4, "acceleration_boost_pct": 2, "engine_temp_increase": 9},
+          "secondary": {"durability": 28, "torque_spike_modifier": 3}
         }
       }
     }
@@ -109,19 +125,32 @@
     ],
     "teach_equip": [
       "Knowledge is power. Unfortunately, power is also power, and yours is currently sitting on the floor.",
-      "Use `/equip` to bolt these parts onto your ride. You'll need at least an **Engine**, **Transmission**, **Tires**, and **Chassis** to race.",
+      "Use `/equip` to bolt these parts onto your ride. You need all **7 slots** filled before you can mint your rig.",
+      "Slots to fill: **Engine, Transmission, Tires, Chassis, Suspension, Brakes, Turbo**.",
       "Try: `/equip slot:Engine card_name:{engine_card}`",
       "Or skip the grease work — `/autoequip best` will install your best parts automatically."
     ],
+    "teach_build_preview": [
+      "All 7 slots bolted. Your rig is starting to look like something.",
+      "Before you make it official, run `/build preview` — it shows which class your build is trending toward.",
+      "Class determines what races you're eligible for. It's not a choice — it comes from your stats."
+    ],
+    "teach_build_mint": [
+      "See that class breakdown? That's your parts telling you what kind of car this is.",
+      "When you're ready to lock it in, use `/build mint` to issue your **Car Title**.",
+      "The title seals your **Engine** and **Chassis** — those are the core of the build. Swap tires, brakes, suspension, and turbo freely. Touch the core and you void the title."
+    ],
     "teach_garage": [
-      "Alright, she's coming together. Kind of.",
-      "Use `/garage` to admire your masterpiece. Or cry. Both are valid.",
+      "Your rig has a name now. And a serial number. That's more than most things in this junkyard.",
+      "Use `/garage` to see your full build, class, and title details.",
       "Want to scout the competition? `/peek @player` lets you see anyone's build."
     ],
     "teach_race": [
       "She runs. She stops. She turns. That's three whole features.",
       "Remember that strip where you got jumped? Time to go back.",
       "Use `/race @player` to send a challenge. They'll have to accept before you line up.",
+      "Most races are gated by **class** — Street is open to everyone, but Drag, Circuit, Drift, and Rally events require the right build. Your class is set by your stats, not your choice.",
+      "Some events go further and lock to a specific **body type** too — Drift Compact only, Rally Muscle only, that kind of thing. You'll know when you try to enter and can't.",
       "Feeling bold? Add a wager — `/race @player wager:50` puts Creds on the line."
     ],
     "race_win": [
@@ -143,7 +172,8 @@
       "The rarity is random. Mostly junk, but every once in a while you pull something nasty."
     ],
     "outro": [
-      "That's the basics. Build your ride, race the streets, trade cards, and try not to wreck.",
+      "That's the basics. Build your ride, mint your title, race the streets, trade cards, and try not to wreck.",
+      "Upgrade your rig — swap wear parts (tires, brakes, suspension, turbo) any time. Replace your engine or chassis and you'll need to `/build disassemble` and re-mint.",
       "The `/market` has parts for sale. `/trade` if you want to deal with other players directly.",
       "Use `/multirace` to host a bigger event. Parts degrade each race, so keep an eye on your build.",
       "Good luck out there. You're gonna need it."

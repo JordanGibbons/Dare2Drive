@@ -28,6 +28,7 @@ STEP_ALLOWED_COMMANDS: dict[TutorialStep, set[str]] = {
     TutorialStep.INVENTORY: {"inventory"},
     TutorialStep.INSPECT: {"inventory", "inspect"},
     TutorialStep.EQUIP: {"inventory", "inspect", "equip", "autoequip"},
+    TutorialStep.MINT: {"inventory", "inspect", "equip", "autoequip", "preview", "mint"},
     TutorialStep.GARAGE: {"inventory", "inspect", "equip", "autoequip", "garage"},
     TutorialStep.RACE: {"inventory", "inspect", "equip", "autoequip", "garage", "race"},
     TutorialStep.PACK: {"inventory", "inspect", "equip", "autoequip", "garage"},
@@ -73,7 +74,8 @@ def get_blocked_message(user: User, command_name: str) -> str:
         TutorialStep.INVENTORY: "Easy there. Use `/inventory` first — gotta know what you've got before you do anything with it.",  # noqa: E501
         TutorialStep.INSPECT: "You've got parts but haven't looked at them. Try `/inspect` on one of your cards first.",  # noqa: E501
         TutorialStep.EQUIP: "Parts on the floor don't make the car go. Use `/equip` or `/autoequip best` to install them.",  # noqa: E501
-        TutorialStep.GARAGE: "Almost there. Use `/garage` to check your build before you do anything else.",  # noqa: E501
+        TutorialStep.MINT: "All slots filled — use `/build preview` to see your class, then `/build mint` to lock it in.",  # noqa: E501
+        TutorialStep.GARAGE: "Your rig is minted. Use `/garage` to look it over, then head to the strip.",  # noqa: E501
         TutorialStep.RACE: "Your car's ready. Stop stalling and use `/race` already.",
         TutorialStep.PACK: "You've got a pack to open. Patience.",
     }
@@ -173,9 +175,9 @@ def build_npc_race_data() -> dict[str, Any]:
         "engine": "npc_engine",
         "transmission": "npc_transmission",
         "tires": "npc_tires",
-        "suspension": None,
+        "suspension": "npc_suspension",
         "chassis": "npc_chassis",
-        "turbo": None,
+        "turbo": "npc_turbo",
         "brakes": "npc_brakes",
     }
     cards: dict[str, dict[str, Any]] = {}
@@ -235,7 +237,7 @@ async def advance_tutorial(
             await send_dialogue(interaction, lines, title="🔧 Install Your Parts")
 
         elif step == TutorialStep.EQUIP and command_name == "equip":
-            # Check if they have minimum slots filled (engine + tires + brakes)
+            # Check if all 7 slots are filled
             from db.models import Build
 
             build_result = await session.execute(
@@ -251,18 +253,29 @@ async def advance_tutorial(
                 has_transmission = slots.get("transmission") is not None
                 has_tires = slots.get("tires") is not None
                 has_chassis = slots.get("chassis") is not None
+                has_suspension = slots.get("suspension") is not None
+                has_brakes = slots.get("brakes") is not None
+                has_turbo = slots.get("turbo") is not None
 
-                if has_engine and has_transmission and has_tires and has_chassis:
-                    # All minimum parts installed — move to garage
-                    user.tutorial_step = TutorialStep.GARAGE
+                all_filled = (
+                    has_engine
+                    and has_transmission
+                    and has_tires
+                    and has_chassis
+                    and has_suspension
+                    and has_brakes
+                    and has_turbo
+                )
+
+                if all_filled:
+                    user.tutorial_step = TutorialStep.MINT
                     await session.commit()
                     await send_dialogue(
                         interaction,
-                        dialogue["teach_garage"],
-                        title="🏗️ Check Your Build",
+                        dialogue["teach_build_preview"],
+                        title="🏎️ All Slots Filled",
                     )
                 else:
-                    # Still missing parts — remind them
                     missing = []
                     if not has_engine:
                         missing.append("Engine")
@@ -272,6 +285,12 @@ async def advance_tutorial(
                         missing.append("Tires")
                     if not has_chassis:
                         missing.append("Chassis")
+                    if not has_suspension:
+                        missing.append("Suspension")
+                    if not has_brakes:
+                        missing.append("Brakes")
+                    if not has_turbo:
+                        missing.append("Turbo")
                     await send_dialogue(
                         interaction,
                         [
@@ -279,6 +298,22 @@ async def advance_tutorial(
                         ],
                         title="🔧 Not Done Yet",
                     )
+
+        elif step == TutorialStep.MINT and command_name == "build_preview":
+            await send_dialogue(
+                interaction,
+                dialogue["teach_build_mint"],
+                title="📄 Mint Your Car Title",
+            )
+
+        elif step == TutorialStep.MINT and command_name == "build_mint":
+            user.tutorial_step = TutorialStep.GARAGE
+            await session.commit()
+            await send_dialogue(
+                interaction,
+                dialogue["teach_garage"],
+                title="🏗️ Check Your Build",
+            )
 
         elif step == TutorialStep.GARAGE and command_name == "garage":
             user.tutorial_step = TutorialStep.RACE
@@ -455,7 +490,9 @@ class TutorialCog(commands.Cog):
                 "**Starter Parts:**\n" + "\n".join(parts_lines) + "\n\n"
                 "**Junkyard Pack:**\n" + "\n".join(pack_lines) + "\n\n"
                 "💰 **+1,000 Creds**\n\n"
-                "Use `/autoequip best` to gear up, then `/race @player` to race. Good luck."
+                "Use `/autoequip best` to fill all 7 slots, then `/build mint` to mint your title. "
+                "Most races are class-gated — Street is open, higher classes need the right build. "
+                "Rare events also lock to a specific body type. Good luck."
             ),
             color=0x22C55E,
         )

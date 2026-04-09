@@ -393,7 +393,9 @@ class CardsCog(commands.Cog):
         embed.add_field(name="Slot", value=card.slot.value.title(), inline=True)
         embed.add_field(name="Rarity", value=card.rarity.value.title(), inline=True)
         embed.add_field(
-            name="Serial", value=f"#{user_copy.serial_number} of {card.total_minted}", inline=True
+            name="Print",
+            value=f"#{user_copy.serial_number} of {card.total_minted}",
+            inline=True,
         )
 
         # Wear indicator
@@ -407,45 +409,18 @@ class CardsCog(commands.Cog):
             wear_str = f"{races_left}/{lifespan} races left"
         embed.add_field(name="Wear", value=wear_str, inline=True)
 
-        primary = effective_stats.get("primary", {})
-        if primary:
-            base_primary = card.stats.get("primary", {})
-            bars = []
-            for stat, val in primary.items():
-                base = base_primary.get(stat, val)
-                filled = int(abs(val) / 100 * 10) if isinstance(val, (int, float)) else 0
-                filled = max(0, min(10, filled))
-                bar = "█" * filled + "░" * (10 - filled)
-                # Show delta from base
-                delta = (
-                    val - base
-                    if isinstance(val, (int, float)) and isinstance(base, (int, float))
-                    else 0
-                )
-                delta_str = f" ({delta:+.1f})" if abs(delta) > 0.01 else ""
-                bars.append(f"`{stat:>25s}` {bar} {val:.1f}{delta_str}")
-            embed.add_field(name="Primary Stats", value="\n".join(bars), inline=False)
-
-        secondary = effective_stats.get("secondary", {})
-        if secondary:
-            base_secondary = card.stats.get("secondary", {})
-            bars = []
-            for stat, val in secondary.items():
-                base = base_secondary.get(stat, val)
-                delta = (
-                    val - base
-                    if isinstance(val, (int, float)) and isinstance(base, (int, float))
-                    else 0
-                )
-                delta_str = f" ({delta:+.1f})" if abs(delta) > 0.01 else ""
-                if isinstance(val, float) and abs(val) < 2:
-                    bars.append(f"`{stat:>25s}` {val:.2f}{delta_str}")
-                else:
-                    filled = int(abs(val) / 100 * 10) if isinstance(val, (int, float)) else 0
-                    filled = max(0, min(10, filled))
-                    bar = "█" * filled + "░" * (10 - filled)
-                    bars.append(f"`{stat:>25s}` {bar} {val:.1f}{delta_str}")
-            embed.add_field(name="Secondary Stats", value="\n".join(bars), inline=False)
+        # Show stat deltas only if degradation has occurred
+        all_base = {**card.stats.get("primary", {}), **card.stats.get("secondary", {})}
+        all_eff = {**effective_stats.get("primary", {}), **effective_stats.get("secondary", {})}
+        delta_lines = []
+        for stat, base in all_base.items():
+            if not isinstance(base, (int, float)):
+                continue
+            eff = all_eff.get(stat, base)
+            if isinstance(eff, (int, float)) and abs(eff - base) > 0.01:
+                delta_lines.append(f"`{stat}` {eff:.1f} ({eff - base:+.1f})")
+        if delta_lines:
+            embed.add_field(name="Degraded Stats", value="\n".join(delta_lines), inline=False)
 
         if user_copy.is_foil:
             embed.set_footer(text="✨ Foil Edition")

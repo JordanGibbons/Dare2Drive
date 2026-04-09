@@ -1,7 +1,7 @@
 """Create rig_releases and rig_titles tables; add rig_title_id to builds
 
 Revision ID: 0009_create_rig_titles
-Revises: 0008_add_compatible_body_types_to_cards
+Revises: 0008_card_compat_body_types
 Create Date: 2026-04-08
 """
 
@@ -11,10 +11,11 @@ from typing import Sequence, Union
 
 import sqlalchemy as sa
 from alembic import op
+from sqlalchemy.dialects.postgresql import ENUM as PgEnum
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 
 revision: str = "0009_create_rig_titles"
-down_revision: Union[str, None] = "0008_add_compatible_body_types_to_cards"
+down_revision: Union[str, None] = "0008_card_compat_body_types"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
@@ -49,7 +50,7 @@ def upgrade() -> None:
         sa.Column("build_id", UUID(as_uuid=True), sa.ForeignKey("builds.id"), nullable=True),
         sa.Column(
             "body_type",
-            sa.Enum("muscle", "sport", "compact", name="bodytype", create_type=False),
+            PgEnum(name="bodytype", create_type=False),
             nullable=False,
         ),
         sa.Column("car_class", car_class_enum, nullable=False),

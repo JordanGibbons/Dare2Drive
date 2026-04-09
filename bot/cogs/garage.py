@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 import discord
 from discord import app_commands
 from discord.ext import commands
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from config.logging import get_logger
 from db.models import (
@@ -67,6 +67,85 @@ CLASS_EMOJI = {
 
 # Slots that define the rig's identity — locked once a title is minted
 CORE_SLOTS = {CardSlot.ENGINE.value, CardSlot.CHASSIS.value}
+
+
+def _subclass_label(car_class: CarClass | None, body_type: BodyType | None) -> str:
+    """
+    Format a human-readable subclass label combining class and body type.
+    e.g. "Drift Compact", "Drag Muscle", "Circuit Sport".
+    Falls back to just the body type if no class is known yet.
+    """
+    body_str = body_type.value.title() if body_type else "Unknown"
+    if car_class:
+        return f"{CLASS_EMOJI.get(car_class, '')} {car_class.value.title()} {body_str}"
+    return f"{BODY_EMOJI.get(body_type, '🚗')} {body_str}"
+
+
+async def _resolve_build(session, user_id: str, build_id: str | None = None) -> Build | None:
+    """
+    Resolve a build by its UUID string, or fall back to the default (is_active=True) build.
+    Always scopes to the given user — returns None if not found or not owned.
+    """
+    if build_id:
+        try:
+            bid = uuid.UUID(build_id)
+        except ValueError:
+            return None
+        result = await session.execute(
+            select(Build).where(Build.id == bid, Build.user_id == user_id)
+        )
+    else:
+        result = await session.execute(
+            select(Build).where(Build.user_id == user_id, Build.is_active)
+        )
+    return result.scalar_one_or_none()
+
+
+def _build_label(build: Build, title: RigTitle | None = None) -> str:
+    """Return a display label for a build, suitable for autocomplete choices."""
+    if title:
+        name = title.custom_name or title.auto_name
+        cls_emoji = CLASS_EMOJI.get(title.car_class, "")
+        body_str = title.body_type.value.title() if title.body_type else ""
+        label = f"{name} — {cls_emoji} {title.car_class.value.title()} {body_str}".strip()
+    else:
+        bt = build.body_type
+        bt_emoji = BODY_EMOJI.get(bt, "🚗")
+        body_str = bt.value.title() if bt else "Unknown"
+        filled = sum(1 for v in build.slots.values() if v is not None)
+        label = f"{build.name} · {bt_emoji} {body_str} ({filled}/7)"
+    if build.is_active:
+        label += " ★"
+    return label
+
+
+async def _build_choices_for_user(session, user_id: str) -> list[tuple[str, str]]:
+    """
+    Return (display_label, build_uuid_str) for all of a user's builds.
+    Default build first, then in insertion order.
+    """
+    result = await session.execute(
+        select(Build).where(Build.user_id == user_id).order_by(Build.is_active.desc())
+    )
+    builds = list(result.scalars().all())
+    choices = []
+    for b in builds:
+        title = await session.get(RigTitle, b.rig_title_id) if b.rig_title_id else None
+        choices.append((_build_label(b, title), str(b.id)))
+    return choices
+
+
+async def _build_name_autocomplete(
+    interaction: discord.Interaction, current: str
+) -> list[app_commands.Choice[str]]:
+    """Module-level autocomplete handler for any 'build' parameter."""
+    async with async_session() as session:
+        choices = await _build_choices_for_user(session, str(interaction.user.id))
+    return [
+        app_commands.Choice(name=label[:100], value=build_id)
+        for label, build_id in choices
+        if current.lower() in label.lower()
+    ][:25]
 
 
 class BodyTypeSelect(discord.ui.View):
@@ -235,26 +314,27 @@ class GarageCog(commands.Cog):
         await interaction.response.send_message(embed=embed, view=view)
 
     @app_commands.command(name="garage", description="View your current build")
-    async def garage(self, interaction: discord.Interaction) -> None:
+    @app_commands.describe(build="Which build to view (default: your default build)")
+    @app_commands.autocomplete(build=_build_name_autocomplete)
+    async def garage(self, interaction: discord.Interaction, build: str | None = None) -> None:
         async with async_session() as session:
             user = await session.get(User, str(interaction.user.id))
             if not user:
                 await interaction.response.send_message("Use `/start` first!", ephemeral=True)
                 return
 
-            result = await session.execute(
-                select(Build).where(Build.user_id == user.discord_id, Build.is_active)
-            )
-            build = result.scalar_one_or_none()
-            if not build:
-                await interaction.response.send_message("No active build found.", ephemeral=True)
+            b = await _resolve_build(session, user.discord_id, build_id=build)
+            if not b:
+                await interaction.response.send_message(
+                    "Build not found. Use `/build list` to see your builds.", ephemeral=True
+                )
                 return
 
             # Resolve card names for each slot (slots now store user_card_id)
             slot_lines = []
             best_rarity = "common"
             for slot in CardSlot:
-                uc_id_str = build.slots.get(slot.value)
+                uc_id_str = b.slots.get(slot.value)
                 if uc_id_str:
                     uc = await session.get(UserCard, uuid.UUID(uc_id_str))
                     if uc:
@@ -275,15 +355,32 @@ class GarageCog(commands.Cog):
                 else:
                     slot_lines.append(f"**{slot.value.title()}:** — Empty —")
 
-        emoji = BODY_EMOJI.get(user.body_type, "🚗")
+            # Load title info if one is minted
+            title = None
+            if b.rig_title_id:
+                title = await session.get(RigTitle, b.rig_title_id)
+
+        build_bt = b.body_type or user.body_type
+        car_class = title.car_class if title else None
+        subclass = _subclass_label(car_class, build_bt)
+
+        if title:
+            display_name = title.custom_name or title.auto_name
+            release_str = f"{title.release_serial:03d}"
+            header = f'**"{display_name}"** · #{release_str}\n**Type:** {subclass}'
+        else:
+            filled = sum(1 for v in b.slots.values() if v is not None)
+            header = f"**Type:** {subclass}\n**Slots:** {filled}/7 filled"
+
         embed = discord.Embed(
-            title=f"{emoji} {interaction.user.display_name}'s Garage",
-            description=f"**Body Type:** {user.body_type.value.title()}\n**Build:** {build.name}\n\n"  # noqa: E501
-            + "\n".join(slot_lines),
+            title=f"🔧 {interaction.user.display_name}'s Garage",
+            description=f"{header}\n\n" + "\n".join(slot_lines),
             color=RARITY_COLORS.get(best_rarity, 0x3B82F6),
         )
         embed.add_field(name="Creds", value=str(user.currency), inline=True)
         embed.add_field(name="XP", value=str(user.xp), inline=True)
+        if title:
+            embed.set_footer(text="🔒 Core parts locked · /build disassemble to rebuild")
 
         await interaction.response.send_message(embed=embed)
 
@@ -293,11 +390,22 @@ class GarageCog(commands.Cog):
         await advance_tutorial(interaction, str(interaction.user.id), "garage")
 
     @app_commands.command(name="equip", description="Equip a card to a build slot")
-    @app_commands.describe(slot="The slot to equip into", card_name="Name of the card to equip")
+    @app_commands.describe(
+        slot="The slot to equip into",
+        card_name="Name of the card to equip",
+        build="Which build to equip into (default: your default build)",
+    )
     @app_commands.choices(
         slot=[app_commands.Choice(name=s.value.title(), value=s.value) for s in CardSlot]
     )
-    async def equip(self, interaction: discord.Interaction, slot: str, card_name: str) -> None:
+    @app_commands.autocomplete(build=_build_name_autocomplete)
+    async def equip(
+        self,
+        interaction: discord.Interaction,
+        slot: str,
+        card_name: str,
+        build: str | None = None,
+    ) -> None:
         from bot.cogs.cards import _parse_card_input
 
         parsed_name, parsed_serial = _parse_card_input(card_name)
@@ -325,16 +433,15 @@ class GarageCog(commands.Cog):
                 )
                 return
 
-            build_result = await session.execute(
-                select(Build).where(Build.user_id == user.discord_id, Build.is_active)
-            )
-            build = build_result.scalar_one_or_none()
-            if not build:
-                await interaction.response.send_message("No active build found.", ephemeral=True)
+            b = await _resolve_build(session, user.discord_id, build_id=build)
+            if not b:
+                await interaction.response.send_message(
+                    "Build not found. Use `/build list` to see your builds.", ephemeral=True
+                )
                 return
 
             # Check body type compatibility
-            build_bt = build.body_type or user.body_type
+            build_bt = b.body_type or user.body_type
             if card.compatible_body_types is not None:
                 if build_bt and build_bt.value not in card.compatible_body_types:
                     compat_str = ", ".join(t.title() for t in card.compatible_body_types)
@@ -346,7 +453,7 @@ class GarageCog(commands.Cog):
                     return
 
             # Core-lock check — can't swap engine or chassis while a title is active
-            if build.core_locked and slot in CORE_SLOTS:
+            if b.core_locked and slot in CORE_SLOTS:
                 await interaction.response.send_message(
                     f"🔒 Your rig has a Car Title. You can't replace the **{slot.title()}** "
                     f"without disassembling first (`/build disassemble`).",
@@ -355,7 +462,7 @@ class GarageCog(commands.Cog):
                 return
 
             # Get IDs of copies already equipped in other slots
-            equipped_uc_ids = {uc_id for uc_id in build.slots.values() if uc_id is not None}
+            equipped_uc_ids = {uc_id for uc_id in b.slots.values() if uc_id is not None}
 
             # If a specific serial was requested, find that exact copy
             if parsed_serial is not None:
@@ -402,8 +509,8 @@ class GarageCog(commands.Cog):
 
             # If a title is active and this is a wear slot, log the swap
             old_card_name: str | None = None
-            if build.core_locked and build.rig_title_id:
-                old_uc_id = build.slots.get(slot)
+            if b.core_locked and b.rig_title_id:
+                old_uc_id = b.slots.get(slot)
                 if old_uc_id:
                     old_uc = await session.get(UserCard, uuid.UUID(old_uc_id))
                     if old_uc:
@@ -411,13 +518,13 @@ class GarageCog(commands.Cog):
                         old_card_name = old_card_obj.name if old_card_obj else None
 
             # Equip the specific copy
-            new_slots = dict(build.slots)
+            new_slots = dict(b.slots)
             new_slots[slot] = str(chosen.id)
-            build.slots = new_slots
+            b.slots = new_slots
 
             # Append to part_swap_log on the active title
-            if build.core_locked and build.rig_title_id:
-                title = await session.get(RigTitle, build.rig_title_id)
+            if b.core_locked and b.rig_title_id:
+                title = await session.get(RigTitle, b.rig_title_id)
                 if title:
                     swap_log = list(title.part_swap_log or [])
                     swap_log.append(
@@ -454,14 +561,20 @@ class GarageCog(commands.Cog):
     @app_commands.command(
         name="autoequip", description="Auto-equip your best or worst parts into every slot"
     )
-    @app_commands.describe(mode="Equip your best or worst parts")
+    @app_commands.describe(
+        mode="Equip your best or worst parts",
+        build="Which build to equip into (default: your default build)",
+    )
     @app_commands.choices(
         mode=[
             app_commands.Choice(name="Best (highest rarity)", value="best"),
             app_commands.Choice(name="Worst (lowest rarity)", value="worst"),
         ]
     )
-    async def autoequip(self, interaction: discord.Interaction, mode: str) -> None:
+    @app_commands.autocomplete(build=_build_name_autocomplete)
+    async def autoequip(
+        self, interaction: discord.Interaction, mode: str, build: str | None = None
+    ) -> None:
         use_best = mode == "best"
 
         async with async_session() as session:
@@ -470,12 +583,11 @@ class GarageCog(commands.Cog):
                 await interaction.response.send_message("Use `/start` first!", ephemeral=True)
                 return
 
-            build_result = await session.execute(
-                select(Build).where(Build.user_id == user.discord_id, Build.is_active)
-            )
-            build = build_result.scalar_one_or_none()
-            if not build:
-                await interaction.response.send_message("No active build found.", ephemeral=True)
+            b = await _resolve_build(session, user.discord_id, build_id=build)
+            if not b:
+                await interaction.response.send_message(
+                    "Build not found. Use `/build list` to see your builds.", ephemeral=True
+                )
                 return
 
             # Load all user's cards with their Card relationship
@@ -504,9 +616,11 @@ class GarageCog(commands.Cog):
                 )
 
             # Assign one card per slot, no card used twice
-            new_slots = dict(build.slots)
+            old_slots = dict(b.slots)
+            new_slots = dict(b.slots)
             used_ids: set[str] = set()
             equipped_lines = []
+            chosen_by_slot: dict[str, UserCard | None] = {}
 
             for slot in CardSlot:
                 candidates = by_slot.get(slot.value, [])
@@ -515,6 +629,7 @@ class GarageCog(commands.Cog):
                     if str(uc.id) not in used_ids:
                         chosen = uc
                         break
+                chosen_by_slot[slot.value] = chosen
                 if chosen:
                     new_slots[slot.value] = str(chosen.id)
                     used_ids.add(str(chosen.id))
@@ -526,7 +641,36 @@ class GarageCog(commands.Cog):
                     new_slots[slot.value] = None
                     equipped_lines.append(f"**{slot.value.title()}:** — Empty —")
 
-            build.slots = new_slots
+            b.slots = new_slots
+
+            # Log part swaps to the title if minted
+            if b.core_locked and b.rig_title_id:
+                title = await session.get(RigTitle, b.rig_title_id)
+                if title:
+                    ts = datetime.now(timezone.utc).isoformat()
+                    swap_log = list(title.part_swap_log or [])
+                    for slot_val in CardSlot:
+                        sn = slot_val.value
+                        if old_slots.get(sn) == new_slots.get(sn):
+                            continue
+                        old_uc_id = old_slots.get(sn)
+                        old_name = None
+                        if old_uc_id:
+                            old_uc = await session.get(UserCard, uuid.UUID(old_uc_id))
+                            if old_uc:
+                                old_card_obj = await session.get(Card, old_uc.card_id)
+                                old_name = old_card_obj.name if old_card_obj else None
+                        new_uc = chosen_by_slot.get(sn)
+                        swap_log.append(
+                            {
+                                "timestamp": ts,
+                                "slot": sn,
+                                "old_card_name": old_name,
+                                "new_card_name": new_uc.card.name if new_uc else None,
+                            }
+                        )
+                    title.part_swap_log = swap_log
+
             await session.commit()
 
         label = "best" if use_best else "worst"
@@ -618,7 +762,11 @@ class GarageCog(commands.Cog):
     build_group = app_commands.Group(name="build", description="Manage your rig build")
 
     @build_group.command(name="preview", description="Preview your build's class and stats")
-    async def build_preview(self, interaction: discord.Interaction) -> None:
+    @app_commands.describe(build="Which build to preview (default: your default build)")
+    @app_commands.autocomplete(build=_build_name_autocomplete)
+    async def build_preview(
+        self, interaction: discord.Interaction, build: str | None = None
+    ) -> None:
         await interaction.response.defer(ephemeral=True)
 
         async with async_session() as session:
@@ -627,18 +775,17 @@ class GarageCog(commands.Cog):
                 await interaction.followup.send("Use `/start` first!", ephemeral=True)
                 return
 
-            build_result = await session.execute(
-                select(Build).where(Build.user_id == user.discord_id, Build.is_active)
-            )
-            build = build_result.scalar_one_or_none()
-            if not build:
-                await interaction.followup.send("No active build found.", ephemeral=True)
+            b = await _resolve_build(session, user.discord_id, build_id=build)
+            if not b:
+                await interaction.followup.send(
+                    "Build not found. Use `/build list` to see your builds.", ephemeral=True
+                )
                 return
 
             # Load cards for stat resolution
             cards: dict = {}
             for slot in CardSlot:
-                uc_id_str = build.slots.get(slot.value)
+                uc_id_str = b.slots.get(slot.value)
                 if not uc_id_str:
                     continue
                 uc = await session.get(UserCard, uuid.UUID(uc_id_str))
@@ -650,12 +797,12 @@ class GarageCog(commands.Cog):
                 effective_stats = apply_stat_modifiers(card.stats, uc.stat_modifiers or {})
                 cards[uc_id_str] = {"slot": card.slot.value, "stats": effective_stats}
 
-            body_type = build.body_type or user.body_type
+            body_type = b.body_type or user.body_type
             stats = aggregate_build(
-                build.slots, cards, body_type=body_type.value if body_type else None
+                b.slots, cards, body_type=body_type.value if body_type else None
             )
 
-            filled = sum(1 for v in build.slots.values() if v is not None)
+            filled = sum(1 for v in b.slots.values() if v is not None)
             all_filled = filled == len(CardSlot)
 
             trending = trending_toward(stats, body_type)
@@ -670,28 +817,38 @@ class GarageCog(commands.Cog):
                 pct_display = f"{int(pct * 100)}%"
                 lines.append(f"{emoji} **{car_class.value.upper()}** {bar(pct)} {pct_display}")
 
-            body_str = body_type.value.title() if body_type else "Unknown"
-            title_str = "🔒 Minted Rig" if build.core_locked else f"🔧 {build.name}"
-
             if all_filled:
                 actual_class = calculate_class(stats, body_type)
-                class_emoji = CLASS_EMOJI.get(actual_class, "")
-                desc = f"**Assigned Class:** {class_emoji} {actual_class.value.upper()}\n\n"
+                subclass = _subclass_label(actual_class, body_type)
+                desc = f"**Type:** {subclass}\n\n"
             else:
-                desc = f"**Slots filled:** {filled}/7 — fill all slots to mint\n\n"
+                subclass = _subclass_label(None, body_type)
+                desc = (
+                    f"**Type:** {subclass} *(class assigned at mint)*\n"
+                    f"**Slots filled:** {filled}/7\n\n"
+                )
 
             desc += "\n".join(lines)
 
+            lock_str = "🔒 Minted" if b.core_locked else "🔧 In Progress"
             embed = discord.Embed(
-                title=f"{title_str} · {body_str}",
+                title=f"{lock_str} · Build Preview",
                 description=desc,
                 color=0x3B82F6,
             )
-            embed.set_footer(text="Use /build mint to lock in your class and mint a Car Title")
+            if not b.core_locked:
+                embed.set_footer(text="Use /build mint to lock in your class and mint a Car Title")
             await interaction.followup.send(embed=embed, ephemeral=True)
 
+        # Tutorial progression
+        from bot.cogs.tutorial import advance_tutorial
+
+        await advance_tutorial(interaction, str(interaction.user.id), "build_preview")
+
     @build_group.command(name="mint", description="Mint a Car Title for your completed build")
-    async def build_mint(self, interaction: discord.Interaction) -> None:
+    @app_commands.describe(build="Which build to mint (default: your default build)")
+    @app_commands.autocomplete(build=_build_name_autocomplete)
+    async def build_mint(self, interaction: discord.Interaction, build: str | None = None) -> None:
         await interaction.response.defer(ephemeral=True)
 
         async with async_session() as session:
@@ -700,15 +857,14 @@ class GarageCog(commands.Cog):
                 await interaction.followup.send("Use `/start` first!", ephemeral=True)
                 return
 
-            build_result = await session.execute(
-                select(Build).where(Build.user_id == user.discord_id, Build.is_active)
-            )
-            build = build_result.scalar_one_or_none()
-            if not build:
-                await interaction.followup.send("No active build found.", ephemeral=True)
+            b = await _resolve_build(session, user.discord_id, build_id=build)
+            if not b:
+                await interaction.followup.send(
+                    "Build not found. Use `/build list` to see your builds.", ephemeral=True
+                )
                 return
 
-            if build.core_locked:
+            if b.core_locked:
                 await interaction.followup.send(
                     "Your build already has a Car Title. "
                     "Use `/build disassemble` first to rebuild.",
@@ -717,7 +873,7 @@ class GarageCog(commands.Cog):
                 return
 
             # All 7 slots must be filled
-            missing = [s.value for s in CardSlot if not build.slots.get(s.value)]
+            missing = [s.value for s in CardSlot if not b.slots.get(s.value)]
             if missing:
                 missing_str = ", ".join(s.title() for s in missing)
                 await interaction.followup.send(
@@ -730,7 +886,7 @@ class GarageCog(commands.Cog):
             cards: dict = {}
             snapshot: dict = {}
             for slot in CardSlot:
-                uc_id_str = build.slots[slot.value]
+                uc_id_str = b.slots[slot.value]
                 uc = await session.get(UserCard, uuid.UUID(uc_id_str))
                 if not uc:
                     await interaction.followup.send(
@@ -755,9 +911,9 @@ class GarageCog(commands.Cog):
                     "rarity": card.rarity.value,
                 }
 
-            body_type = build.body_type or user.body_type
+            body_type = b.body_type or user.body_type
             stats = aggregate_build(
-                build.slots, cards, body_type=body_type.value if body_type else None
+                b.slots, cards, body_type=body_type.value if body_type else None
             )
             car_class = calculate_class(stats, body_type)
             auto_name = generate_rig_name(car_class, body_type, stats)
@@ -785,7 +941,7 @@ class GarageCog(commands.Cog):
                 release_id=release.id,
                 release_serial=serial,
                 owner_id=user.discord_id,
-                build_id=build.id,
+                build_id=b.id,
                 body_type=body_type,
                 car_class=car_class,
                 status=RigStatus.ACTIVE,
@@ -806,8 +962,8 @@ class GarageCog(commands.Cog):
             session.add(title)
             await session.flush()  # get title.id before updating build
 
-            build.core_locked = True
-            build.rig_title_id = title.id
+            b.core_locked = True
+            b.rig_title_id = title.id
             await session.commit()
 
         class_emoji = CLASS_EMOJI.get(car_class, "")
@@ -833,41 +989,57 @@ class GarageCog(commands.Cog):
         )
         await interaction.followup.send(embed=embed)
 
+        # Tutorial progression
+        from bot.cogs.tutorial import advance_tutorial
+
+        await advance_tutorial(interaction, str(interaction.user.id), "build_mint")
+
     @build_group.command(
         name="disassemble", description="Scrap your Car Title and unlock your build"
     )
-    async def build_disassemble(self, interaction: discord.Interaction) -> None:
+    @app_commands.describe(build="Which build to disassemble (default: your default build)")
+    @app_commands.autocomplete(build=_build_name_autocomplete)
+    async def build_disassemble(
+        self, interaction: discord.Interaction, build: str | None = None
+    ) -> None:
+        build_id_after_confirm: uuid.UUID | None = None
+
         async with async_session() as session:
             user = await session.get(User, str(interaction.user.id))
             if not user:
                 await interaction.response.send_message("Use `/start` first!", ephemeral=True)
                 return
 
-            build_result = await session.execute(
-                select(Build).where(Build.user_id == user.discord_id, Build.is_active)
-            )
-            build = build_result.scalar_one_or_none()
-            if not build or not build.core_locked or not build.rig_title_id:
+            b = await _resolve_build(session, user.discord_id, build_id=build)
+            if not b or not b.core_locked or not b.rig_title_id:
                 await interaction.response.send_message(
-                    "You don't have an active Car Title to disassemble.", ephemeral=True
+                    "That build doesn't have a Car Title to disassemble.", ephemeral=True
                 )
                 return
 
-            title = await session.get(RigTitle, build.rig_title_id)
+            title = await session.get(RigTitle, b.rig_title_id)
             if not title:
                 await interaction.response.send_message("Car Title not found.", ephemeral=True)
                 return
+
+            build_id_after_confirm = b.id
+            was_default = b.is_active
 
         title_display = title.custom_name or title.auto_name
         serial_str = f"#{title.release_serial:03d}"
 
         view = _ConfirmView(interaction.user.id)
+        default_warning = (
+            "\n\n⚠️ This is your default build — use `/build set-default` afterwards."
+            if was_default
+            else ""
+        )  # noqa: E501
         embed = discord.Embed(
             title="⚠️ Disassemble Rig?",
             description=(
                 f'This will permanently scrap **"{title_display}"** {serial_str}.\n\n'
                 "The title's history is preserved but it can no longer be raced.\n"
-                "All parts stay in your inventory."
+                f"All parts stay in your inventory.{default_warning}"
             ),
             color=0xEF4444,
         )
@@ -881,13 +1053,13 @@ class GarageCog(commands.Cog):
             return
 
         async with async_session() as session:
-            build = await session.get(Build, build.id)
-            title = await session.get(RigTitle, build.rig_title_id)
-            if build and title:
+            b = await session.get(Build, build_id_after_confirm)
+            title = await session.get(RigTitle, b.rig_title_id)
+            if b and title:
                 title.status = RigStatus.SCRAPPED
                 title.build_id = None
-                build.core_locked = False
-                build.rig_title_id = None
+                b.core_locked = False
+                b.rig_title_id = None
                 await session.commit()
 
         await interaction.edit_original_response(
@@ -896,13 +1068,167 @@ class GarageCog(commands.Cog):
             view=None,
         )
 
+    @build_group.command(name="new", description="Open a new build slot (500 Creds)")
+    @app_commands.describe(body_type="Body type for the new build")
+    @app_commands.choices(
+        body_type=[
+            app_commands.Choice(name="💪 Muscle", value="muscle"),
+            app_commands.Choice(name="🏎️ Sport", value="sport"),
+            app_commands.Choice(name="🚗 Compact", value="compact"),
+        ]
+    )
+    async def build_new(self, interaction: discord.Interaction, body_type: str) -> None:
+        from bot.cogs.tutorial import is_tutorial_complete
+
+        BUILD_SLOT_COST = 500
+
+        async with async_session() as session:
+            user = await session.get(User, str(interaction.user.id))
+            if not user:
+                await interaction.response.send_message("Use `/start` first!", ephemeral=True)
+                return
+
+            if not is_tutorial_complete(user):
+                await interaction.response.send_message(
+                    "Finish the tutorial before managing multiple builds.", ephemeral=True
+                )
+                return
+
+            if user.currency < BUILD_SLOT_COST:
+                await interaction.response.send_message(
+                    f"You need **{BUILD_SLOT_COST} Creds** to open a new build slot. "
+                    f"You have **{user.currency}**.",
+                    ephemeral=True,
+                )
+                return
+
+            bt = BodyType(body_type)
+
+            # Deactivate current default, deduct cost, create new build
+            user.currency -= BUILD_SLOT_COST
+            await session.execute(
+                update(Build).where(Build.user_id == user.discord_id).values(is_active=False)
+            )
+            new_build = Build(
+                user_id=user.discord_id,
+                name="New Build",
+                slots={slot.value: None for slot in CardSlot},
+                is_active=True,
+                body_type=bt,
+            )
+            session.add(new_build)
+            await session.commit()
+
+        bt_emoji = BODY_EMOJI.get(bt, "🚗")
+        await interaction.response.send_message(
+            f"✅ New **{bt_emoji} {bt.value.title()}** build created and set as default.\n"
+            f"Use `/equip` or `/autoequip` to fill it. **−{BUILD_SLOT_COST} Creds**",
+            ephemeral=True,
+        )
+
+    @build_group.command(name="list", description="List all your builds")
+    async def build_list(self, interaction: discord.Interaction) -> None:
+        async with async_session() as session:
+            user = await session.get(User, str(interaction.user.id))
+            if not user:
+                await interaction.response.send_message("Use `/start` first!", ephemeral=True)
+                return
+
+            result = await session.execute(
+                select(Build)
+                .where(Build.user_id == user.discord_id)
+                .order_by(Build.is_active.desc())
+            )
+            builds = list(result.scalars().all())
+
+            lines = []
+            for b in builds:
+                title = await session.get(RigTitle, b.rig_title_id) if b.rig_title_id else None
+                bt = b.body_type
+                bt_emoji = BODY_EMOJI.get(bt, "🚗")
+                default_marker = " ★ **default**" if b.is_active else ""
+
+                if title:
+                    display_name = title.custom_name or title.auto_name
+                    subclass = _subclass_label(title.car_class, title.body_type)
+                    serial = f"#{title.release_serial:03d}"
+                    lines.append(
+                        f"{bt_emoji} **{display_name}** {serial} · {subclass}{default_marker}"
+                    )
+                else:
+                    filled = sum(1 for v in b.slots.values() if v is not None)
+                    subclass = _subclass_label(None, bt)
+                    lines.append(
+                        f"{bt_emoji} **{b.name}** · {subclass} ({filled}/7){default_marker}"
+                    )
+
+        embed = discord.Embed(
+            title="🔧 Your Builds",
+            description="\n".join(lines) or "No builds found.",
+            color=0x3B82F6,
+        )
+        embed.set_footer(text="/build set-default to switch · /build new to add a slot (500 Creds)")
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    @build_group.command(name="set-default", description="Set a build as your default")
+    @app_commands.describe(build="The build to set as default")
+    @app_commands.autocomplete(build=_build_name_autocomplete)
+    async def build_set_default(self, interaction: discord.Interaction, build: str) -> None:
+        try:
+            build_uuid = uuid.UUID(build)
+        except ValueError:
+            await interaction.response.send_message("Invalid build selection.", ephemeral=True)
+            return
+
+        async with async_session() as session:
+            user = await session.get(User, str(interaction.user.id))
+            if not user:
+                await interaction.response.send_message("Use `/start` first!", ephemeral=True)
+                return
+
+            result = await session.execute(
+                select(Build).where(Build.id == build_uuid, Build.user_id == user.discord_id)
+            )
+            target = result.scalar_one_or_none()
+            if not target:
+                await interaction.response.send_message("Build not found.", ephemeral=True)
+                return
+
+            if target.is_active:
+                await interaction.response.send_message(
+                    "That's already your default build.", ephemeral=True
+                )
+                return
+
+            # Get display name before committing
+            title = (
+                await session.get(RigTitle, target.rig_title_id) if target.rig_title_id else None
+            )  # noqa: E501
+            display_name = (title.custom_name or title.auto_name) if title else target.name
+
+            await session.execute(
+                update(Build).where(Build.user_id == user.discord_id).values(is_active=False)
+            )
+            target.is_active = True
+            await session.commit()
+
+        await interaction.response.send_message(
+            f"✅ **{display_name}** is now your default build.", ephemeral=True
+        )
+
     # ── /rig subcommands ───────────────────────────────────────────────────────
 
     rig_group = app_commands.Group(name="rig", description="Manage your Car Title")
 
     @rig_group.command(name="rename", description="Set a custom name for your Car Title")
-    @app_commands.describe(name="Your custom name (max 50 characters)")
-    async def rig_rename(self, interaction: discord.Interaction, name: str) -> None:
+    @app_commands.describe(
+        name="Your custom name (max 50 characters)",
+        build="Which build's title to rename (default: your default build)",
+    )
+    @app_commands.autocomplete(build=_build_name_autocomplete)
+    async def rig_rename(
+        self, interaction: discord.Interaction, name: str, build: str | None = None
+    ) -> None:
         if len(name) > 50:
             await interaction.response.send_message(
                 "Name must be 50 characters or fewer.", ephemeral=True
@@ -915,18 +1241,15 @@ class GarageCog(commands.Cog):
                 await interaction.response.send_message("Use `/start` first!", ephemeral=True)
                 return
 
-            build_result = await session.execute(
-                select(Build).where(Build.user_id == user.discord_id, Build.is_active)
-            )
-            build = build_result.scalar_one_or_none()
-            if not build or not build.core_locked or not build.rig_title_id:
+            b = await _resolve_build(session, user.discord_id, build_id=build)
+            if not b or not b.core_locked or not b.rig_title_id:
                 await interaction.response.send_message(
-                    "You don't have an active Car Title to rename. Mint one with `/build mint`.",
+                    "That build doesn't have a Car Title to rename. Mint one with `/build mint`.",
                     ephemeral=True,
                 )
                 return
 
-            title = await session.get(RigTitle, build.rig_title_id)
+            title = await session.get(RigTitle, b.rig_title_id)
             if not title:
                 await interaction.response.send_message("Car Title not found.", ephemeral=True)
                 return
