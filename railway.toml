@@ -6,10 +6,18 @@ name = "bot"
 buildCommand = "docker build -f docker/Dockerfile.prod --target runtime -t dare2drive-bot ."
 startCommand = "python -m bot.main"
 
+[services.variables]
+DATABASE_URL = "${{Postgres.DATABASE_URL}}"
+REDIS_URL = "${{Redis.REDIS_URL}}"
+
 [[services]]
 name = "api"
 buildCommand = "docker build -f docker/Dockerfile.prod --target runtime -t dare2drive-api ."
 startCommand = "uvicorn api.main:app --host 0.0.0.0 --port ${PORT:-8000}"
+
+[services.variables]
+DATABASE_URL = "${{Postgres.DATABASE_URL}}"
+REDIS_URL = "${{Redis.REDIS_URL}}"
 
 [[services]]
 name = "ntfy-relay"
