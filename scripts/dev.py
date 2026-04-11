@@ -345,15 +345,131 @@ def seed():
     "--type",
     "-t",
     type=click.Choice(["feat", "fix", "docs", "chore", "test", "refactor", "ci"]),
-    help="Commit type",
+    help="Commit type (skips interactive if provided with --message)",
 )
-def commit(type: str):
-    """💬 Interactive commit using commitizen."""
-    if type:
-        click.echo(f"Creating {type} commit...")
+@click.option("--message", "-m", help="Commit message (requires --type)")
+@click.option("--add", "-a", is_flag=True, help="Automatically stage all modified files")
+@click.option("--push", "-p", is_flag=True, help="Push after committing")
+@click.option("--no-verify", is_flag=True, help="Skip pre-commit hooks (use sparingly)")
+def commit(type: str, message: str, add: bool, push: bool, no_verify: bool):
+    """💬 Smart commit with auto-staging and pushing.
+
+    Examples:
+      d2d commit                            # Interactive commitizen
+      d2d commit -a                         # Stage all changes first
+      d2d commit -t feat -m "add feature"   # Quick commit
+      d2d commit -ap                        # Stage all, commit, and push
+    """
+    # Check if commitizen is available
+    if not check_command("cz"):
+        click.secho("✗ Commitizen not installed", fg="red")
+        click.echo('Install: pip install -e ".[dev]"')
+        sys.exit(1)
+
+    if add:
+        # Auto-stage modified and deleted files
+        click.echo("Staging all changes...")
+        modified_result = subprocess.run(
+            "git status --porcelain", shell=True, capture_output=True, text=True
+        )
+
+        if modified_result.stdout.strip():
+            run("git add -u")  # Stage modified and deleted files
+            click.secho("✓ Staged all modified files", fg="green")
+        else:
+            click.secho("✗ No changes to stage", fg="yellow")
+            sys.exit(0)
+
+    # Check if there are staged changes
+    staged_result = subprocess.run(
+        "git diff --cached --name-only", shell=True, capture_output=True, text=True
+    )
+
+    if not staged_result.stdout.strip():
+        click.secho("✗ No staged changes to commit", fg="yellow")
+        click.echo("Stage files with: git add <files>")
+        click.echo("Or use: d2d commit -a (to stage all modified files)")
+        sys.exit(0)
+
+    # Show what will be committed
+    click.echo()
+    click.secho("Files to commit:", fg="cyan")
+    run("git diff --cached --name-status", check=False)
+    click.echo()
+
+    # Build commit command
+    if message and type:
+        # Quick commit with type and message
+        commit_msg = f"{type}: {message}"
+        cmd = f'git commit -m "{commit_msg}"'
+        if no_verify:
+            cmd += " --no-verify"
+
+        click.secho(f"Creating commit: {commit_msg}", fg="cyan")
+        result = subprocess.run(cmd, shell=True, check=False)
+
+        if result.returncode != 0:
+            click.secho("✗ Commit failed", fg="red")
+            sys.exit(1)
+    elif message and not type:
+        click.secho("✗ --message requires --type", fg="red")
+        click.echo("Example: d2d commit -t feat -m 'add new feature'")
+        sys.exit(1)
     else:
-        click.echo("Interactive commit...")
-    run("cz commit")
+        # Interactive commitizen
+        if type:
+            click.echo(f"Creating {type} commit (interactive)...")
+        else:
+            click.echo("Interactive commit...")
+
+        cmd = "cz commit"
+        if no_verify:
+            cmd += " -- --no-verify"
+
+        result = subprocess.run(cmd, shell=True, check=False)
+
+        if result.returncode != 0:
+            click.secho("✗ Commit cancelled or failed", fg="yellow")
+            sys.exit(1)
+
+    click.secho("✓ Commit created successfully!", fg="green")
+
+    # Push if requested
+    if push:
+        click.echo()
+        click.echo("Pushing to remote...")
+
+        # Check if branch has upstream
+        branch_result = subprocess.run(
+            "git rev-parse --abbrev-ref --symbolic-full-name @{u}",
+            shell=True,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        if branch_result.returncode != 0:
+            # No upstream, set it
+            current_branch = subprocess.run(
+                "git branch --show-current",
+                shell=True,
+                capture_output=True,
+                text=True,
+                check=True,
+            ).stdout.strip()
+
+            click.echo(f"Setting upstream to origin/{current_branch}...")
+            push_result = subprocess.run(
+                f"git push -u origin {current_branch}", shell=True, check=False
+            )
+        else:
+            push_result = subprocess.run("git push", shell=True, check=False)
+
+        if push_result.returncode == 0:
+            click.secho("✓ Pushed to remote!", fg="green")
+        else:
+            click.secho("✗ Push failed", fg="red")
+            sys.exit(1)
 
 
 @cli.command()
@@ -444,6 +560,88 @@ def check():
         click.secho("    ║  ✅ ALL CHECKS PASSED! ✅  ║", fg="green", bold=True)
         click.secho("    ╚═══════════════════════════╝", fg="green", bold=True)
         click.echo()
+
+
+@cli.command()
+@click.option("--base", "-b", default="demo", help="Base branch to merge into (default: demo)")
+@click.option("--draft", "-d", is_flag=True, help="Create as draft PR")
+@click.option("--web", "-w", is_flag=True, help="Open in web browser to fill template")
+def pr(base: str, draft: bool, web: bool):
+    """🔀 Create a pull request to demo branch."""
+    if not check_command("gh"):
+        click.secho("✗ GitHub CLI (gh) not installed", fg="red")
+        click.echo("Install: https://cli.github.com/")
+        sys.exit(1)
+
+    # Check if user is authenticated
+    if not run_quiet("gh auth status"):
+        click.secho("✗ Not authenticated with GitHub", fg="red")
+        click.echo("Run: gh auth login")
+        sys.exit(1)
+
+    # Get current branch name
+    result = subprocess.run(
+        "git branch --show-current", shell=True, capture_output=True, text=True, check=True
+    )
+    current_branch = result.stdout.strip()
+
+    if current_branch == base:
+        click.secho(f"✗ Cannot create PR from {base} to itself", fg="red")
+        click.echo("Switch to a feature branch first: git checkout -b feat/your-feature")
+        sys.exit(1)
+
+    if current_branch == "main":
+        click.secho("⚠️  You're on main branch", fg="yellow")
+        if base != "demo":
+            click.echo(f"Creating PR: main → {base}")
+        else:
+            click.echo("Creating PR: main → demo")
+            click.echo("(This should be for stable releases only)")
+
+    # Get latest commit message for title suggestion
+    result = subprocess.run(
+        "git log -1 --pretty=%s", shell=True, capture_output=True, text=True, check=True
+    )
+    suggested_title = result.stdout.strip()
+
+    click.echo()
+    click.secho(f"📋 Creating PR: {current_branch} → {base}", fg="cyan", bold=True)
+    click.echo()
+    click.echo(f"Suggested title: {suggested_title}")
+    click.echo()
+
+    # Build gh pr create command
+    cmd = ["gh", "pr", "create", "--base", base]
+
+    if draft:
+        cmd.append("--draft")
+
+    if web:
+        # Open in web browser to fill template manually
+        cmd.append("--web")
+        click.echo("Opening PR in web browser...")
+    else:
+        # Use interactive mode in terminal
+        cmd.extend(["--fill"])  # Auto-fill title and body from commits
+        click.echo("Creating PR with auto-generated content...")
+        click.echo("(You can edit the PR description after creation)")
+
+    # Run the command
+    result = subprocess.run(cmd, check=False)
+
+    if result.returncode == 0:
+        click.echo()
+        click.secho("✓ Pull request created!", fg="green", bold=True)
+        click.echo()
+        click.echo("Next steps:")
+        click.echo("  • Review the PR description and edit if needed")
+        click.echo("  • Request reviews from team members")
+        click.echo("  • Wait for CI checks to pass")
+    else:
+        click.echo()
+        click.secho("✗ Failed to create PR", fg="red")
+        click.echo("Check the error message above for details")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
