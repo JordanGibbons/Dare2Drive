@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import enum
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings
 
 
@@ -17,6 +18,16 @@ class Settings(BaseSettings):
 
     # Database — Railway injects this in production
     DATABASE_URL: str = "postgresql+asyncpg://dare2drive:dare2drive@db:5432/dare2drive"
+
+    @field_validator("DATABASE_URL", mode="before")
+    @classmethod
+    def normalize_database_url(cls, v: str) -> str:
+        """Normalize Railway's postgresql:// or postgres:// to postgresql+asyncpg://."""
+        if v.startswith("postgres://"):
+            return v.replace("postgres://", "postgresql+asyncpg://", 1)
+        if v.startswith("postgresql://"):
+            return v.replace("postgresql://", "postgresql+asyncpg://", 1)
+        return v
 
     # Redis — Railway injects this in production
     REDIS_URL: str = "redis://redis:6379/0"
