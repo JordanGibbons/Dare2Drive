@@ -27,3 +27,4 @@ RUN chown -R dare2drive:dare2drive /app
 USER dare2drive
 
 ENTRYPOINT ["docker/entrypoint.sh"]
+CMD ["python", "-m", "bot.main"]
