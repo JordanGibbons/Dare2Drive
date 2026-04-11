@@ -4,7 +4,7 @@ global:
 
 # Default receiver for any alert that does not match a more specific route.
 route:
-  receiver: ntfy_team
+  receiver: all_channels
   group_by: ["alertname", "severity"]
   group_wait: 30s
   group_interval: 5m
@@ -14,20 +14,18 @@ route:
     # Critical alerts page immediately with a shorter repeat.
     - match:
         severity: critical
-      receiver: ntfy_team
+      receiver: all_channels
       repeat_interval: 30m
 
 receivers:
-  - name: ntfy_team
+  - name: all_channels
     webhook_configs:
-      # ntfy.sh is a free, open-source push-notification service.
-      # Install the ntfy app (iOS / Android) and subscribe to NTFY_TOPIC.
-      # Set NTFY_TOPIC to a long, private, random string so only your team
-      # can subscribe (e.g. "dare2drive-alerts-xK9mP3").
-      - url: "http://ntfy-relay:9096/ntfy"  # internal relay that adds auth headers
+      # The relay fans out to both ntfy.sh (phone push) and the Discord webhook.
+      # Configure NTFY_TOPIC and/or DISCORD_WEBHOOK_URL on the ntfy-relay service.
+      # Either destination is optional — leave the env var empty to disable it.
+      - url: "http://ntfy-relay:9096/alerts"
         send_resolved: true
         max_alerts: 10
-        # The message body is templated by Alertmanager.
         http_config:
           follow_redirects: true
 

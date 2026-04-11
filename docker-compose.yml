@@ -166,8 +166,10 @@ services:
       - "9096:9096"
     environment:
       - NTFY_URL=${NTFY_URL:-https://ntfy.sh}
-      - NTFY_TOPIC=${NTFY_TOPIC:-dare2drive-alerts}
+      - NTFY_TOPIC=${NTFY_TOPIC:-}
       - NTFY_TOKEN=${NTFY_TOKEN:-}
+      - DISCORD_WEBHOOK_URL=${DISCORD_WEBHOOK_URL:-}
+      - DISCORD_WEBHOOK_URL_CRITICAL=${DISCORD_WEBHOOK_URL_CRITICAL:-}
     networks:
       - dare2drive_net
     restart: unless-stopped
@@ -202,4 +204,3 @@ volumes:
 networks:
   dare2drive_net:
     driver: bridge
-
