@@ -16,6 +16,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from api.metrics import currency_spent, daily_claimed, packs_opened
 from config.logging import get_logger
 from config.settings import settings
 from db.models import Build, Card, CardSlot, Rarity, User, UserCard
@@ -227,6 +228,8 @@ class CardsCog(commands.Cog):
 
             await session.commit()
 
+        daily_claimed.inc()
+
         embed = discord.Embed(
             title="💰 Daily Reward",
             description="You earned **100 Creds** and a full set of parts!",
@@ -286,6 +289,9 @@ class CardsCog(commands.Cog):
                 minted.append((card, uc))
 
             await session.commit()
+
+        packs_opened.labels(pack_type=pack_type).inc()
+        currency_spent.labels(reason=pack_type).inc(cost)
 
         tables = _load_loot_tables()
         display_name = tables[pack_type]["display_name"]

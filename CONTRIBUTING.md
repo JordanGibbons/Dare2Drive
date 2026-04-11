@@ -8,6 +8,7 @@ This document covers the git workflow, commit standards, and tooling every contr
 
 - [Contributing to Dare2Drive](#contributing-to-dare2drive)
   - [Table of Contents](#table-of-contents)
+  - [Developer CLI](#developer-cli)
   - [First-Time Setup](#first-time-setup)
   - [Branch Strategy](#branch-strategy)
   - [Commit Messages](#commit-messages)
@@ -26,14 +27,84 @@ This document covers the git workflow, commit standards, and tooling every contr
 
 ---
 
+## Developer CLI
+
+Dare2Drive includes a `d2d` CLI tool to streamline common development tasks. After installing dev dependencies, you can use it for everything from setup to testing to docker management.
+
+**Quick reference:**
+
+```bash
+# Interactive setup guide (check dependencies, installation help)
+d2d setup
+
+# Testing
+d2d test              # Run all tests with coverage
+d2d test --no-cov     # Run tests without coverage
+d2d test path/to/test # Run specific test file
+
+# Code quality
+d2d lint              # Check code with ruff
+d2d lint --fix        # Auto-fix issues
+d2d format            # Format code with black
+d2d format --check    # Check formatting without changes
+d2d check             # Run all checks (lint + format + test)
+
+# Pre-commit hooks
+d2d hooks install     # Install hooks
+d2d hooks run         # Run hooks on staged files
+d2d hooks run --all   # Run hooks on all files
+d2d hooks update      # Update hook versions
+
+# Docker & Services
+d2d up                # Start services (bot, api, postgres, redis)
+d2d up -b             # Start and rebuild containers
+d2d up -d             # Start in background (detached)
+d2d down              # Stop services
+d2d down -v           # Stop and remove volumes
+d2d logs              # View service logs
+d2d shell <service>   # Open shell in container (bot/api/postgres/redis)
+
+# Database
+d2d migrate           # Run migrations to latest
+d2d makemigration -m "message"  # Create new migration
+d2d seed              # Seed database with card data
+d2d db                # Open PostgreSQL shell
+
+# Docker builds
+d2d build             # Build dev image
+d2d build --prod      # Build production image
+
+# Git & GitHub
+d2d commit            # Interactive commit (commitizen)
+d2d commit -a         # Stage all changes and commit
+d2d commit -ap        # Stage, commit, and push
+d2d commit -t feat -m "add feature"  # Quick commit
+d2d pr                # Create PR to demo branch (auto-fills from commits)
+d2d pr --web          # Open PR creation in browser
+d2d pr --draft        # Create as draft PR
+d2d pr --base main    # Create PR to main (for demo→main merges)
+
+# Utilities
+d2d clean             # Remove caches and build artifacts
+```
+
+**Tip:** Run `d2d --help` or `d2d <command> --help` for more details on any command.
+
+---
+
 ## First-Time Setup
 
 After cloning, install dev dependencies and activate the pre-commit hooks:
 
 ```bash
 pip install -e ".[dev]"
-pre-commit install                        # hooks for staged files
-pre-commit install --hook-type commit-msg # hook for commit message validation
+d2d hooks install     # or: pre-commit install + pre-commit install --hook-type commit-msg
+```
+
+Or use the interactive setup guide to check all dependencies:
+
+```bash
+d2d setup
 ```
 
 You only need to do this once per clone. After this, hooks run automatically on every `git commit`.
@@ -42,9 +113,13 @@ You only need to do this once per clone. After this, hooks run automatically on 
 
 ## Branch Strategy
 
-- **`main`** is the protected production branch. Direct pushes are blocked.
-- All work happens on feature branches, branched off `main`.
-- Branch names should reflect the type and scope of the change:
+We use a three-tier branch strategy to ensure stability:
+
+- **`main`** is the protected production branch (will be deployed to production Railway in the future). Direct pushes are blocked.
+- **`demo`** is the integration and testing branch (currently deployed to Railway). Direct pushes are blocked.
+- All work happens on **feature branches**, branched off `demo`.
+
+Branch names should reflect the type and scope of the change:
 
 ```
 feat/race-timer
@@ -56,13 +131,27 @@ chore/bump-dependencies
 **Workflow:**
 
 ```
-main
- └── feat/your-feature        ← branch off main
-      ├── commits...
-      └── PR → main           ← merge via pull request (requires review + CI)
+main (future production)
+ ↑
+ └── merge ← demo (Railway deployment)
+              ↑
+              └── merge ← feat/your-feature (local dev)
+                           ├── commits...
+                           └── PR → demo (requires review + CI)
 ```
 
-Never commit directly to `main`. The branch is protected and will reject direct pushes.
+**Development environments:**
+
+- **Feature branches**: Run locally using personal dev bot tokens
+- **`demo` branch**: Deployed to Railway for integration testing
+- **`main` branch**: Reserved for future production deployment
+
+**Rules:**
+
+- Never commit directly to `demo` or `main`. Both branches are protected and will reject direct pushes.
+- All feature work branches off `demo` and merges back to `demo` via PR
+- Once `demo` is in a stable state, merge it to `main` via PR
+- Keep `demo` relatively stable — it's a shared testing environment
 
 ---
 
@@ -109,15 +198,40 @@ git commit -m "wip"
 git commit -m "."
 ```
 
-### Using Commitizen (optional but recommended)
+### Streamlined Commit Workflow
 
-[Commitizen](https://commitizen-tools.github.io/commitizen/) provides an interactive prompt that guides you through writing a valid commit message:
+The `d2d commit` command automates common commit tasks:
+
+```bash
+# Interactive commit (recommended for first-time users)
+d2d commit
+
+# Auto-stage all modified files and commit
+d2d commit -a
+
+# Stage, commit, and push in one command
+d2d commit -ap
+
+# Quick commit with type and message (skips interactive)
+d2d commit -t feat -m "add race timer"
+d2d commit -t fix -m "resolve card draw crash"
+```
+
+**What it does:**
+- ✅ Validates you have changes to commit
+- ✅ Optionally auto-stages modified files with `-a`
+- ✅ Shows what will be committed
+- ✅ Runs commitizen for interactive commits
+- ✅ Optionally pushes after committing with `-p`
+- ✅ Auto-sets upstream branch if needed
+
+**Traditional commitizen** is still available:
 
 ```bash
 cz commit   # or: git cz
 ```
 
-It walks you through selecting a type, writing a description, and optionally adding a body and footer — no need to remember the format manually.
+Both methods enforce the conventional commit format and run pre-commit hooks automatically.
 
 ---
 
@@ -142,10 +256,10 @@ Pre-commit hooks run automatically before each `git commit`. They catch issues l
 
 ```bash
 # Run all hooks against staged files
-pre-commit run
+d2d hooks run         # or: pre-commit run
 
 # Run all hooks against every file in the repo
-pre-commit run --all-files
+d2d hooks run --all   # or: pre-commit run --all-files
 
 # Run a specific hook
 pre-commit run ruff --all-files
@@ -172,14 +286,39 @@ Use this sparingly. CI will still run the same checks and your PR won't merge if
 
 ## Pull Requests
 
-Every change to `main` must go through a pull request.
+Every change must go through a pull request.
 
-1. Push your branch and open a PR against `main`
-2. Fill in the PR template — describe what changed and why
-3. Ensure all CI checks pass (see below)
-4. Request a review from at least one team member
-5. Address any review feedback
-6. Merge once approved and green
+**Quick PR creation:**
+
+```bash
+# Create PR to demo with auto-filled content
+d2d pr
+
+# Open in browser to fill template manually
+d2d pr --web
+
+# Create as draft
+d2d pr --draft
+```
+
+The `d2d pr` command automatically targets `demo` branch and fills in the PR title/body from your commits.
+
+**For feature work:**
+
+1. Push your feature branch: `git push -u origin feat/your-feature`
+2. Create PR: `d2d pr` (or manually via GitHub)
+3. Fill in the PR template — describe what changed and why
+4. Ensure all CI checks pass (see below)
+5. Request a review from at least one team member
+6. Address any review feedback
+7. Merge once approved and green
+
+**For demo → main:**
+
+1. Open a PR from `demo` to `main` when demo is stable: `d2d pr --base main`
+2. Ensure all features in demo have been tested on Railway
+3. Require thorough review before merging
+4. This will eventually trigger production deployment
 
 ### PR title
 
@@ -194,7 +333,7 @@ fix: resolve card draw crash when inventory is empty
 
 ## CI / GitHub Actions
 
-Three jobs run on every push and pull request to `main`:
+Three jobs run on every push and pull request to `demo` and `main`:
 
 | Job | What it checks |
 |-----|---------------|
@@ -209,12 +348,17 @@ All jobs must pass before a PR can be merged.
 
 ## Branch Protection
 
-The `main` branch has the following rules enforced via GitHub:
+Both the `demo` and `main` branches have the following rules enforced via GitHub:
 
 - **Direct pushes are blocked** — all changes must come through a PR
-- **Force pushes are disabled** — history on `main` cannot be rewritten
+- **Force pushes are disabled** — history cannot be rewritten
 - **Required status checks** — Pre-commit, Lint, and Test must all pass
 - **Required review** — at least 1 approving review is required
 - **Stale review dismissal** — new commits dismiss existing approvals, requiring a fresh review
 - **Conversation resolution** — all PR comments must be resolved before merging
-- **Branch must be up to date** — your branch must be current with `main` before merging
+- **Branch must be up to date** — your branch must be current with the target branch before merging
+
+**Additional notes:**
+
+- `demo` is the primary target for feature PRs and runs on Railway
+- `main` is reserved for stable releases and future production deployment

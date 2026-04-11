@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import enum
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings
 
 
@@ -18,6 +19,16 @@ class Settings(BaseSettings):
     # Database — Railway injects this in production
     DATABASE_URL: str = "postgresql+asyncpg://dare2drive:dare2drive@db:5432/dare2drive"
 
+    @field_validator("DATABASE_URL", mode="before")
+    @classmethod
+    def normalize_database_url(cls, v: str) -> str:
+        """Normalize Railway's postgresql:// or postgres:// to postgresql+asyncpg://."""
+        if v.startswith("postgres://"):
+            return v.replace("postgres://", "postgresql+asyncpg://", 1)
+        if v.startswith("postgresql://"):
+            return v.replace("postgresql://", "postgresql+asyncpg://", 1)
+        return v
+
     # Redis — Railway injects this in production
     REDIS_URL: str = "redis://redis:6379/0"
 
@@ -29,7 +40,14 @@ class Settings(BaseSettings):
     # App
     API_SECRET_KEY: str = "change-me"
     LOG_LEVEL: str = "INFO"
+    LOG_FORMAT: str = "text"  # "text" | "json" — use "json" in production for Fluent Bit
     ENVIRONMENT: Environment = Environment.DEVELOPMENT
+
+    # Monitoring — ntfy.sh push notifications (phone alerting)
+    # Set NTFY_TOPIC to a private, hard-to-guess topic name so only your team receives alerts.
+    # Team members install the free ntfy app (iOS / Android) and subscribe to this topic.
+    NTFY_TOPIC: str = ""
+    NTFY_URL: str = "https://ntfy.sh"  # self-hosted ntfy instance URL or ntfy.sh
 
     # Economy constants
     STARTING_CURRENCY: int = 0

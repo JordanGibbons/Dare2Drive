@@ -10,20 +10,35 @@ into a build, and race against other players. Built with **discord.py**,
 
 ```bash
 # 1. Clone
-git clone https://github.com/<your-org>/dare2drive.git && cd dare2drive
+git clone https://github.com/JordanGibbons/D2DBOT.git && cd D2DBOT
 
-# 2. Install Infisical CLI (secrets manager)
-brew install infisical/infisical-cli/infisical   # macOS
-# or: scoop install infisical                     # Windows
+# 2. Install dev dependencies
+pip install -e ".[dev]"
 
-# 3. Log in
+# 3. Run interactive setup (checks dependencies, provides install instructions)
+d2d setup
+
+# 4. Log in to Infisical
 infisical login
 
-# 4. Start everything (bot + api + postgres + redis)
-infisical run --env=dev -- docker compose up --build
+# 5. Start everything (bot + api + postgres + redis)
+d2d up
 ```
 
 The entrypoint runs `alembic upgrade head` automatically on startup.
+
+**Common development commands:**
+
+```bash
+d2d test              # Run tests
+d2d lint --fix        # Lint and auto-fix
+d2d format            # Format code
+d2d check             # Run all quality checks
+d2d hooks install     # Install pre-commit hooks
+d2d --help            # See all commands
+```
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the full developer guide.
 
 ---
 
@@ -212,16 +227,28 @@ Coverage threshold is set to **70%** in `pyproject.toml`.
 
 ### Checklist
 
-1. Push code to `main` branch
-2. Connect GitHub repo to Railway
-3. Add all environment variables from `.env.example` to Railway
-4. Railway will detect `railway.toml` and deploy two services:
-   - **bot** — runs `python -m bot.main`
-   - **api** — runs `uvicorn api.main:app --host 0.0.0.0 --port $PORT`
-5. Provision a PostgreSQL and Redis addon in Railway
-6. Ensure `DATABASE_URL` and `REDIS_URL` are set in Railway environment
+1. **Deploy Railway's Grafana Stack template** — [railway.com/deploy/8TLSQD](https://railway.com/deploy/8TLSQD)
+   - This provisions: Grafana, Loki, Prometheus, Tempo (managed by Railway)
+2. Push code to `main` branch and connect the GitHub repo to Railway
+3. Railway detects `railway.toml` and deploys four services from this repo:
+   - **bot** — `python -m bot.main`
+   - **api** — `uvicorn api.main:app --host 0.0.0.0 --port $PORT`
+   - **ntfy-relay** — alert fan-out to ntfy.sh + Discord
+   - **alertmanager** — evaluates Prometheus alert rules
+4. Provision a **PostgreSQL** and **Redis** plugin in Railway
+5. Set environment variables (see `.env.example`) on each service
+6. Set `NTFY_RELAY_URL=http://ntfy-relay.railway.internal:9096` on the `alertmanager` service
+7. Configure a **Railway Log Drain** (project settings → Log Drains):
+   - Type: HTTP
+   - URL: `http://<loki-service>.railway.internal:3100/loki/api/v1/push`
+8. In the Railway Prometheus service config, point alertmanager at:
+   `http://alertmanager.railway.internal:9093`
 
-### Production Docker
+See [docs/adr/002-monitoring-stack.md](docs/adr/002-monitoring-stack.md) for the full architecture and connection details.
+
+For a step-by-step guide on adding logs, metrics, and alerts to a new feature, see [docs/monitoring-guide.md](docs/monitoring-guide.md).
+
+### Local prod smoke-test
 
 ```bash
 docker compose -f docker-compose.prod.yml up --build
