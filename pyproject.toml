@@ -36,6 +36,9 @@ dev = [
     "pre-commit>=4,<6",
 ]
 
+[project.scripts]
+d2d = "scripts.dev:cli"
+
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["api*", "bot*", "config*", "db*", "engine*", "scripts*"]
