@@ -42,8 +42,10 @@ def print_logo():
     # Sunset colors: deep red -> orange -> yellow -> magenta -> purple -> deep purple
     colors = ["red", "bright_red", "yellow", "magenta", "bright_magenta", "blue"]
 
+    enc = sys.stdout.encoding or "utf-8"
     for i, line in enumerate(lines):
-        click.secho("    " + line, fg=colors[i % len(colors)], bold=True)
+        safe = line.encode(enc, errors="replace").decode(enc)
+        click.secho("    " + safe, fg=colors[i % len(colors)], bold=True)
 
     click.secho("    Dare 2 Drive", fg="white", bold=True)
     click.echo()

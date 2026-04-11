@@ -94,7 +94,8 @@ services:
   # ---------------------------------------------------------------------------
 
   fluent-bit:
-    image: fluent/fluent-bit:3.3
+    image: fluent/fluent-bit:4.2
+    user: root
     ports:
       - "24224:24224"     # Forward protocol (Docker log driver)
       - "24224:24224/udp"
@@ -103,6 +104,7 @@ services:
       - ./monitoring/fluent-bit/fluent-bit.conf:/fluent-bit/etc/fluent-bit.conf:ro
       - ./monitoring/fluent-bit/parsers.conf:/fluent-bit/etc/parsers.conf:ro
       - fluentbit_db:/fluent-bit/db
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
     environment:
       - LOKI_HOST=loki
       - LOKI_PORT=3100

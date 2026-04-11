@@ -1,6 +1,4 @@
-global:
-  # How long to wait before sending a repeat notification for an ongoing alert.
-  repeat_interval: 4h
+global: {}
 
 # Default receiver for any alert that does not match a more specific route.
 route:
