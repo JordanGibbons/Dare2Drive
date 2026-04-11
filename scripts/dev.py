@@ -42,8 +42,10 @@ def print_logo():
     # Sunset colors: deep red -> orange -> yellow -> magenta -> purple -> deep purple
     colors = ["red", "bright_red", "yellow", "magenta", "bright_magenta", "blue"]
 
+    enc = sys.stdout.encoding or "utf-8"
     for i, line in enumerate(lines):
-        click.secho("    " + line, fg=colors[i % len(colors)], bold=True)
+        safe = line.encode(enc, errors="replace").decode(enc)
+        click.secho("    " + safe, fg=colors[i % len(colors)], bold=True)
 
     click.secho("    Dare 2 Drive", fg="white", bold=True)
     click.echo()
@@ -278,10 +280,19 @@ def hooks_update():
 @cli.command()
 @click.option("--build", "-b", is_flag=True, help="Rebuild containers")
 @click.option("--detach", "-d", is_flag=True, help="Run in background")
-def up(build: bool, detach: bool):
+@click.option(
+    "--monitoring",
+    "-m",
+    is_flag=True,
+    help="Also start the monitoring stack (Grafana, Prometheus, Loki, etc.)",
+)  # noqa: E501
+def up(build: bool, detach: bool, monitoring: bool):
     """🚀 Start Docker Compose services."""
     print_logo()
-    cmd = "infisical run --env=dev -- docker compose up"
+    cmd = "infisical run --env=dev -- docker compose"
+    if monitoring:
+        cmd += " --profile monitoring"
+    cmd += " up"
     if build:
         cmd += " --build"
     if detach:

@@ -10,3 +10,13 @@ startCommand = "python -m bot.main"
 name = "api"
 buildCommand = "docker build -f docker/Dockerfile.prod --target runtime -t dare2drive-api ."
 startCommand = "uvicorn api.main:app --host 0.0.0.0 --port ${PORT:-8000}"
+
+[[services]]
+name = "ntfy-relay"
+buildCommand = "docker build -f monitoring/ntfy-relay/Dockerfile -t ntfy-relay monitoring/ntfy-relay/"
+startCommand = "uvicorn relay:app --host 0.0.0.0 --port 9096"
+
+[[services]]
+name = "alertmanager"
+buildCommand = "docker build -f monitoring/alertmanager/Dockerfile -t alertmanager monitoring/alertmanager/"
+startCommand = ""
