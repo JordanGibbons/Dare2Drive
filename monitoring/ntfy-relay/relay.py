@@ -11,12 +11,15 @@ Environment variables:
 
 from __future__ import annotations
 
+import logging
 import os
 from typing import Any
 
 import httpx
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+
+log = logging.getLogger(__name__)
 
 app = FastAPI(title="ntfy-relay", docs_url=None, redoc_url=None)
 
@@ -80,7 +83,10 @@ async def relay(request: Request) -> JSONResponse:
                 )
                 resp.raise_for_status()
             except httpx.HTTPError as exc:
-                errors.append(str(exc))
+                # Log the full error server-side; return a generic message to callers
+                # to avoid leaking internal details (stack traces, URLs with tokens).
+                log.error("ntfy forward failed: %s", exc)
+                errors.append("ntfy delivery failed — check relay logs")
 
     if errors:
         return JSONResponse({"status": "partial_error", "errors": errors}, status_code=207)

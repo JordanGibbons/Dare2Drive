@@ -421,6 +421,7 @@ async def _run_race_and_send(
         if placement.user_id.startswith("NPC_"):
             continue
         if placement.dnf:
+            # dnf = Did Not Finish; distinguish wrecks (part destroyed) from other DNFs
             outcome = "wreck" if placement.wrecked_parts else "dnf"
         elif placement.position == 1:
             outcome = "win"
