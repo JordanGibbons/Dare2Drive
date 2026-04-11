@@ -280,10 +280,19 @@ def hooks_update():
 @cli.command()
 @click.option("--build", "-b", is_flag=True, help="Rebuild containers")
 @click.option("--detach", "-d", is_flag=True, help="Run in background")
-def up(build: bool, detach: bool):
+@click.option(
+    "--monitoring",
+    "-m",
+    is_flag=True,
+    help="Also start the monitoring stack (Grafana, Prometheus, Loki, etc.)",
+)  # noqa: E501
+def up(build: bool, detach: bool, monitoring: bool):
     """🚀 Start Docker Compose services."""
     print_logo()
-    cmd = "infisical run --env=dev -- docker compose up"
+    cmd = "infisical run --env=dev -- docker compose"
+    if monitoring:
+        cmd += " --profile monitoring"
+    cmd += " up"
     if build:
         cmd += " --build"
     if detach:

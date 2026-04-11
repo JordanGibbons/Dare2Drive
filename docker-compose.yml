@@ -90,12 +90,13 @@ services:
       - dare2drive_net
 
   # ---------------------------------------------------------------------------
-  # Monitoring stack
+  # Monitoring stack  (opt-in — start with: d2d up --monitoring)
   # ---------------------------------------------------------------------------
 
   fluent-bit:
     image: fluent/fluent-bit:4.2
     user: root
+    profiles: [monitoring]
     ports:
       - "24224:24224"     # Forward protocol (Docker log driver)
       - "24224:24224/udp"
@@ -116,6 +117,7 @@ services:
 
   prometheus:
     image: prom/prometheus:v2.52.0
+    profiles: [monitoring]
     ports:
       - "9090:9090"
     volumes:
@@ -135,6 +137,7 @@ services:
 
   loki:
     image: grafana/loki:3.0.0
+    profiles: [monitoring]
     ports:
       - "3100:3100"
     volumes:
@@ -146,6 +149,7 @@ services:
 
   alertmanager:
     image: prom/alertmanager:v0.27.0
+    profiles: [monitoring]
     ports:
       - "9093:9093"
     volumes:
@@ -164,6 +168,7 @@ services:
     build:
       context: ./monitoring/ntfy-relay
       dockerfile: Dockerfile
+    profiles: [monitoring]
     ports:
       - "9096:9096"
     environment:
@@ -178,6 +183,7 @@ services:
 
   grafana:
     image: grafana/grafana-oss:11.1.0
+    profiles: [monitoring]
     ports:
       - "3000:3000"
     volumes:
