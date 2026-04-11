@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -137,7 +137,6 @@ class TestRelayHealthz:
     @pytest.mark.asyncio
     async def test_healthz_returns_ok(self):
         from httpx import ASGITransport, AsyncClient
-
         from relay import app
 
         transport = ASGITransport(app=app)
@@ -153,7 +152,6 @@ class TestRelayAlertsEndpoint:
     async def test_alerts_skips_ntfy_when_topic_empty(self):
         """When NTFY_TOPIC is empty, ntfy delivery is skipped (no HTTP call)."""
         import relay as relay_module
-
         from httpx import ASGITransport, AsyncClient
 
         original_topic = relay_module.NTFY_TOPIC
@@ -172,7 +170,6 @@ class TestRelayAlertsEndpoint:
     async def test_alerts_forwards_to_discord(self):
         """When DISCORD_WEBHOOK_URL is set, the relay calls _send_discord."""
         import relay as relay_module
-
         from httpx import ASGITransport, AsyncClient
 
         original_discord_url = relay_module.DISCORD_WEBHOOK_URL
@@ -194,7 +191,6 @@ class TestRelayAlertsEndpoint:
     async def test_alerts_uses_critical_channel_for_critical(self):
         """Critical alerts use DISCORD_WEBHOOK_URL_CRITICAL when configured."""
         import relay as relay_module
-
         from httpx import ASGITransport, AsyncClient
 
         relay_module.NTFY_TOPIC = ""
@@ -234,7 +230,6 @@ class TestRelayAlertsEndpoint:
     async def test_alerts_partial_error_on_discord_failure(self):
         """When Discord POST fails, the endpoint returns 207 with error info."""
         import relay as relay_module
-
         from httpx import ASGITransport, AsyncClient
 
         relay_module.DISCORD_WEBHOOK_URL = "https://discord.com/api/webhooks/test/token"
@@ -254,7 +249,6 @@ class TestRelayAlertsEndpoint:
     async def test_alerts_empty_payload(self):
         """An empty alerts list returns ok with forwarded=0."""
         import relay as relay_module
-
         from httpx import ASGITransport, AsyncClient
 
         relay_module.NTFY_TOPIC = ""
@@ -271,7 +265,6 @@ class TestRelayAlertsEndpoint:
     async def test_legacy_ntfy_endpoint_still_works(self):
         """The legacy /ntfy path returns 200 when ntfy is disabled."""
         import relay as relay_module
-
         from httpx import ASGITransport, AsyncClient
 
         relay_module.NTFY_TOPIC = ""
