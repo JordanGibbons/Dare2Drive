@@ -29,7 +29,14 @@ class Settings(BaseSettings):
     # App
     API_SECRET_KEY: str = "change-me"
     LOG_LEVEL: str = "INFO"
+    LOG_FORMAT: str = "text"  # "text" | "json" — use "json" in production for Fluent Bit
     ENVIRONMENT: Environment = Environment.DEVELOPMENT
+
+    # Monitoring — ntfy.sh push notifications (phone alerting)
+    # Set NTFY_TOPIC to a private, hard-to-guess topic name so only your team receives alerts.
+    # Team members install the free ntfy app (iOS / Android) and subscribe to this topic.
+    NTFY_TOPIC: str = ""
+    NTFY_URL: str = "https://ntfy.sh"  # self-hosted ntfy instance URL or ntfy.sh
 
     # Economy constants
     STARTING_CURRENCY: int = 0

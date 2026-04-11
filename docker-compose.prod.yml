@@ -7,6 +7,7 @@ services:
     environment:
       - DATABASE_URL=postgresql+asyncpg://dare2drive:dare2drive@db:5432/dare2drive
       - REDIS_URL=redis://redis:6379/0
+      - LOG_FORMAT=json
     env_file:
       - .env
     depends_on:
@@ -17,6 +18,12 @@ services:
     networks:
       - dare2drive_net
     restart: unless-stopped
+    logging:
+      driver: fluentd
+      options:
+        fluentd-address: "localhost:24224"
+        fluentd-async: "true"
+        tag: "dare2drive.bot"
 
   api:
     build:
@@ -28,6 +35,7 @@ services:
     environment:
       - DATABASE_URL=postgresql+asyncpg://dare2drive:dare2drive@db:5432/dare2drive
       - REDIS_URL=redis://redis:6379/0
+      - LOG_FORMAT=json
     env_file:
       - .env
     depends_on:
@@ -38,6 +46,12 @@ services:
     networks:
       - dare2drive_net
     restart: unless-stopped
+    logging:
+      driver: fluentd
+      options:
+        fluentd-address: "localhost:24224"
+        fluentd-async: "true"
+        tag: "dare2drive.api"
 
   db:
     image: postgres:16-alpine
@@ -65,8 +79,103 @@ services:
     networks:
       - dare2drive_net
 
+  # ---------------------------------------------------------------------------
+  # Monitoring stack
+  # ---------------------------------------------------------------------------
+
+  fluent-bit:
+    image: fluent/fluent-bit:3.3
+    ports:
+      - "24224:24224"
+      - "24224:24224/udp"
+    volumes:
+      - ./monitoring/fluent-bit/fluent-bit.conf:/fluent-bit/etc/fluent-bit.conf:ro
+      - ./monitoring/fluent-bit/parsers.conf:/fluent-bit/etc/parsers.conf:ro
+      - fluentbit_db:/fluent-bit/db
+    environment:
+      - LOKI_HOST=loki
+      - LOKI_PORT=3100
+    depends_on:
+      - loki
+    networks:
+      - dare2drive_net
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v2.52.0
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/prometheus/rules:/etc/prometheus/rules:ro
+      - prometheus_data:/prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=30d
+      - --web.enable-lifecycle
+    networks:
+      - dare2drive_net
+    restart: unless-stopped
+
+  loki:
+    image: grafana/loki:3.0.0
+    volumes:
+      - loki_data:/loki
+    command: -config.file=/etc/loki/local-config.yaml
+    networks:
+      - dare2drive_net
+    restart: unless-stopped
+
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    volumes:
+      - ./monitoring/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager_data:/alertmanager
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --storage.path=/alertmanager
+    depends_on:
+      - ntfy-relay
+    networks:
+      - dare2drive_net
+    restart: unless-stopped
+
+  ntfy-relay:
+    build:
+      context: ./monitoring/ntfy-relay
+      dockerfile: Dockerfile
+    environment:
+      - NTFY_URL=${NTFY_URL:-https://ntfy.sh}
+      - NTFY_TOPIC=${NTFY_TOPIC}
+      - NTFY_TOKEN=${NTFY_TOKEN:-}
+    networks:
+      - dare2drive_net
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana-oss:11.1.0
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}
+      - GF_AUTH_ANONYMOUS_ENABLED=false
+    depends_on:
+      - prometheus
+      - loki
+    networks:
+      - dare2drive_net
+    restart: unless-stopped
+
 volumes:
   pgdata:
+  prometheus_data:
+  loki_data:
+  alertmanager_data:
+  grafana_data:
+  fluentbit_db:
 
 networks:
   dare2drive_net:

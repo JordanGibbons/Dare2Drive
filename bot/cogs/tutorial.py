@@ -13,6 +13,7 @@ from discord.ext import commands
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.metrics import users_registered
 from config.logging import get_logger
 from db.models import Card, TutorialStep, User, UserCard
 from db.session import async_session
@@ -438,6 +439,7 @@ async def _grant_tutorial_completion(
     # Mark complete and grant creds
     user.tutorial_step = TutorialStep.COMPLETE
     user.currency += 1000
+    users_registered.inc()
 
     return starter_cards, pack_minted
 

@@ -1,0 +1,40 @@
+global:
+  # How long to wait before sending a repeat notification for an ongoing alert.
+  repeat_interval: 4h
+
+# Default receiver for any alert that does not match a more specific route.
+route:
+  receiver: ntfy_team
+  group_by: ["alertname", "severity"]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+
+  routes:
+    # Critical alerts page immediately with a shorter repeat.
+    - match:
+        severity: critical
+      receiver: ntfy_team
+      repeat_interval: 30m
+
+receivers:
+  - name: ntfy_team
+    webhook_configs:
+      # ntfy.sh is a free, open-source push-notification service.
+      # Install the ntfy app (iOS / Android) and subscribe to NTFY_TOPIC.
+      # Set NTFY_TOPIC to a long, private, random string so only your team
+      # can subscribe (e.g. "dare2drive-alerts-xK9mP3").
+      - url: "http://ntfy-relay:9096/ntfy"  # internal relay that adds auth headers
+        send_resolved: true
+        max_alerts: 10
+        # The message body is templated by Alertmanager.
+        http_config:
+          follow_redirects: true
+
+inhibit_rules:
+  # Don't send warning if a critical alert is already firing for the same target.
+  - source_match:
+      severity: critical
+    target_match:
+      severity: warning
+    equal: ["alertname"]

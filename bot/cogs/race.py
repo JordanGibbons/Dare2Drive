@@ -11,6 +11,7 @@ from discord.ext import commands
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.metrics import parts_destroyed, races_completed, races_started
 from bot.cogs.tutorial import _load_tutorial_data, build_npc_race_data, is_tutorial_complete
 from config.logging import get_logger
 from db.models import (
@@ -231,6 +232,7 @@ async def _apply_wreck_results(
 
                     # Delete the specific card copy
                     await session.delete(uc)
+                    parts_destroyed.labels(reason="wreck").inc()
 
             lost_parts_data.append(wp.to_dict())
 
@@ -254,6 +256,9 @@ async def _run_race_and_send(
     wager: int = 0,
 ) -> None:
     """Execute a race, save results, and send the result embed. Used by both PvP and tutorial flows."""  # noqa: E501
+    race_type = "tutorial" if is_tutorial_race else "open"
+    races_started.labels(race_type=race_type).inc()
+
     async with async_session() as session:
         # Re-attach users to this session
         challenger = await session.get(User, challenger.discord_id)
@@ -375,6 +380,7 @@ async def _run_race_and_send(
 
                     await session.delete(uc)
                     worn_out_parts.append((uid, slot_name, card_name))
+                    parts_destroyed.labels(reason="wear").inc()
                     log.info(
                         "Part worn out: user=%s slot=%s card=%s after %d races",
                         uid,
@@ -409,6 +415,18 @@ async def _run_race_and_send(
                 rig_title.race_record = rec
 
         await session.commit()
+
+    # Record race completion metrics for each real player
+    for placement in race_result.placements:
+        if placement.user_id.startswith("NPC_"):
+            continue
+        if placement.dnf:
+            outcome = "wreck" if placement.wrecked_parts else "dnf"
+        elif placement.position == 1:
+            outcome = "win"
+        else:
+            outcome = "loss"
+        races_completed.labels(race_type=race_type, outcome=outcome).inc()
 
     # Build display name map
     display_names: dict[str, str] = {
