@@ -1,0 +1,22 @@
+name: Enforce Main PR Source
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  check-source-branch:
+    name: Verify PR is from demo branch
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check source branch
+        if: github.head_ref != 'demo'
+        run: |
+          echo "Error: Pull requests to main must come from the demo branch only."
+          echo "Current source branch: ${{ github.head_ref }}"
+          echo "Please close this PR and merge your changes to demo first."
+          exit 1
+
+      - name: Success
+        if: github.head_ref == 'demo'
+        run: echo "✓ PR source is demo branch"
