@@ -7,7 +7,9 @@ import asyncio
 import discord
 from discord import app_commands
 from discord.ext import commands
+from prometheus_client import start_http_server
 
+from api.metrics import bot_command_errors, bot_commands_invoked
 from config.logging import get_logger, setup_logging
 from config.settings import settings
 from db.session import async_session
@@ -27,6 +29,7 @@ class TutorialCommandTree(app_commands.CommandTree):
             return True
 
         command_name = interaction.command.name
+        bot_commands_invoked.labels(command=command_name).inc()
 
         async with async_session() as session:
             user = await session.get(User, str(interaction.user.id))
@@ -40,6 +43,22 @@ class TutorialCommandTree(app_commands.CommandTree):
         msg = get_blocked_message(user, command_name)
         await interaction.response.send_message(msg, ephemeral=True)
         return False
+
+    async def on_error(
+        self, interaction: discord.Interaction, error: app_commands.AppCommandError
+    ) -> None:
+        command_name = interaction.command.name if interaction.command else "unknown"
+        bot_command_errors.labels(command=command_name).inc()
+        log.error(
+            "App command error: command=%s user=%s",
+            command_name,
+            interaction.user.id,
+            exc_info=error,
+        )
+        if not interaction.response.is_done():
+            await interaction.response.send_message(
+                "Something went wrong. Try again.", ephemeral=True
+            )
 
 
 class Dare2DriveBot(commands.Bot):
@@ -84,6 +103,8 @@ class Dare2DriveBot(commands.Bot):
 
 
 async def main() -> None:
+    start_http_server(8001)
+    log.info("Bot metrics server started on port 8001")
     bot = Dare2DriveBot()
     async with bot:
         await bot.start(settings.DISCORD_TOKEN)

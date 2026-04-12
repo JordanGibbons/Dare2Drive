@@ -67,44 +67,8 @@ services:
     networks:
       - dare2drive_net
 
-  # ---------------------------------------------------------------------------
-  # Alerting stack  (Grafana / Loki / Prometheus are deployed via Railway's
-  # one-click Grafana Stack template — see docs/adr/002-monitoring-stack.md)
-  # ---------------------------------------------------------------------------
-
-  alertmanager:
-    build:
-      context: ./monitoring/alertmanager
-      dockerfile: Dockerfile
-    environment:
-      - NTFY_RELAY_URL=${NTFY_RELAY_URL:-http://ntfy-relay:9096}
-    volumes:
-      - alertmanager_data:/alertmanager
-    command:
-      - --storage.path=/alertmanager
-    depends_on:
-      - ntfy-relay
-    networks:
-      - dare2drive_net
-    restart: unless-stopped
-
-  ntfy-relay:
-    build:
-      context: ./monitoring/ntfy-relay
-      dockerfile: Dockerfile
-    environment:
-      - NTFY_URL=${NTFY_URL:-https://ntfy.sh}
-      - NTFY_TOPIC=${NTFY_TOPIC}
-      - NTFY_TOKEN=${NTFY_TOKEN:-}
-      - DISCORD_WEBHOOK_URL=${DISCORD_WEBHOOK_URL:-}
-      - DISCORD_WEBHOOK_URL_CRITICAL=${DISCORD_WEBHOOK_URL_CRITICAL:-}
-    networks:
-      - dare2drive_net
-    restart: unless-stopped
-
 volumes:
   pgdata:
-  alertmanager_data:
 
 networks:
   dare2drive_net:

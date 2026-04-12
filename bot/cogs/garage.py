@@ -10,6 +10,7 @@ from discord import app_commands
 from discord.ext import commands
 from sqlalchemy import select, update
 
+from api.metrics import currency_spent, users_registered
 from config.logging import get_logger
 from db.models import (
     BodyType,
@@ -192,6 +193,7 @@ class BodyTypeSelect(discord.ui.View):
             )
             session.add(build)
             await session.commit()
+            users_registered.inc()
 
         # ── TUTORIAL STORY BEGINS ──
         from bot.cogs.tutorial import _load_tutorial_data, grant_starter_cards, send_dialogue
@@ -1106,6 +1108,7 @@ class GarageCog(commands.Cog):
 
             # Deactivate current default, deduct cost, create new build
             user.currency -= BUILD_SLOT_COST
+            currency_spent.labels(reason="build_slot").inc(BUILD_SLOT_COST)
             await session.execute(
                 update(Build).where(Build.user_id == user.discord_id).values(is_active=False)
             )

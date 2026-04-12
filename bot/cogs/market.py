@@ -10,6 +10,7 @@ from discord.ext import commands
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.metrics import currency_spent
 from config.logging import get_logger
 from db.models import Build, Card, CardSlot, MarketListing, User, UserCard
 from db.session import async_session
@@ -575,6 +576,7 @@ class MarketCog(commands.Cog):
             from datetime import datetime, timezone
 
             user.currency -= listing.price
+            currency_spent.labels(reason="market_buy").inc(listing.price)
             seller = await session.get(User, listing.seller_id)
             if seller:
                 seller.currency += listing.price
@@ -786,6 +788,7 @@ class MarketCog(commands.Cog):
                 return
 
             user.currency -= price
+            currency_spent.labels(reason="shop_buy").inc(price)
             uc = await mint_card(session, user.discord_id, card)
             await session.commit()
 

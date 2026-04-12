@@ -1,0 +1,6 @@
+ARG VERSION=11.5.2
+
+FROM grafana/grafana-oss:${VERSION}
+
+COPY local/grafana/datasources       /etc/grafana/provisioning/datasources
+COPY grafana-stack/grafana/dashboards /etc/grafana/provisioning/dashboards

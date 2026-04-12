@@ -5,6 +5,7 @@ from __future__ import annotations
 from fastapi import FastAPI
 from prometheus_fastapi_instrumentator import Instrumentator
 
+import api.metrics  # noqa: F401 — registers all dare2drive_* metrics with the default registry
 from api.routes.cards import router as cards_router
 from api.routes.races import router as races_router
 from api.routes.users import router as users_router

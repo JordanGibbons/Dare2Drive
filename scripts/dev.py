@@ -284,8 +284,8 @@ def hooks_update():
     "--monitoring",
     "-m",
     is_flag=True,
-    help="Also start the monitoring stack (Grafana, Prometheus, Loki, etc.)",
-)  # noqa: E501
+    help="Also start Prometheus + Grafana for local metrics testing",
+)
 def up(build: bool, detach: bool, monitoring: bool):
     """🚀 Start Docker Compose services."""
     print_logo()
@@ -306,7 +306,7 @@ def up(build: bool, detach: bool, monitoring: bool):
 @click.option("--volumes", "-v", is_flag=True, help="Remove volumes too")
 def down(volumes: bool):
     """🛑 Stop Docker Compose services."""
-    cmd = "docker compose down"
+    cmd = "docker compose --profile monitoring down"
     if volumes:
         cmd += " -v"
         click.echo("Stopping services and removing volumes...")

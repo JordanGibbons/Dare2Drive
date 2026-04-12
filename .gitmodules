@@ -1,0 +1,3 @@
+[submodule "monitoring/grafana-stack"]
+	path = monitoring/grafana-stack
+	url = git@github.com:JordanGibbons/dare2drive-monitoring.git

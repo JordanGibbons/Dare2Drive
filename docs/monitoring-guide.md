@@ -27,7 +27,7 @@ Your Code
   │
   ├─ log.info(...)         ──▶ stdout (JSON in prod)
   │                                 │
-  │                          Fluent Bit (dev) / Railway Log Drain (prod)
+  │                         Railway Log Drain
   │                                 │
   │                              Loki  ◀──── Grafana (Explore → Logs)
   │
@@ -35,12 +35,9 @@ Your Code
                                       │
                                    Prometheus (scrapes every 15 s)
                                       │
-                               ┌──────┴──────────────────┐
-                          Grafana (dashboards)     Alertmanager
-                                                         │
-                                                    ntfy-relay
-                                                    │         │
-                                              ntfy.sh      Discord
+                               Grafana (dashboards + unified alerting)
+                                      │
+                               Discord webhook (#alerts channel)
 ```
 
 **Key points:**
@@ -50,22 +47,36 @@ Your Code
   want to graph or alert on.
 - **Alerts** fire when a metric crosses a threshold for long enough to be worth waking someone up.
 
-All three live in your Python code. The infrastructure (Loki, Prometheus, Alertmanager) picks
+All three live in your Python code. The infrastructure (Loki, Prometheus, Grafana) picks
 them up automatically — you do not need to touch any config files when adding a new feature.
+
+### Where things live
+
+| Concern | Local dev | Production (Railway) |
+| --- | --- | --- |
+| Metrics storage | Prometheus container (`d2d up --monitoring`) | Railway Grafana Stack |
+| Dashboards | Grafana container (`d2d up --monitoring`) | Railway Grafana Stack |
+| Log storage | stdout / `docker compose logs` | Loki (via Railway Log Drain) |
+| Alert rules | — (alerts are production-only) | `monitoring/railway/grafana/alerting/rules.yml` |
+| Alert delivery | — | Discord webhook (Grafana contact point) |
 
 ---
 
 ## 2. Starting the monitoring stack locally
 
 By default `d2d up` only starts the four core services (`bot`, `api`, `db`, `redis`). Add the
-`--monitoring` flag to spin up the full observability stack:
+`--monitoring` flag to spin up Prometheus and Grafana for local metric testing:
 
 ```bash
+# First run — build the Grafana image with the Prometheus datasource baked in
+d2d up --monitoring --build
+
+# Subsequent runs
 d2d up --monitoring
 ```
 
-This starts six additional containers: Fluent Bit, Prometheus, Loki, Alertmanager, ntfy-relay,
-and Grafana.
+This starts two additional containers: Prometheus (scrapes `api:8000/metrics`) and Grafana
+(pre-configured with Prometheus as its default datasource).
 
 Once running:
 
@@ -73,7 +84,9 @@ Once running:
 | --- | --- | --- |
 | Grafana | <http://localhost:3000> | admin / dare2drive |
 | Prometheus | <http://localhost:9090> | — |
-| Alertmanager | <http://localhost:9093> | — |
+
+> **Note:** There is no local Loki. Log aggregation only happens in production via Railway's Log
+> Drain. Locally, use `docker compose logs -f bot api` to follow logs.
 
 ---
 
@@ -152,9 +165,17 @@ log.info(f"user {user_id}")       # f-string — fine for short messages but def
 
 ### 3.5 How logs reach Loki
 
-In local dev with `--monitoring`, Fluent Bit watches container stdout and forwards logs to Loki.
-In production, Railway's Log Drain ships them. Either way, you do not need to change your code
-for logs to appear in Grafana — just write to `log.*` and it happens automatically.
+Logs are always written to stdout. In production, Railway's Log Drain picks them up and pushes
+them to Loki automatically — you do not need to change your code for logs to appear in Grafana.
+
+`LOG_FORMAT=json` (the production default) emits one JSON object per line, which Loki can parse
+into searchable fields:
+
+```json
+{"ts": "2026-04-12T09:00:00Z", "level": "INFO", "logger": "bot.cogs.race", "msg": "Race completed"}
+```
+
+Locally there is no Loki — use `docker compose logs -f bot api` instead.
 
 ---
 
@@ -405,35 +426,73 @@ registrations) not to the *HTTP layer*.
 
 ## 7. Adding an alerting rule
 
-Alerting rules live in `monitoring/prometheus/rules/alerts.yml`. Each rule watches a
-PromQL expression and fires an alert if the condition stays true for a minimum duration.
+Alert rules live in **`monitoring/railway/grafana/alerting/rules.yml`** in the Grafana Stack
+submodule. They use Grafana's unified alerting format and fire Discord notifications via the
+pre-configured contact point.
+
+> Alerting is production-only — there is no local Alertmanager or notification relay.
+> Test your PromQL expression in the local Prometheus UI first, then add the rule.
 
 ### 7.1 Rule anatomy
 
+Each rule has two data nodes: a Prometheus query (A) and a threshold expression (B).
+
 ```yaml
-- alert: AlertName          # shown in Alertmanager + Discord/ntfy notifications
-  expr: |
-    <PromQL expression>     # the condition that triggers the alert
-  for: 5m                   # must stay true for this long before firing
+- uid: my-feature-alert          # unique string — use kebab-case, no spaces
+  title: "Human-readable title"
+  condition: B                   # B is the node that must be true to fire
+  data:
+    # Node A — the Prometheus query
+    - refId: A
+      relativeTimeRange: { from: 300, to: 0 }
+      datasourceUid: grafana_prometheus
+      model:
+        expr: "<PromQL expression>"
+        instant: true
+        refId: A
+
+    # Node B — the threshold condition evaluated against A
+    - refId: B
+      datasourceUid: "-100"
+      model:
+        type: classic_conditions
+        refId: B
+        conditions:
+          - evaluator: { params: [<threshold>], type: gt }  # gt = greater than, lt = less than
+            operator: { type: and }
+            query: { params: [A] }
+            reducer: { params: [], type: last }
+            type: query
+
+  noDataState: NoData    # NoData | Alerting — what to do when the query returns nothing
+  execErrState: Error    # Error | Alerting — what to do on a query error
+  for: 5m                # must stay true for this long before firing
   labels:
-    severity: warning       # "warning" or "critical"
+    severity: warning    # "warning" or "critical"
   annotations:
-    summary: "One-line description shown in the notification title"
-    description: "Longer explanation of what this means and what to investigate."
+    summary: "One-line description shown in the Discord notification title"
+    description: "Longer explanation — what does this mean and what should you look at?"
+  isPaused: false
 ```
 
-`severity: critical` pages immediately with a short repeat interval.
-`severity: warning` fires less urgently.
+All rules go inside the existing group in `rules.yml`:
+
+```yaml
+groups:
+  - orgId: 1
+    name: dare2drive
+    folder: Dare2Drive
+    interval: 1m
+    rules:
+      - uid: d2d-api-down       # existing rule
+        ...
+      - uid: my-new-rule        # your rule goes here
+        ...
+```
 
 ### 7.2 Writing a PromQL expression
 
 PromQL is the query language Prometheus uses. Here are the patterns you will use most often:
-
-**Has the counter stopped increasing? (something is down or stuck)**
-```promql
-# Alert if no packs have been opened in the last 30 minutes during active hours
-rate(dare2drive_packs_opened_total[30m]) == 0
-```
 
 **Is a rate above a threshold?**
 ```promql
@@ -445,6 +504,12 @@ rate(dare2drive_packs_opened_total[30m]) == 0
 ) > 0.10
 ```
 
+**Has a counter stopped increasing?**
+```promql
+# No packs opened in the last 30 minutes (could indicate the bot is stuck)
+rate(dare2drive_packs_opened_total[30m]) == 0
+```
+
 **Is a value above a raw threshold?**
 ```promql
 # More than 1000 parts destroyed in the last hour (economy sanity check)
@@ -453,43 +518,67 @@ increase(dare2drive_parts_destroyed_total[1h]) > 1000
 
 **Filter by label:**
 ```promql
-# Only look at "wreck" destructions, not "wear"
+# Only "wreck" destructions, not "wear"
 increase(dare2drive_parts_destroyed_total{reason="wreck"}[1h]) > 500
 ```
 
+Test any expression in the local Prometheus UI at `http://localhost:9090/graph` before
+adding it as a rule.
+
 ### 7.3 Adding a rule — step by step
 
-1. Open `monitoring/prometheus/rules/alerts.yml`
-2. Find the right `groups:` section (or add a new one for your feature area)
-3. Add your rule following the template above
-4. Reload Prometheus without restarting:
+1. Test the PromQL expression locally: `d2d up --monitoring`, open `http://localhost:9090/graph`
+2. Open `monitoring/railway/grafana/alerting/rules.yml`
+3. Add your rule to the `rules:` list following the template above
+4. Commit and push the submodule:
    ```bash
-   curl -X POST http://localhost:9090/-/reload
+   cd monitoring/railway
+   git add alerting/rules.yml
+   git commit -m "feat: add HighTradeFailureRate alert"
+   git push
    ```
-5. Go to Prometheus UI → Alerts (`http://localhost:9090/alerts`) and verify your rule appears
-   and its expression evaluates without errors
+5. Redeploy the Grafana service on Railway (or wait for auto-deploy)
+6. In Grafana → **Alerting** → **Alert rules**, verify your rule appears and its state is **Normal**
 
 ### 7.4 Example — alerting on a new feature
 
 Say you added a `trade` feature and want to alert if trades are failing at a high rate:
 
 ```yaml
-  - name: dare2drive_economy
-    interval: 30s
-    rules:
-      - alert: HighTradeFailureRate
-        expr: |
-          (
-            rate(dare2drive_trades_failed_total[5m])
-            /
-            (rate(dare2drive_trades_completed_total[5m]) + rate(dare2drive_trades_failed_total[5m]))
-          ) > 0.15
+      - uid: d2d-high-trade-failure-rate
+        title: "High Trade Failure Rate"
+        condition: B
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: grafana_prometheus
+            model:
+              expr: >
+                rate(dare2drive_trades_failed_total[5m])
+                / rate(dare2drive_trades_initiated_total[5m])
+                * 100
+              instant: true
+              refId: A
+          - refId: B
+            datasourceUid: "-100"
+            model:
+              type: classic_conditions
+              refId: B
+              conditions:
+                - evaluator: { params: [15], type: gt }
+                  operator: { type: and }
+                  query: { params: [A] }
+                  reducer: { params: [], type: last }
+                  type: query
+        noDataState: NoData
+        execErrState: Error
         for: 5m
         labels:
           severity: warning
         annotations:
-          summary: "High trade failure rate"
-          description: "More than 15% of trade attempts are failing over the last 5 minutes. Check bot logs for errors."
+          summary: "High trade failure rate (>15%)"
+          description: "More than 15% of trade attempts are failing. Check bot logs for errors."
+        isPaused: false
 ```
 
 ---
@@ -504,7 +593,6 @@ Think about what you want to graph and alert on before you write any feature cod
 For a trade feature you probably want to know:
 - How many trades are being initiated?
 - How many complete vs fail?
-- Are users trading expensive or cheap things?
 
 ```python
 # In api/metrics.py, add a new section:
@@ -564,21 +652,12 @@ class TradeCog(commands.Cog):
         sender_id = str(interaction.user.id)
         target_id = str(target.id)
 
-        # Always track command volume
         bot_commands_invoked.labels(command="trade").inc()
-
-        log.info(
-            "Trade initiated: sender_id=%s target_id=%s card=%s",
-            sender_id, target_id, card,
-        )
-
-        # Track that a trade was started — before any validation,
-        # so we know how many attempts there are total
+        log.info("Trade initiated: sender_id=%s target_id=%s card=%s", sender_id, target_id, card)
         trades_initiated.inc()
 
         try:
             async with async_session() as session:
-                # --- validation ---
                 if sender_id == target_id:
                     log.warning("Trade self-attempt: user_id=%s", sender_id)
                     trades_failed.labels(reason="declined").inc()
@@ -589,7 +668,6 @@ class TradeCog(commands.Cog):
 
                 # ... look up card, check ownership, send offer to target_id ...
 
-                # If everything succeeds:
                 trades_completed.inc()
                 log.info(
                     "Trade completed: sender_id=%s target_id=%s card=%s",
@@ -614,58 +692,90 @@ async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(TradeCog(bot))
 ```
 
-### Step 3 — Add an alert for error spikes
+### Step 3 — Add an alert rule
 
-In `monitoring/prometheus/rules/alerts.yml`, under the `dare2drive_economy` group (or create it):
+In `monitoring/railway/grafana/alerting/rules.yml`, add to the `rules:` list:
 
 ```yaml
-      - alert: HighTradeFailureRate
-        expr: |
-          (
-            rate(dare2drive_trades_failed_total[5m])
-            /
-            rate(dare2drive_trades_initiated_total[5m])
-          ) > 0.15
+      - uid: d2d-high-trade-failure-rate
+        title: "High Trade Failure Rate"
+        condition: B
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: grafana_prometheus
+            model:
+              expr: >
+                rate(dare2drive_trades_failed_total[5m])
+                / rate(dare2drive_trades_initiated_total[5m])
+                * 100
+              instant: true
+              refId: A
+          - refId: B
+            datasourceUid: "-100"
+            model:
+              type: classic_conditions
+              refId: B
+              conditions:
+                - evaluator: { params: [15], type: gt }
+                  operator: { type: and }
+                  query: { params: [A] }
+                  reducer: { params: [], type: last }
+                  type: query
+        noDataState: NoData
+        execErrState: Error
         for: 5m
         labels:
           severity: warning
         annotations:
           summary: "High trade failure rate (>15%)"
           description: "More than 15% of trade attempts are failing. Check bot logs: logger=bot.cogs.trade"
+        isPaused: false
 ```
 
 ### Step 4 — Verify end-to-end
 
 ```bash
-# Start the full stack including monitoring
-d2d up --monitoring --build
+# Start the local metrics stack
+d2d up --monitoring
 
-# In another terminal, tail bot logs to watch your log lines appear
+# In another terminal, tail bot logs
 docker compose logs -f bot
 
-# Trigger the trade command in Discord
+# Trigger the /trade command in Discord
 
 # Check the metric was recorded
 curl -s http://localhost:8000/metrics | grep dare2drive_trades
 
-# Check Prometheus has the metric
-# Open http://localhost:9090 → Graph → query: dare2drive_trades_initiated_total
+# Check Prometheus has it
+# Open http://localhost:9090/graph → query: dare2drive_trades_initiated_total
 
-# Check the alert rule loaded
-# Open http://localhost:9090/alerts → find HighTradeFailureRate
-
-# Check logs appear in Grafana
-# Open http://localhost:3000 → Explore → Loki
-# Query: {service="bot"} | json | logger=`bot.cogs.trade`
+# Push the alert rule to the submodule, redeploy Grafana on Railway, then:
+# Grafana → Alerting → Alert rules → verify HighTradeFailureRate shows Normal
 ```
 
 ---
 
 ## 9. Viewing your data
 
-### 9.1 Logs in Grafana (Loki)
+### 9.1 Logs — locally
 
-1. Open Grafana: <http://localhost:3000>
+There is no local Loki. Follow logs directly from Docker:
+
+```bash
+# Both services
+docker compose logs -f bot api
+
+# Bot only
+docker compose logs -f bot
+
+# Filter to errors (requires jq)
+docker compose logs bot --no-log-prefix | jq 'select(.level == "ERROR")'
+```
+
+### 9.2 Logs — production (Loki in Grafana)
+
+1. Open the Railway Grafana instance
 2. Left sidebar → **Explore** (compass icon)
 3. Top-left dropdown → select **Loki**
 4. Use the **Label filters** builder or type a LogQL query directly
@@ -673,22 +783,20 @@ curl -s http://localhost:8000/metrics | grep dare2drive_trades
 Useful LogQL queries:
 
 ```logql
-# All bot logs
-{service="bot"}
+# All app logs
+{service_name=~"api|bot"}
 
 # Filter to your module
-{service="bot"} | json | logger=`bot.cogs.trade`
+{service_name="bot"} | json | logger=`bot.cogs.trade`
 
 # All errors across all services
-{job="dare2drive"} | json | level=`ERROR`
+{service_name=~"api|bot"} | json | level=`ERROR`
 
 # Logs for a specific user
-{service="bot"} | json | line_format `{{.msg}}` |= "user_id=123456789"
-
-# Logs from the last 15 minutes (use the time picker in the top right)
+{service_name="bot"} | json |= "user_id=123456789"
 ```
 
-### 9.2 Metrics in Prometheus
+### 9.3 Metrics in Prometheus (local)
 
 1. Open Prometheus: <http://localhost:9090>
 2. Click **Graph**
@@ -703,27 +811,32 @@ dare2drive_packs_opened_total
 # Pack open rate per minute, broken down by pack type
 rate(dare2drive_packs_opened_total[5m]) * 60
 
-# Race completion rate (wins only)
-rate(dare2drive_races_completed_total{outcome="win"}[5m])
-
 # Bot command error rate
 rate(dare2drive_bot_command_errors_total[5m])
   /
 rate(dare2drive_bot_commands_total[5m])
 ```
 
-### 9.3 Metrics in Grafana
+### 9.4 Metrics in Grafana (dashboards)
 
-1. Open Grafana: <http://localhost:3000>
-2. Left sidebar → **Explore** → select **Prometheus** from the dropdown
-3. Use the Metric browser or paste a PromQL query
-4. To add a panel to the main dashboard: open the dashboard → **Add panel** → paste your query
+The **Dare2Drive** dashboard in the Railway Grafana instance shows:
 
-### 9.4 Checking alert rules
+- Request rate, 5xx error rate, P95 latency, API status (stat panels)
+- Requests/sec by handler, response status codes (time series)
+- Latency percentiles (p50/p95/p99), latency by handler (time series)
+- App logs from Loki (logs panel)
 
-1. Open Prometheus: <http://localhost:9090/alerts>
-2. All rules are listed with their current state: **Inactive** (condition not met),
-   **Pending** (condition met but `for:` duration not elapsed), or **Firing** (alert is active)
+Locally: Grafana at `http://localhost:3000` → Explore → Prometheus for ad-hoc queries.
+To build a local dashboard: **+** → **New dashboard** → **Add visualization** → select Prometheus.
+
+### 9.5 Checking alert rules
+
+Alert rules are managed in Grafana, not Prometheus. To check their state:
+
+1. Open the Railway Grafana instance
+2. Left sidebar → **Alerting** → **Alert rules**
+3. Rules show as **Normal** (condition not met), **Pending** (condition met but `for:` not elapsed),
+   or **Firing** (alert is active and Discord notification has been sent)
 
 ---
 
@@ -771,36 +884,51 @@ with api_request_duration_seconds.labels(route="/race").time():
 
 ### Alert rule template
 
+Add to `monitoring/railway/grafana/alerting/rules.yml` under `rules:`:
+
 ```yaml
-- alert: MyFeatureAlert
-  expr: |
-    rate(dare2drive_my_feature_failed_total[5m])
-    /
-    rate(dare2drive_my_feature_started_total[5m])
-    > 0.10
-  for: 5m
-  labels:
-    severity: warning          # or "critical"
-  annotations:
-    summary: "My feature failing >10%"
-    description: "Investigate with: {service='bot'} | json | logger='bot.cogs.myfeature'"
-```
-
-### Reload Prometheus rules without restart
-
-```bash
-curl -X POST http://localhost:9090/-/reload
+      - uid: d2d-my-feature-alert    # unique kebab-case string
+        title: "My Feature Alert"
+        condition: B
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: grafana_prometheus
+            model:
+              expr: "rate(dare2drive_my_metric_total[5m]) > 0"
+              instant: true
+              refId: A
+          - refId: B
+            datasourceUid: "-100"
+            model:
+              type: classic_conditions
+              refId: B
+              conditions:
+                - evaluator: { params: [0.10], type: gt }
+                  operator: { type: and }
+                  query: { params: [A] }
+                  reducer: { params: [], type: last }
+                  type: query
+        noDataState: NoData
+        execErrState: Error
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "My feature failing >10%"
+          description: "Investigate: {service_name='bot'} | json | logger='bot.cogs.myfeature'"
+        isPaused: false
 ```
 
 ### Useful `docker compose` shortcuts
 
 ```bash
-# Watch bot logs live
-docker compose logs -f bot
+# Watch bot and api logs live
+docker compose logs -f bot api
 
-# Watch api logs live
-docker compose logs -f api
+# Watch all monitoring container logs
+docker compose logs -f prometheus grafana
 
-# Watch all monitoring logs
-docker compose logs -f fluent-bit prometheus alertmanager
+# Check the /metrics endpoint is responding
+curl -s http://localhost:8000/metrics | grep dare2drive_
 ```
