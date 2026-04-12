@@ -18,3 +18,4 @@ htmlcov/
 art/*.png
 art/*.jpg
 .claude/settings.local.json
+.infisical.json
