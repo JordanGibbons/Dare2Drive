@@ -6,6 +6,8 @@ services:
     command: watchfiles --filter python "python -m bot.main" .
     volumes:
       - .:/app
+    ports:
+      - "8001:8001"
     environment:
       - DATABASE_URL=postgresql+asyncpg://dare2drive:dare2drive@db:5432/dare2drive
       - REDIS_URL=redis://redis:6379/0
@@ -104,8 +106,8 @@ services:
 
   grafana:
     build:
-      context: ./monitoring/local/grafana
-      dockerfile: dockerfile
+      context: ./monitoring
+      dockerfile: local/grafana/dockerfile
     profiles: [monitoring]
     ports:
       - "3000:3000"

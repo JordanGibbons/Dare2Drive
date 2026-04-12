@@ -7,6 +7,7 @@ import asyncio
 import discord
 from discord import app_commands
 from discord.ext import commands
+from prometheus_client import start_http_server
 
 from api.metrics import bot_command_errors, bot_commands_invoked
 from config.logging import get_logger, setup_logging
@@ -102,6 +103,8 @@ class Dare2DriveBot(commands.Bot):
 
 
 async def main() -> None:
+    start_http_server(8001)
+    log.info("Bot metrics server started on port 8001")
     bot = Dare2DriveBot()
     async with bot:
         await bot.start(settings.DISCORD_TOKEN)
