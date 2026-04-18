@@ -1,0 +1,5 @@
+FROM quay.io/prometheusio/postgres_exporter:latest
+
+# Railway injects DATA_SOURCE_NAME pointing to the Postgres service
+# Format: postgresql://user:password@host:port/dbname?sslmode=disable
+ENTRYPOINT ["/bin/postgres_exporter"]

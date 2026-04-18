@@ -12,10 +12,8 @@ datasources:
         datasourceUid: grafana_loki
         spanStartTimeShift: '-1h'
         spanEndTimeShift: '1h'
-        filterByTraceID: false
+        filterByTraceID: true
         filterBySpanID: false
-        customQuery: true
-        query: '{service=~"dare2drive.*"} | json | traceID=`$${__trace.traceId}`'
       tracesToMetrics:
         datasourceUid: grafana_prometheus
         spanStartTimeShift: '-1h'
