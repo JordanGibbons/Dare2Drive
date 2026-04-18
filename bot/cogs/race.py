@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api.metrics import parts_destroyed, races_completed, races_started
 from bot.cogs.tutorial import _load_tutorial_data, build_npc_race_data, is_tutorial_complete
 from config.logging import get_logger
+from config.metrics import trace_exemplar
 from db.models import (
     BodyType,
     Build,
@@ -232,7 +233,7 @@ async def _apply_wreck_results(
 
                     # Delete the specific card copy
                     await session.delete(uc)
-                    parts_destroyed.labels(reason="wreck").inc()
+                    parts_destroyed.labels(reason="wreck").inc(exemplar=trace_exemplar())
 
             lost_parts_data.append(wp.to_dict())
 
@@ -257,7 +258,7 @@ async def _run_race_and_send(
 ) -> None:
     """Execute a race, save results, and send the result embed. Used by both PvP and tutorial flows."""  # noqa: E501
     race_type = "tutorial" if is_tutorial_race else "open"
-    races_started.labels(race_type=race_type).inc()
+    races_started.labels(race_type=race_type).inc(exemplar=trace_exemplar())
 
     async with async_session() as session:
         # Re-attach users to this session
@@ -380,7 +381,7 @@ async def _run_race_and_send(
 
                     await session.delete(uc)
                     worn_out_parts.append((uid, slot_name, card_name))
-                    parts_destroyed.labels(reason="wear").inc()
+                    parts_destroyed.labels(reason="wear").inc(exemplar=trace_exemplar())
                     log.info(
                         "Part worn out: user=%s slot=%s card=%s after %d races",
                         uid,
@@ -427,7 +428,7 @@ async def _run_race_and_send(
             outcome = "win"
         else:
             outcome = "loss"
-        races_completed.labels(race_type=race_type, outcome=outcome).inc()
+        races_completed.labels(race_type=race_type, outcome=outcome).inc(exemplar=trace_exemplar())
 
     # Build display name map
     display_names: dict[str, str] = {

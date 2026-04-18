@@ -18,6 +18,7 @@ from sqlalchemy.orm import selectinload
 
 from api.metrics import currency_spent, daily_claimed, packs_opened
 from config.logging import get_logger
+from config.metrics import trace_exemplar
 from config.settings import settings
 from db.models import Build, Card, CardSlot, Rarity, User, UserCard
 from db.session import async_session
@@ -228,7 +229,7 @@ class CardsCog(commands.Cog):
 
             await session.commit()
 
-        daily_claimed.inc()
+        daily_claimed.inc(exemplar=trace_exemplar())
 
         embed = discord.Embed(
             title="💰 Daily Reward",
@@ -290,8 +291,8 @@ class CardsCog(commands.Cog):
 
             await session.commit()
 
-        packs_opened.labels(pack_type=pack_type).inc()
-        currency_spent.labels(reason=pack_type).inc(cost)
+        packs_opened.labels(pack_type=pack_type).inc(exemplar=trace_exemplar())
+        currency_spent.labels(reason=pack_type).inc(cost, exemplar=trace_exemplar())
 
         tables = _load_loot_tables()
         display_name = tables[pack_type]["display_name"]

@@ -7,15 +7,21 @@ import asyncio
 import discord
 from discord import app_commands
 from discord.ext import commands
+from opentelemetry import trace
 from prometheus_client import start_http_server
 
 from api.metrics import bot_command_errors, bot_commands_invoked
 from config.logging import get_logger, setup_logging
+from config.metrics import trace_exemplar
 from config.settings import settings
+from config.tracing import init_tracing
 from db.session import async_session
 
 setup_logging()
 log = get_logger(__name__)
+
+init_tracing("dare2drive-bot")
+tracer = trace.get_tracer(__name__)
 
 
 class TutorialCommandTree(app_commands.CommandTree):
@@ -29,7 +35,12 @@ class TutorialCommandTree(app_commands.CommandTree):
             return True
 
         command_name = interaction.command.name
-        bot_commands_invoked.labels(command=command_name).inc()
+        log.info("command invoked: command=%s user=%s", command_name, interaction.user.id)
+        bot_commands_invoked.labels(command=command_name).inc(exemplar=trace_exemplar())
+
+        span = trace.get_current_span()
+        span.set_attribute("discord.command", command_name)
+        span.set_attribute("discord.user_id", str(interaction.user.id))
 
         async with async_session() as session:
             user = await session.get(User, str(interaction.user.id))
@@ -40,6 +51,7 @@ class TutorialCommandTree(app_commands.CommandTree):
         if is_command_allowed(user, command_name):
             return True
 
+        span.set_attribute("discord.blocked", True)
         msg = get_blocked_message(user, command_name)
         await interaction.response.send_message(msg, ephemeral=True)
         return False
@@ -48,7 +60,10 @@ class TutorialCommandTree(app_commands.CommandTree):
         self, interaction: discord.Interaction, error: app_commands.AppCommandError
     ) -> None:
         command_name = interaction.command.name if interaction.command else "unknown"
-        bot_command_errors.labels(command=command_name).inc()
+        bot_command_errors.labels(command=command_name).inc(exemplar=trace_exemplar())
+        span = trace.get_current_span()
+        span.set_attribute("discord.command", command_name)
+        span.record_exception(error)
         log.error(
             "App command error: command=%s user=%s",
             command_name,

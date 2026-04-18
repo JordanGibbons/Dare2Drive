@@ -37,6 +37,9 @@ class Settings(BaseSettings):
     INFISICAL_PROJECT_ID: str = ""
     INFISICAL_ENVIRONMENT: str = "dev"
 
+    # Tracing — set to Tempo's OTLP HTTP endpoint to enable trace export
+    TEMPO_URL: str = ""
+
     # App
     API_SECRET_KEY: str = "change-me"
     LOG_LEVEL: str = "INFO"

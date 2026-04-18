@@ -17,6 +17,7 @@ services:
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - LOG_FORMAT=${LOG_FORMAT:-json}
       - ENVIRONMENT=${ENVIRONMENT:-development}
+      - TEMPO_URL=${TEMPO_URL:-}
     depends_on:
       db:
         condition: service_healthy
@@ -40,6 +41,7 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - SKIP_MIGRATIONS=true
       - LOG_FORMAT=${LOG_FORMAT:-json}
+      - TEMPO_URL=${TEMPO_URL:-}
     depends_on:
       db:
         condition: service_healthy
@@ -98,6 +100,7 @@ services:
       - --storage.tsdb.path=/prometheus
       - --storage.tsdb.retention.time=30d
       - --web.enable-lifecycle
+      - --enable-feature=exemplar-storage
     depends_on:
       - api
     networks:
