@@ -20,7 +20,7 @@ from db.session import async_session
 setup_logging()
 log = get_logger(__name__)
 
-init_tracing("dare2drive-bot")
+init_tracing("Dare2Drive")
 tracer = trace.get_tracer(__name__)
 
 
