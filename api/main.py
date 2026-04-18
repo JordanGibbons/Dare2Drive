@@ -26,7 +26,6 @@ FastAPIInstrumentor.instrument_app(app, excluded_urls="health,metrics")
 Instrumentator(
     should_group_status_codes=False,
     excluded_handlers=["/metrics", "/health"],
-    enable_metrics_endpoint=False,
 ).instrument(app)
 
 

@@ -153,4 +153,4 @@ class TestMetricsEndpoint:
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             resp = await client.get("/metrics")
 
-        assert "text/plain" in resp.headers.get("content-type", "")
+        assert "application/openmetrics-text" in resp.headers.get("content-type", "")
