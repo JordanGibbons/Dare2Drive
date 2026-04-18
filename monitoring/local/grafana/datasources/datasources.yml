@@ -1,6 +1,18 @@
 apiVersion: 1
 
 datasources:
+  - name: Tempo
+    type: tempo
+    access: proxy
+    orgId: 1
+    uid: grafana_tempo
+    url: http://tempo:3200
+    jsonData:
+      tracesToLogs:
+        datasourceUid: grafana_prometheus
+      tracesToMetrics:
+        datasourceUid: grafana_prometheus
+
   - name: Prometheus
     type: prometheus
     access: proxy
@@ -8,3 +20,7 @@ datasources:
     uid: grafana_prometheus
     url: http://prometheus:9090
     isDefault: true
+    jsonData:
+      exemplarTraceIdDestinations:
+        - name: traceID
+          datasourceUid: grafana_tempo

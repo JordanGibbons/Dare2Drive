@@ -9,6 +9,7 @@ startCommand = "python -m bot.main"
 [services.variables]
 DATABASE_URL = "${{Postgres.DATABASE_URL}}"
 REDIS_URL = "${{Redis.REDIS_URL}}"
+TEMPO_URL = "${{tempo.RAILWAY_PRIVATE_DOMAIN}}:4318"
 
 [[services]]
 name = "api"
@@ -18,6 +19,7 @@ startCommand = "uvicorn api.main:app --host 0.0.0.0 --port ${PORT:-8000}"
 [services.variables]
 DATABASE_URL = "${{Postgres.DATABASE_URL}}"
 REDIS_URL = "${{Redis.REDIS_URL}}"
+TEMPO_URL = "${{tempo.RAILWAY_PRIVATE_DOMAIN}}:4318"
 
 [[services]]
 name = "ntfy-relay"

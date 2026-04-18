@@ -17,7 +17,7 @@ services:
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - LOG_FORMAT=${LOG_FORMAT:-json}
       - ENVIRONMENT=${ENVIRONMENT:-development}
-      - TEMPO_URL=${TEMPO_URL:-}
+      - TEMPO_URL=${TEMPO_URL:-http://tempo:4318}
     depends_on:
       db:
         condition: service_healthy
@@ -41,7 +41,7 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - SKIP_MIGRATIONS=true
       - LOG_FORMAT=${LOG_FORMAT:-json}
-      - TEMPO_URL=${TEMPO_URL:-}
+      - TEMPO_URL=${TEMPO_URL:-http://tempo:4318}
     depends_on:
       db:
         condition: service_healthy
@@ -87,6 +87,21 @@ services:
   # First run: add Prometheus datasource at http://prometheus:9090 in Grafana UI.
   # ---------------------------------------------------------------------------
 
+  tempo:
+    build:
+      context: ./monitoring/grafana-stack/tempo
+      dockerfile: dockerfile
+    profiles: [monitoring]
+    user: root
+    ports:
+      - "3200:3200"
+      - "4318:4318"
+    volumes:
+      - tempo_data:/var/tempo
+    networks:
+      - dare2drive_net
+    restart: unless-stopped
+
   prometheus:
     image: prom/prometheus:v2.52.0
     profiles: [monitoring]
@@ -122,6 +137,7 @@ services:
       - GF_AUTH_ANONYMOUS_ENABLED=false
     depends_on:
       - prometheus
+      - tempo
     networks:
       - dare2drive_net
     restart: unless-stopped
@@ -130,6 +146,7 @@ volumes:
   pgdata:
   prometheus_data:
   grafana_data:
+  tempo_data:
 
 networks:
   dare2drive_net:
