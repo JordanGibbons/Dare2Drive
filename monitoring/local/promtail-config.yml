@@ -45,10 +45,9 @@ scrape_configs:
       - timestamp:
           source: ts
           format: RFC3339
-      # Set log level from parsed field
+      # Set log level from parsed field (don't label traceID - too high cardinality)
       - labels:
           level:
-          traceID:
       # Output the message
       - output:
           source: msg

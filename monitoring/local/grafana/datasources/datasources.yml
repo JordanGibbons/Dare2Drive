@@ -8,14 +8,14 @@ datasources:
     uid: grafana_tempo
     url: http://tempo:3200
     jsonData:
-      tracesToLogs:
+      tracesToLogsV2:
         datasourceUid: grafana_loki
-        filterByTraceID: false
-        filterBySpanID: false
         spanStartTimeShift: '-1h'
         spanEndTimeShift: '1h'
+        filterByTraceID: false
+        filterBySpanID: false
         customQuery: true
-        query: '{traceID="$${__trace.traceId}"}'
+        query: '{service=~"dare2drive.*"} | json | traceID=`$${__trace.traceId}`'
       tracesToMetrics:
         datasourceUid: grafana_prometheus
         spanStartTimeShift: '-1h'
