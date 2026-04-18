@@ -47,3 +47,23 @@ datasources:
       exemplarTraceIdDestinations:
         - name: traceID
           datasourceUid: grafana_tempo
+
+  - name: PostgreSQL
+    type: postgres
+    access: proxy
+    orgId: 1
+    uid: grafana_postgres
+    url: db:5432
+    user: dare2drive
+    isDefault: false
+    secureJsonData:
+      password: 'dare2drive'
+    jsonData:
+      database: dare2drive
+      sslmode: 'disable'
+      maxOpenConns: 100
+      maxIdleConns: 100
+      maxIdleConnsAuto: true
+      connMaxLifetime: 14400
+      postgresVersion: 1600
+      timescaledb: false

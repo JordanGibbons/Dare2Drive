@@ -17,3 +17,8 @@ scrape_configs:
     scrape_protocols: [OpenMetricsText1.0.0, PrometheusText0.0.4]
     static_configs:
       - targets: [bot:8001]
+
+  - job_name: redis
+    scrape_interval: 15s
+    static_configs:
+      - targets: [redis_exporter:9121]

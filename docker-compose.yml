@@ -95,6 +95,19 @@ services:
     networks:
       - dare2drive_net
 
+  redis_exporter:
+    image: oliver006/redis_exporter:latest
+    profiles: [monitoring]
+    ports:
+      - "9121:9121"
+    environment:
+      - REDIS_ADDR=redis://redis:6379
+    depends_on:
+      - redis
+    networks:
+      - dare2drive_net
+    restart: unless-stopped
+
   # ---------------------------------------------------------------------------
   # Local metrics stack  (opt-in — start with: d2d up --monitoring)
   # Scrapes the API's /metrics endpoint and exposes Grafana at localhost:3000.

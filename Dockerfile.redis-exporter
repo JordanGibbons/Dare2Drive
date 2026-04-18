@@ -1,0 +1,5 @@
+FROM oliver006/redis_exporter:latest
+
+# Railway will inject REDIS_URL automatically if Redis service exists
+# The exporter expects REDIS_ADDR format
+ENTRYPOINT [ "redis_exporter" ]
