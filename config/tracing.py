@@ -24,6 +24,8 @@ def _build_exporter() -> SpanExporter | None:
         return None
     from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 
+    # Ensure TEMPO_URL uses correct OTLP HTTP port (4318), not query port (3200)
+    # The exporter adds /v1/traces automatically
     return OTLPSpanExporter(endpoint=f"{settings.TEMPO_URL}/v1/traces")
 
 

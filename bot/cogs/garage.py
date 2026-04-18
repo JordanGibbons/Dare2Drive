@@ -297,6 +297,10 @@ class GarageCog(commands.Cog):
     )
     @traced_command
     async def start(self, interaction: discord.Interaction) -> None:
+        # Guard against already-acknowledged interactions
+        if interaction.response.is_done():
+            return
+
         async with async_session() as session:
             existing = await session.get(User, str(interaction.user.id))
             if existing:
@@ -316,7 +320,10 @@ class GarageCog(commands.Cog):
             ),
             color=0xF59E0B,
         )
-        await interaction.response.send_message(embed=embed, view=view)
+
+        # Double-check before sending (race condition safety)
+        if not interaction.response.is_done():
+            await interaction.response.send_message(embed=embed, view=view)
 
     @app_commands.command(name="garage", description="View your current build")
     @app_commands.describe(build="Which build to view (default: your default build)")
