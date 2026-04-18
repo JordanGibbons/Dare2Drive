@@ -9,9 +9,32 @@ datasources:
     url: http://tempo:3200
     jsonData:
       tracesToLogs:
-        datasourceUid: grafana_prometheus
+        datasourceUid: grafana_loki
+        filterByTraceID: false
+        filterBySpanID: false
+        spanStartTimeShift: '-1h'
+        spanEndTimeShift: '1h'
+        customQuery: true
+        query: '{service="dare2drive-bot"} | json | traceID="$${__trace.traceId}"'
       tracesToMetrics:
         datasourceUid: grafana_prometheus
+        spanStartTimeShift: '-1h'
+        spanEndTimeShift: '1h'
+
+  - name: Loki
+    type: loki
+    access: proxy
+    orgId: 1
+    uid: grafana_loki
+    url: http://loki:3100
+    isDefault: false
+    jsonData:
+      derivedFields:
+        - datasourceUid: grafana_tempo
+          matcherRegex: 'traceID=(\w+)'
+          name: traceID
+          url: '$${__value.raw}'
+          urlDisplayLabel: 'View Trace'
 
   - name: Prometheus
     type: prometheus

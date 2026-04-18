@@ -18,6 +18,13 @@ services:
       - LOG_FORMAT=${LOG_FORMAT:-json}
       - ENVIRONMENT=${ENVIRONMENT:-development}
       - TEMPO_URL=${TEMPO_URL:-http://tempo:4318}
+    logging:
+      driver: json-file
+      options:
+        labels: "service"
+        tag: "{{.Name}}"
+    labels:
+      service: "dare2drive-bot"
     depends_on:
       db:
         condition: service_healthy
@@ -42,6 +49,13 @@ services:
       - SKIP_MIGRATIONS=true
       - LOG_FORMAT=${LOG_FORMAT:-json}
       - TEMPO_URL=${TEMPO_URL:-http://tempo:4318}
+    logging:
+      driver: json-file
+      options:
+        labels: "service"
+        tag: "{{.Name}}"
+    labels:
+      service: "dare2drive-api"
     depends_on:
       db:
         condition: service_healthy
@@ -86,6 +100,34 @@ services:
   # Scrapes the API's /metrics endpoint and exposes Grafana at localhost:3000.
   # First run: add Prometheus datasource at http://prometheus:9090 in Grafana UI.
   # ---------------------------------------------------------------------------
+
+  loki:
+    image: grafana/loki:2.9.8
+    profiles: [monitoring]
+    user: root
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./monitoring/grafana-stack/loki/loki.yml:/etc/loki/config.yaml:ro
+      - loki_data:/loki
+    command: -config.file=/etc/loki/config.yaml
+    networks:
+      - dare2drive_net
+    restart: unless-stopped
+
+  promtail:
+    image: grafana/promtail:2.9.8
+    profiles: [monitoring]
+    volumes:
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./monitoring/local/promtail-config.yml:/etc/promtail/config.yml:ro
+    command: -config.file=/etc/promtail/config.yml
+    depends_on:
+      - loki
+    networks:
+      - dare2drive_net
+    restart: unless-stopped
 
   tempo:
     build:
@@ -138,6 +180,7 @@ services:
     depends_on:
       - prometheus
       - tempo
+      - loki
     networks:
       - dare2drive_net
     restart: unless-stopped
@@ -147,6 +190,7 @@ volumes:
   prometheus_data:
   grafana_data:
   tempo_data:
+  loki_data:
 
 networks:
   dare2drive_net:
