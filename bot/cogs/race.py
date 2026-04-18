@@ -15,6 +15,7 @@ from api.metrics import parts_destroyed, races_completed, races_started
 from bot.cogs.tutorial import _load_tutorial_data, build_npc_race_data, is_tutorial_complete
 from config.logging import get_logger
 from config.metrics import trace_exemplar
+from config.tracing import traced_command
 from db.models import (
     BodyType,
     Build,
@@ -999,6 +1000,7 @@ class RaceCog(commands.Cog):
         ],
     )
     @app_commands.autocomplete(build=_race_build_autocomplete)
+    @traced_command
     async def race(
         self,
         interaction: discord.Interaction,
@@ -1119,6 +1121,7 @@ class RaceCog(commands.Cog):
         name="multirace", description="Host a multi-player race event (2-min signup, max 3)"
     )
     @app_commands.describe(wager="Optional creds wager (min 10, winner takes all)")
+    @traced_command
     async def multirace(self, interaction: discord.Interaction, wager: int = 0) -> None:
         if wager != 0 and wager < 10:
             await interaction.response.send_message(
@@ -1181,6 +1184,7 @@ class RaceCog(commands.Cog):
         await interaction.response.send_message(embed=embed, view=view)
 
     @app_commands.command(name="leaderboard", description="View the top racers")
+    @traced_command
     async def leaderboard(self, interaction: discord.Interaction) -> None:
         async with async_session() as session:
             result = await session.execute(select(User).order_by(User.xp.desc()).limit(10))
@@ -1203,6 +1207,7 @@ class RaceCog(commands.Cog):
         await interaction.response.send_message(embed=embed)
 
     @app_commands.command(name="wrecks", description="View your wreck history")
+    @traced_command
     async def wrecks(self, interaction: discord.Interaction) -> None:
         async with async_session() as session:
             result = await session.execute(

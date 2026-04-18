@@ -20,6 +20,7 @@ from api.metrics import currency_spent, daily_claimed, packs_opened
 from config.logging import get_logger
 from config.metrics import trace_exemplar
 from config.settings import settings
+from config.tracing import traced_command
 from db.models import Build, Card, CardSlot, Rarity, User, UserCard
 from db.session import async_session
 
@@ -159,6 +160,7 @@ class CardsCog(commands.Cog):
     @app_commands.command(
         name="daily", description="Claim your daily Creds and a full set of parts"
     )
+    @traced_command
     async def daily(self, interaction: discord.Interaction) -> None:
         from datetime import datetime, timedelta, timezone
 
@@ -258,6 +260,7 @@ class CardsCog(commands.Cog):
             app_commands.Choice(name="Legend Crate (1200 Creds)", value="legend_crate"),
         ]
     )
+    @traced_command
     async def pack(self, interaction: discord.Interaction, pack_type: str) -> None:
         cost_map = {
             "junkyard_pack": settings.JUNKYARD_PACK_COST,
@@ -302,6 +305,7 @@ class CardsCog(commands.Cog):
         await interaction.response.send_message(embed=view.build_embed(), view=view)
 
     @app_commands.command(name="inventory", description="View your card collection")
+    @traced_command
     async def inventory(self, interaction: discord.Interaction) -> None:
         async with async_session() as session:
             user = await session.get(User, str(interaction.user.id))
@@ -355,6 +359,7 @@ class CardsCog(commands.Cog):
 
     @app_commands.command(name="inspect", description="Inspect a card's full stats")
     @app_commands.describe(card_name="Name of the card to inspect (e.g. Card Name #3)")
+    @traced_command
     async def inspect(self, interaction: discord.Interaction, card_name: str) -> None:
         from engine.card_mint import apply_stat_modifiers
 
@@ -466,6 +471,7 @@ class CardsCog(commands.Cog):
         name="request_inspect", description="Ask to peek inside another player's garage"
     )
     @app_commands.describe(target="The player whose garage you want to see")
+    @traced_command
     async def request_inspect(
         self,
         interaction: discord.Interaction,
@@ -1077,6 +1083,7 @@ class _GarageRequestView(discord.ui.View):
 
     @app_commands.command(name="salvage", description="Salvage a part for Creds")
     @app_commands.describe(card_name="Name of the card to salvage (e.g. Card Name #3)")
+    @traced_command
     async def salvage(self, interaction: discord.Interaction, card_name: str) -> None:
         parsed_name, parsed_serial = _parse_card_input(card_name)
 

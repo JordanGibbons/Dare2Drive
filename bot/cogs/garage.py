@@ -13,6 +13,7 @@ from sqlalchemy import select, update
 from api.metrics import currency_spent, users_registered
 from config.logging import get_logger
 from config.metrics import trace_exemplar
+from config.tracing import traced_command
 from db.models import (
     BodyType,
     Build,
@@ -294,6 +295,7 @@ class GarageCog(commands.Cog):
     @app_commands.command(
         name="start", description="Create your Dare2Drive account and pick a body type"
     )
+    @traced_command
     async def start(self, interaction: discord.Interaction) -> None:
         async with async_session() as session:
             existing = await session.get(User, str(interaction.user.id))
@@ -319,6 +321,7 @@ class GarageCog(commands.Cog):
     @app_commands.command(name="garage", description="View your current build")
     @app_commands.describe(build="Which build to view (default: your default build)")
     @app_commands.autocomplete(build=_build_name_autocomplete)
+    @traced_command
     async def garage(self, interaction: discord.Interaction, build: str | None = None) -> None:
         async with async_session() as session:
             user = await session.get(User, str(interaction.user.id))
@@ -402,6 +405,7 @@ class GarageCog(commands.Cog):
         slot=[app_commands.Choice(name=s.value.title(), value=s.value) for s in CardSlot]
     )
     @app_commands.autocomplete(build=_build_name_autocomplete)
+    @traced_command
     async def equip(
         self,
         interaction: discord.Interaction,
@@ -575,6 +579,7 @@ class GarageCog(commands.Cog):
         ]
     )
     @app_commands.autocomplete(build=_build_name_autocomplete)
+    @traced_command
     async def autoequip(
         self, interaction: discord.Interaction, mode: str, build: str | None = None
     ) -> None:
@@ -691,6 +696,7 @@ class GarageCog(commands.Cog):
 
     @app_commands.command(name="peek", description="View another player's garage (public)")
     @app_commands.describe(target="The player whose garage to view")
+    @traced_command
     async def peek(self, interaction: discord.Interaction, target: discord.Member) -> None:
         async with async_session() as session:
             user = await session.get(User, str(target.id))
@@ -740,6 +746,7 @@ class GarageCog(commands.Cog):
         await interaction.response.send_message(embed=embed)
 
     @app_commands.command(name="profile", description="View your profile")
+    @traced_command
     async def profile(self, interaction: discord.Interaction) -> None:
         async with async_session() as session:
             user = await session.get(User, str(interaction.user.id))
@@ -767,6 +774,7 @@ class GarageCog(commands.Cog):
     @build_group.command(name="preview", description="Preview your build's class and stats")
     @app_commands.describe(build="Which build to preview (default: your default build)")
     @app_commands.autocomplete(build=_build_name_autocomplete)
+    @traced_command
     async def build_preview(
         self, interaction: discord.Interaction, build: str | None = None
     ) -> None:
@@ -851,6 +859,7 @@ class GarageCog(commands.Cog):
     @build_group.command(name="mint", description="Mint a Car Title for your completed build")
     @app_commands.describe(build="Which build to mint (default: your default build)")
     @app_commands.autocomplete(build=_build_name_autocomplete)
+    @traced_command
     async def build_mint(self, interaction: discord.Interaction, build: str | None = None) -> None:
         await interaction.response.defer(ephemeral=True)
 
@@ -1002,6 +1011,7 @@ class GarageCog(commands.Cog):
     )
     @app_commands.describe(build="Which build to disassemble (default: your default build)")
     @app_commands.autocomplete(build=_build_name_autocomplete)
+    @traced_command
     async def build_disassemble(
         self, interaction: discord.Interaction, build: str | None = None
     ) -> None:
@@ -1080,6 +1090,7 @@ class GarageCog(commands.Cog):
             app_commands.Choice(name="🚗 Compact", value="compact"),
         ]
     )
+    @traced_command
     async def build_new(self, interaction: discord.Interaction, body_type: str) -> None:
         from bot.cogs.tutorial import is_tutorial_complete
 
@@ -1133,6 +1144,7 @@ class GarageCog(commands.Cog):
         )
 
     @build_group.command(name="list", description="List all your builds")
+    @traced_command
     async def build_list(self, interaction: discord.Interaction) -> None:
         async with async_session() as session:
             user = await session.get(User, str(interaction.user.id))
@@ -1179,6 +1191,7 @@ class GarageCog(commands.Cog):
     @build_group.command(name="set-default", description="Set a build as your default")
     @app_commands.describe(build="The build to set as default")
     @app_commands.autocomplete(build=_build_name_autocomplete)
+    @traced_command
     async def build_set_default(self, interaction: discord.Interaction, build: str) -> None:
         try:
             build_uuid = uuid.UUID(build)
@@ -1232,6 +1245,7 @@ class GarageCog(commands.Cog):
         build="Which build's title to rename (default: your default build)",
     )
     @app_commands.autocomplete(build=_build_name_autocomplete)
+    @traced_command
     async def rig_rename(
         self, interaction: discord.Interaction, name: str, build: str | None = None
     ) -> None:

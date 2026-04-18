@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api.metrics import currency_spent
 from config.logging import get_logger
 from config.metrics import trace_exemplar
+from config.tracing import traced_command
 from db.models import Build, Card, CardSlot, MarketListing, User, UserCard
 from db.session import async_session
 
@@ -356,6 +357,7 @@ class MarketCog(commands.Cog):
         self.bot = bot
 
     @app_commands.command(name="market", description="Browse the marketplace")
+    @traced_command
     async def market(self, interaction: discord.Interaction) -> None:
         async with async_session() as session:
             result = await session.execute(
@@ -401,6 +403,7 @@ class MarketCog(commands.Cog):
     @app_commands.describe(
         card_name="Name of the card to sell (e.g. Card Name #3)", price="Asking price in Creds"
     )
+    @traced_command
     async def list_card(self, interaction: discord.Interaction, card_name: str, price: int) -> None:
         from bot.cogs.cards import _parse_card_input
 
@@ -520,6 +523,7 @@ class MarketCog(commands.Cog):
 
     @app_commands.command(name="buy", description="Buy a card from the market")
     @app_commands.describe(card_name="Name of the card to buy")
+    @traced_command
     async def buy(self, interaction: discord.Interaction, card_name: str) -> None:
         async with async_session() as session:
             user = await session.get(User, str(interaction.user.id))
@@ -617,6 +621,7 @@ class MarketCog(commands.Cog):
         your_card="Card you're offering",
         their_card="Card you want in return",
     )
+    @traced_command
     async def trade(
         self,
         interaction: discord.Interaction,
@@ -713,6 +718,7 @@ class MarketCog(commands.Cog):
     @app_commands.command(
         name="shop", description="Browse the NPC parts shop — common parts always in stock"
     )
+    @traced_command
     async def shop(self, interaction: discord.Interaction) -> None:
         async with async_session() as session:
             user = await session.get(User, str(interaction.user.id))
@@ -757,6 +763,7 @@ class MarketCog(commands.Cog):
     @app_commands.choices(
         slot=[app_commands.Choice(name=s.value.title(), value=s.value) for s in CardSlot]
     )
+    @traced_command
     async def shop_buy(self, interaction: discord.Interaction, slot: str) -> None:
         from engine.card_mint import mint_card
 
@@ -799,6 +806,7 @@ class MarketCog(commands.Cog):
 
     @app_commands.command(name="salvage", description="Scrap a card for Creds")
     @app_commands.describe(card_name="Card to salvage (e.g. Card Name #3)")
+    @traced_command
     async def salvage(self, interaction: discord.Interaction, card_name: str) -> None:
         from bot.cogs.cards import _parse_card_input
 

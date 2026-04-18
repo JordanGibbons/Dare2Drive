@@ -8,6 +8,7 @@ from discord.ext import commands
 from sqlalchemy import delete, update
 
 from config.logging import get_logger
+from config.tracing import traced_command
 from db.models import Build, MarketListing, RigTitle, TutorialStep, User, UserCard, WreckLog
 from db.session import async_session
 
@@ -70,6 +71,7 @@ class AdminCog(commands.Cog):
     )
     @app_commands.describe(target="The player to reset")
     @is_admin()
+    @traced_command
     async def reset_player(self, interaction: discord.Interaction, target: discord.Member) -> None:
         await interaction.response.defer(ephemeral=True)
 
@@ -106,6 +108,7 @@ class AdminCog(commands.Cog):
         step=[app_commands.Choice(name=s.value, value=s.value) for s in TutorialStep]
     )
     @is_admin()
+    @traced_command
     async def set_tutorial_step(
         self, interaction: discord.Interaction, target: discord.Member, step: str
     ) -> None:
@@ -136,6 +139,7 @@ class AdminCog(commands.Cog):
         amount="Amount of Creds (positive to add, negative to remove)",
     )
     @is_admin()
+    @traced_command
     async def give_creds(
         self,
         interaction: discord.Interaction,

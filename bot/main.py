@@ -35,41 +35,42 @@ class TutorialCommandTree(app_commands.CommandTree):
             return True
 
         command_name = interaction.command.name
-        log.info("command invoked: command=%s user=%s", command_name, interaction.user.id)
-        bot_commands_invoked.labels(command=command_name).inc(exemplar=trace_exemplar())
 
-        span = trace.get_current_span()
-        span.set_attribute("discord.command", command_name)
-        span.set_attribute("discord.user_id", str(interaction.user.id))
+        with tracer.start_as_current_span(f"discord.command.{command_name}") as span:
+            span.set_attribute("discord.command", command_name)
+            span.set_attribute("discord.user_id", str(interaction.user.id))
 
-        async with async_session() as session:
-            user = await session.get(User, str(interaction.user.id))
+            log.info("command invoked: command=%s user=%s", command_name, interaction.user.id)
+            bot_commands_invoked.labels(command=command_name).inc(exemplar=trace_exemplar())
 
-        if not user:
-            return True
+            async with async_session() as session:
+                user = await session.get(User, str(interaction.user.id))
 
-        if is_command_allowed(user, command_name):
-            return True
+            if not user:
+                return True
 
-        span.set_attribute("discord.blocked", True)
-        msg = get_blocked_message(user, command_name)
-        await interaction.response.send_message(msg, ephemeral=True)
-        return False
+            if is_command_allowed(user, command_name):
+                return True
+
+            span.set_attribute("discord.blocked", True)
+            msg = get_blocked_message(user, command_name)
+            await interaction.response.send_message(msg, ephemeral=True)
+            return False
 
     async def on_error(
         self, interaction: discord.Interaction, error: app_commands.AppCommandError
     ) -> None:
         command_name = interaction.command.name if interaction.command else "unknown"
-        bot_command_errors.labels(command=command_name).inc(exemplar=trace_exemplar())
-        span = trace.get_current_span()
-        span.set_attribute("discord.command", command_name)
-        span.record_exception(error)
-        log.error(
-            "App command error: command=%s user=%s",
-            command_name,
-            interaction.user.id,
-            exc_info=error,
-        )
+        with tracer.start_as_current_span(f"discord.command.{command_name}.error") as span:
+            span.set_attribute("discord.command", command_name)
+            span.record_exception(error)
+            bot_command_errors.labels(command=command_name).inc(exemplar=trace_exemplar())
+            log.error(
+                "App command error: command=%s user=%s",
+                command_name,
+                interaction.user.id,
+                exc_info=error,
+            )
         if not interaction.response.is_done():
             await interaction.response.send_message(
                 "Something went wrong. Try again.", ephemeral=True

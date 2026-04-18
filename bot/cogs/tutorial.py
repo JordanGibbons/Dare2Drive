@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api.metrics import users_registered
 from config.logging import get_logger
 from config.metrics import trace_exemplar
+from config.tracing import traced_command
 from db.models import Card, TutorialStep, User, UserCard
 from db.session import async_session
 
@@ -454,6 +455,7 @@ class TutorialCog(commands.Cog):
     @app_commands.command(
         name="skip_tutorial", description="Skip the tutorial and jump straight into racing"
     )  # noqa: E501
+    @traced_command
     async def skip_tutorial(self, interaction: discord.Interaction) -> None:
         from bot.cogs.cards import RARITY_EMOJI
 
