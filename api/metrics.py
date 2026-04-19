@@ -7,7 +7,7 @@ exposes them for Prometheus to scrape.
 
 from __future__ import annotations
 
-from prometheus_client import Counter, Histogram
+from prometheus_client import Counter, Gauge, Histogram
 
 # ---------------------------------------------------------------------------
 # Race metrics
@@ -50,7 +50,7 @@ currency_spent = Counter(
 # User metrics
 # ---------------------------------------------------------------------------
 
-users_registered = Counter(
+users_registered = Gauge(
     "dare2drive_users_registered_total",
     "Total number of users who completed registration / tutorial.",
 )

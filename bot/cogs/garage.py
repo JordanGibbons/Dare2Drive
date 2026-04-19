@@ -195,7 +195,7 @@ class BodyTypeSelect(discord.ui.View):
             )
             session.add(build)
             await session.commit()
-            users_registered.inc(exemplar=trace_exemplar())
+            users_registered.inc()
 
         # ── TUTORIAL STORY BEGINS ──
         from bot.cogs.tutorial import _load_tutorial_data, grant_starter_cards, send_dialogue

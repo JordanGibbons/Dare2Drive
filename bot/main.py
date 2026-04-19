@@ -88,6 +88,17 @@ class Dare2DriveBot(commands.Bot):
 
     async def setup_hook(self) -> None:
         """Load all cog extensions."""
+        from sqlalchemy import func, select
+
+        from api.metrics import users_registered
+        from db.models import TutorialStep, User
+
+        async with async_session() as session:
+            result = await session.execute(
+                select(func.count()).where(User.tutorial_step == TutorialStep.COMPLETE)
+            )
+            users_registered.set(result.scalar_one())
+
         cog_modules = [
             "bot.cogs.tutorial",
             "bot.cogs.cards",
