@@ -8,6 +8,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 from opentelemetry import trace
+from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
 from prometheus_client import start_http_server
 
 from api.metrics import bot_command_errors, bot_commands_invoked
@@ -15,12 +16,13 @@ from config.logging import get_logger, setup_logging
 from config.metrics import trace_exemplar
 from config.settings import settings
 from config.tracing import init_tracing
-from db.session import async_session
+from db.session import async_session, engine
 
 setup_logging()
 log = get_logger(__name__)
 
 init_tracing("Dare2Drive")
+SQLAlchemyInstrumentor().instrument(engine=engine.sync_engine)
 tracer = trace.get_tracer(__name__)
 
 

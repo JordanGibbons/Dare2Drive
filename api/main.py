@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from fastapi import FastAPI
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
 from prometheus_fastapi_instrumentator import Instrumentator
 
 import api.metrics  # noqa: F401 — registers all dare2drive_* metrics with the default registry
@@ -12,11 +13,13 @@ from api.routes.races import router as races_router
 from api.routes.users import router as users_router
 from config.logging import get_logger, setup_logging
 from config.tracing import init_tracing
+from db.session import engine
 
 setup_logging()
 log = get_logger(__name__)
 
 init_tracing("dare2drive-api")
+SQLAlchemyInstrumentor().instrument(engine=engine.sync_engine)
 
 app = FastAPI(title="Dare2Drive API", version="0.1.0")
 FastAPIInstrumentor.instrument_app(app, excluded_urls="health,metrics")
