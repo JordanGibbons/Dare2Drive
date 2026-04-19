@@ -22,6 +22,14 @@ REDIS_URL = "${{Redis.REDIS_URL}}"
 TEMPO_URL = "${{tempo.RAILWAY_PRIVATE_DOMAIN}}:4318"
 
 [[services]]
+name = "postgres-exporter"
+watchPatterns = ["Dockerfile.postgres-exporter"]
+
+[[services]]
+name = "redis-exporter"
+watchPatterns = ["Dockerfile.redis-exporter"]
+
+[[services]]
 name = "ntfy-relay"
 buildCommand = "docker build -f monitoring/ntfy-relay/Dockerfile -t ntfy-relay monitoring/ntfy-relay/"
 startCommand = "uvicorn relay:app --host 0.0.0.0 --port 9096"
