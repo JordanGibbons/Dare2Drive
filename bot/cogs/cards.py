@@ -262,8 +262,8 @@ class CardsCog(commands.Cog):
     @app_commands.describe(pack_type="Pack type: salvage_crate, gear_crate, or legend_crate")
     @app_commands.choices(
         pack_type=[
-            app_commands.Choice(name="Salvage Crate (100 Creds)", value="junkyard_pack"),
-            app_commands.Choice(name="Gear Crate (350 Creds)", value="performance_pack"),
+            app_commands.Choice(name="Salvage Crate (100 Creds)", value="salvage_crate"),
+            app_commands.Choice(name="Gear Crate (350 Creds)", value="gear_crate"),
             app_commands.Choice(name="Legend Crate (1200 Creds)", value="legend_crate"),
         ]
     )
@@ -276,8 +276,8 @@ class CardsCog(commands.Cog):
                 return
 
         cost_map = {
-            "junkyard_pack": settings.JUNKYARD_PACK_COST,
-            "performance_pack": settings.PERFORMANCE_PACK_COST,
+            "salvage_crate": settings.JUNKYARD_PACK_COST,
+            "gear_crate": settings.PERFORMANCE_PACK_COST,
             "legend_crate": settings.LEGEND_CRATE_COST,
         }
         cost = cost_map.get(pack_type)

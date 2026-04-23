@@ -43,7 +43,7 @@ daily_claimed = Counter(
 currency_spent = Counter(
     "dare2drive_currency_spent_total",
     "Total amount of in-game currency spent.",
-    ["reason"],  # "junkyard_pack" | "performance_pack" | "legend_crate" | "new_build" | ...
+    ["reason"],  # "salvage_crate" | "gear_crate" | "legend_crate" | "new_build" | ...
 )
 
 # ---------------------------------------------------------------------------

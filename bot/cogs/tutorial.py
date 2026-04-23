@@ -431,7 +431,7 @@ async def _grant_tutorial_completion(
     # Roll and grant a full salvage crate
     from config.settings import settings
 
-    pack_cards = await _roll_cards(session, "junkyard_pack", settings.JUNKYARD_PACK_SIZE)
+    pack_cards = await _roll_cards(session, "salvage_crate", settings.JUNKYARD_PACK_SIZE)
     pack_minted: list[tuple[Card, UserCard]] = []
     for card in pack_cards:
         uc = await _grant_card(session, user.discord_id, card)
