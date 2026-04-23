@@ -30,7 +30,7 @@ from db.models import (
 from db.session import async_session
 from engine.card_mint import apply_stat_modifiers
 from engine.class_engine import calculate_class, trending_toward
-from engine.rig_namer import generate_rig_name
+from engine.ship_namer import generate_ship_name
 from engine.stat_resolver import aggregate_build
 
 log = get_logger(__name__)
@@ -935,7 +935,7 @@ class GarageCog(commands.Cog):
                 b.slots, cards, body_type=body_type.value if body_type else None
             )
             car_class = calculate_class(stats, body_type)
-            auto_name = generate_rig_name(car_class, body_type, stats)
+            auto_name = generate_ship_name(car_class, body_type, stats)
 
             # Get the active release and atomically increment its serial
             release_result = await session.execute(

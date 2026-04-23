@@ -1,4 +1,4 @@
-"""Rig namer — generates evocative names for Car Titles based on class, body type, and stats."""
+"""Ship namer — generates evocative names for Ship Titles based on race format and hull class."""
 
 from __future__ import annotations
 
@@ -6,10 +6,10 @@ import json
 import random
 from pathlib import Path
 
-from db.models import BodyType, CarClass
+from db.models import HullClass, RaceFormat
 from engine.stat_resolver import BuildStats
 
-_NAMES_PATH = Path(__file__).resolve().parent.parent / "data" / "rig_names.json"
+_NAMES_PATH = Path(__file__).resolve().parent.parent / "data" / "ship_names.json"
 
 _names_cache: dict | None = None
 
@@ -22,28 +22,28 @@ def _get_pools() -> dict:
     return _names_cache
 
 
-def generate_rig_name(
-    car_class: CarClass,
-    body_type: BodyType | None,
+def generate_ship_name(
+    race_format: RaceFormat,
+    hull_class: HullClass | None,
     stats: BuildStats | None = None,
 ) -> str:
     """
-    Generate an evocative two-word name for a rig title.
+    Generate an evocative two-word name for a ship title.
 
-    Looks up a word pool keyed by "{class}_{body_type}". Falls back to a
+    Looks up a word pool keyed by "{race_format}_{hull_class}". Falls back to a
     generic pool if no specific match exists, then falls back to a plain
     descriptive name as a last resort.
     """
     pools = _get_pools()
-    body_key = body_type.value if body_type else "sport"
-    class_key = car_class.value
-    pool_key = f"{class_key}_{body_key}"
+    hull_key = hull_class.value if hull_class else "skirmisher"
+    format_key = race_format.value
+    pool_key = f"{format_key}_{hull_key}"
 
     pool = pools.get(pool_key)
     if pool is None:
-        # Try class-only fallback (first matching key with same class prefix)
+        # Try format-only fallback (first matching key with same format prefix)
         fallback_key = next(
-            (k for k in pools if k.startswith(f"{class_key}_") and not k.startswith("_")), None
+            (k for k in pools if k.startswith(f"{format_key}_") and not k.startswith("_")), None
         )
         pool = pools.get(fallback_key) if fallback_key else None
 
@@ -52,4 +52,4 @@ def generate_rig_name(
         return f"{random.choice(adjectives)} {random.choice(nouns)}"
 
     # Last resort fallback
-    return f"{car_class.value.title()} Rig"
+    return f"{race_format.value.title()} Rig"
