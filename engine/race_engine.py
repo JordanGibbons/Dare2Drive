@@ -85,7 +85,7 @@ def _generate_narrative(
 ) -> str:
     """Generate a race narrative referencing actual part names."""
     parts_mentioned = []
-    for slot in ["engine", "turbo", "tires", "chassis"]:
+    for slot in ["reactor", "overdrive", "thrusters", "hull"]:
         card = equipped_cards.get(slot, {})
         if card:
             parts_mentioned.append(card.get("name", slot.title()))
@@ -157,8 +157,8 @@ def compute_race(
                 equipped_cards[slot_name] = cards[card_id]
 
         # 1. Aggregate build stats
-        body_type = build.get("body_type")
-        build_stats = aggregate_build(slots, cards, body_type=body_type)
+        hull_class = build.get("hull_class")
+        build_stats = aggregate_build(slots, cards, hull_class=hull_class)
 
         # 2. Convert to flat dict and apply environment weights
         flat = _build_stats_to_flat(build_stats)
