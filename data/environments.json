@@ -1,8 +1,8 @@
 [
   {
-    "name": "wet_track",
-    "display_name": "Wet Track",
-    "description": "Heavy rain has soaked the track. Grip and weather performance are king.",
+    "name": "nebula",
+    "display_name": "Nebula",
+    "description": "Dense nebular fog. Visibility is down to a few klicks. Stabilizers are how you keep your bearing.",
     "stat_weights": {
       "grip": 2.0,
       "weather_performance": 1.8,
@@ -17,9 +17,9 @@
     "variance_multiplier": 1.0
   },
   {
-    "name": "night_race",
-    "display_name": "Night Race",
-    "description": "Under the lights. Balanced conditions but anything can happen.",
+    "name": "clear_space",
+    "display_name": "Clear Space",
+    "description": "An empty stretch of sector. Nothing to see, nothing to dodge.",
     "stat_weights": {
       "grip": 1.0,
       "weather_performance": 1.0,
@@ -34,9 +34,9 @@
     "variance_multiplier": 1.5
   },
   {
-    "name": "mountain_pass",
-    "display_name": "Mountain Pass",
-    "description": "Winding roads through mountain switchbacks. Handling and braking dominate.",
+    "name": "asteroid_field",
+    "display_name": "Asteroid Field",
+    "description": "Rocks bigger than your hull, every direction. Pray you brought spare plating.",
     "stat_weights": {
       "grip": 1.4,
       "weather_performance": 1.0,
@@ -51,9 +51,9 @@
     "variance_multiplier": 1.0
   },
   {
-    "name": "drag_strip",
-    "display_name": "Drag Strip",
-    "description": "Quarter-mile straight line. Raw power wins.",
+    "name": "solar_flare",
+    "display_name": "Solar Flare",
+    "description": "Reactor temps spiking. Heat tolerance matters more than raw power right now.",
     "stat_weights": {
       "grip": 1.0,
       "weather_performance": 1.0,
@@ -68,9 +68,9 @@
     "variance_multiplier": 1.0
   },
   {
-    "name": "city_circuit",
-    "display_name": "City Circuit",
-    "description": "Tight urban corners and short straights. Agility is everything.",
+    "name": "ion_storm",
+    "display_name": "Ion Storm",
+    "description": "Electrical disruption fouling thruster feedback. Precision over power.",
     "stat_weights": {
       "grip": 1.0,
       "weather_performance": 1.0,
@@ -85,9 +85,9 @@
     "variance_multiplier": 1.0
   },
   {
-    "name": "off_road",
-    "display_name": "Off-Road",
-    "description": "Dirt, gravel, and mud. Stability and durability are non-negotiable.",
+    "name": "debris_field",
+    "display_name": "Debris Field",
+    "description": "Shredded ships and salvage drifting in slow currents. The floor of every scrapper's nightmares.",
     "stat_weights": {
       "grip": 1.2,
       "weather_performance": 1.0,
@@ -100,5 +100,22 @@
       "stability": 2.0
     },
     "variance_multiplier": 1.0
+  },
+  {
+    "name": "gravity_well",
+    "display_name": "Gravity Well",
+    "description": "A heavy pull dragging on every system. Drive power is what gets you out.",
+    "stat_weights": {
+      "grip": 1.0,
+      "weather_performance": 1.0,
+      "handling": 1.0,
+      "power": 1.5,
+      "top_speed": 0.8,
+      "braking": 1.0,
+      "durability": 1.2,
+      "acceleration": 1.8,
+      "stability": 1.4
+    },
+    "variance_multiplier": 1.2
   }
 ]
