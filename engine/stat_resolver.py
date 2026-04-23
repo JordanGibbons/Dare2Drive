@@ -22,7 +22,7 @@ def _get_hull_class_stats() -> dict[str, dict[str, float]]:
     if _hull_class_stats_cache is None:
         with open(_TUTORIAL_DATA_PATH, "r", encoding="utf-8") as f:
             data = json.load(f)
-        _hull_class_stats_cache = data["body_type_base_stats"]
+        _hull_class_stats_cache = data["hull_class_base_stats"]
     return _hull_class_stats_cache
 
 
