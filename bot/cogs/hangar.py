@@ -1,4 +1,4 @@
-"""Garage cog — /start, /garage, /equip, /build, /rig commands."""
+"""Hangar cog — /start, /hangar, /equip, /build, /rig commands."""
 
 from __future__ import annotations
 
@@ -15,30 +15,30 @@ from config.logging import get_logger
 from config.metrics import trace_exemplar
 from config.tracing import traced_command
 from db.models import (
-    BodyType,
     Build,
-    CarClass,
     Card,
     CardSlot,
-    RigRelease,
-    RigStatus,
-    RigTitle,
+    HullClass,
+    RaceFormat,
+    ShipRelease,
+    ShipStatus,
+    ShipTitle,
     TutorialStep,
     User,
     UserCard,
 )
 from db.session import async_session
 from engine.card_mint import apply_stat_modifiers
-from engine.class_engine import calculate_class, trending_toward
+from engine.class_engine import calculate_race_format, trending_toward
 from engine.ship_namer import generate_ship_name
 from engine.stat_resolver import aggregate_build
 
 log = get_logger(__name__)
 
-BODY_EMOJI = {
-    BodyType.MUSCLE: "💪",
-    BodyType.SPORT: "🏎️",
-    BodyType.COMPACT: "🚗",
+HULL_EMOJI = {
+    HullClass.HAULER: "🚛",
+    HullClass.SKIRMISHER: "⚔️",
+    HullClass.SCOUT: "🔭",
 }
 
 RARITY_ORDER = {"common": 0, "uncommon": 1, "rare": 2, "epic": 3, "legendary": 4, "ghost": 5}
@@ -59,29 +59,26 @@ RARITY_COLORS = {
     "ghost": 0xFFFFFF,
 }
 
-CLASS_EMOJI = {
-    CarClass.STREET: "🛣️",
-    CarClass.DRAG: "💨",
-    CarClass.CIRCUIT: "🏁",
-    CarClass.DRIFT: "🌀",
-    CarClass.RALLY: "⛰️",
-    CarClass.ELITE: "👑",
+FORMAT_EMOJI = {
+    RaceFormat.SPRINT: "🛣️",
+    RaceFormat.ENDURANCE: "💨",
+    RaceFormat.GAUNTLET: "🏁",
 }
 
-# Slots that define the rig's identity — locked once a title is minted
-CORE_SLOTS = {CardSlot.ENGINE.value, CardSlot.CHASSIS.value}
+# Slots that define the ship's identity — locked once a title is minted
+CORE_SLOTS = {CardSlot.REACTOR.value, CardSlot.HULL.value}
 
 
-def _subclass_label(car_class: CarClass | None, body_type: BodyType | None) -> str:
+def _subclass_label(race_format: RaceFormat | None, hull_class: HullClass | None) -> str:
     """
-    Format a human-readable subclass label combining class and body type.
-    e.g. "Drift Compact", "Drag Muscle", "Circuit Sport".
-    Falls back to just the body type if no class is known yet.
+    Format a human-readable subclass label combining format and hull class.
+    e.g. "Gauntlet Scout", "Sprint Hauler", "Endurance Skirmisher".
+    Falls back to just the hull class if no format is known yet.
     """
-    body_str = body_type.value.title() if body_type else "Unknown"
-    if car_class:
-        return f"{CLASS_EMOJI.get(car_class, '')} {car_class.value.title()} {body_str}"
-    return f"{BODY_EMOJI.get(body_type, '🚗')} {body_str}"
+    hull_str = hull_class.value.title() if hull_class else "Unknown"
+    if race_format:
+        return f"{FORMAT_EMOJI.get(race_format, '')} {race_format.value.title()} {hull_str}"
+    return f"{HULL_EMOJI.get(hull_class, '🚀')} {hull_str}"
 
 
 async def _resolve_build(session, user_id: str, build_id: str | None = None) -> Build | None:
@@ -104,19 +101,19 @@ async def _resolve_build(session, user_id: str, build_id: str | None = None) -> 
     return result.scalar_one_or_none()
 
 
-def _build_label(build: Build, title: RigTitle | None = None) -> str:
+def _build_label(build: Build, title: ShipTitle | None = None) -> str:
     """Return a display label for a build, suitable for autocomplete choices."""
     if title:
         name = title.custom_name or title.auto_name
-        cls_emoji = CLASS_EMOJI.get(title.car_class, "")
-        body_str = title.body_type.value.title() if title.body_type else ""
-        label = f"{name} — {cls_emoji} {title.car_class.value.title()} {body_str}".strip()
+        fmt_emoji = FORMAT_EMOJI.get(title.race_format, "")
+        hull_str = title.hull_class.value.title() if title.hull_class else ""
+        label = f"{name} — {fmt_emoji} {title.race_format.value.title()} {hull_str}".strip()
     else:
-        bt = build.body_type
-        bt_emoji = BODY_EMOJI.get(bt, "🚗")
-        body_str = bt.value.title() if bt else "Unknown"
+        hc = build.hull_class
+        hc_emoji = HULL_EMOJI.get(hc, "🚀")
+        hull_str = hc.value.title() if hc else "Unknown"
         filled = sum(1 for v in build.slots.values() if v is not None)
-        label = f"{build.name} · {bt_emoji} {body_str} ({filled}/7)"
+        label = f"{build.name} · {hc_emoji} {hull_str} ({filled}/7)"
     if build.is_active:
         label += " ★"
     return label
@@ -133,7 +130,7 @@ async def _build_choices_for_user(session, user_id: str) -> list[tuple[str, str]
     builds = list(result.scalars().all())
     choices = []
     for b in builds:
-        title = await session.get(RigTitle, b.rig_title_id) if b.rig_title_id else None
+        title = await session.get(ShipTitle, b.ship_title_id) if b.ship_title_id else None
         choices.append((_build_label(b, title), str(b.id)))
     return choices
 
@@ -151,21 +148,21 @@ async def _build_name_autocomplete(
     ][:25]
 
 
-class BodyTypeSelect(discord.ui.View):
-    """Button-based body type selector for /start."""
+class HullClassSelect(discord.ui.View):
+    """Button-based hull class selector for /start."""
 
     def __init__(self, user_id: int, username: str) -> None:
         super().__init__(timeout=60)
         self.user_id = user_id
         self.username = username
-        self.chosen: BodyType | None = None
+        self.chosen: HullClass | None = None
 
-    async def _handle_choice(self, interaction: discord.Interaction, body_type: BodyType) -> None:
+    async def _handle_choice(self, interaction: discord.Interaction, hull_class: HullClass) -> None:
         if interaction.user.id != self.user_id:
             await interaction.response.send_message("This isn't your selection!", ephemeral=True)
             return
 
-        self.chosen = body_type
+        self.chosen = hull_class
         await interaction.response.defer()
 
         async with async_session() as session:
@@ -178,7 +175,7 @@ class BodyTypeSelect(discord.ui.View):
             user = User(
                 discord_id=str(self.user_id),
                 username=self.username,
-                body_type=body_type,
+                hull_class=hull_class,
                 currency=0,
                 xp=0,
                 tutorial_step=TutorialStep.STARTED,
@@ -191,7 +188,7 @@ class BodyTypeSelect(discord.ui.View):
                 name="My Build",
                 slots={slot.value: None for slot in CardSlot},
                 is_active=True,
-                body_type=body_type,
+                hull_class=hull_class,
             )
             session.add(build)
             await session.commit()
@@ -205,10 +202,10 @@ class BodyTypeSelect(discord.ui.View):
         uid = self.user_id  # int
 
         # Act 1: The Inheritance
-        emoji = BODY_EMOJI.get(body_type, "🚗")
+        emoji = HULL_EMOJI.get(hull_class, "🚀")
         embed = discord.Embed(
             title=f"{emoji} Welcome to Dare2Drive!",
-            description=f"**Body Type:** {body_type.value.title()}",
+            description=f"**Hull Class:** {hull_class.value.title()}",
             color=0x22C55E,
         )
         await interaction.followup.send(embed=embed)
@@ -234,11 +231,11 @@ class BodyTypeSelect(discord.ui.View):
         )
         await view.wait_for_click()
 
-        # Act 3: The Junkyard
+        # Act 3: The Scrapyard
         view = await send_dialogue(
             interaction,
             dialogue["junkyard"],
-            title="🔩 The Junkyard",
+            title="🔩 The Scrapyard",
             color=0x6B7280,
             with_continue=True,
             user_id=uid,
@@ -271,29 +268,29 @@ class BodyTypeSelect(discord.ui.View):
 
         self.stop()
 
-    @discord.ui.button(label="💪 Muscle", style=discord.ButtonStyle.danger)
-    async def muscle_btn(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
-        await self._handle_choice(interaction, BodyType.MUSCLE)
+    @discord.ui.button(label="🚛 Hauler", style=discord.ButtonStyle.danger)
+    async def hauler_btn(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        await self._handle_choice(interaction, HullClass.HAULER)
 
-    @discord.ui.button(label="🏎️ Sport", style=discord.ButtonStyle.primary)
-    async def sport_btn(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
-        await self._handle_choice(interaction, BodyType.SPORT)
-
-    @discord.ui.button(label="🚗 Compact", style=discord.ButtonStyle.secondary)
-    async def compact_btn(
+    @discord.ui.button(label="⚔️ Skirmisher", style=discord.ButtonStyle.primary)
+    async def skirmisher_btn(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
-        await self._handle_choice(interaction, BodyType.COMPACT)
+        await self._handle_choice(interaction, HullClass.SKIRMISHER)
+
+    @discord.ui.button(label="🔭 Scout", style=discord.ButtonStyle.secondary)
+    async def scout_btn(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        await self._handle_choice(interaction, HullClass.SCOUT)
 
 
-class GarageCog(commands.Cog):
-    """Garage management — body selection, build viewing, equipping."""
+class HangarCog(commands.Cog):
+    """Hangar management — hull selection, build viewing, equipping."""
 
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
 
     @app_commands.command(
-        name="start", description="Create your Dare2Drive account and pick a body type"
+        name="start", description="Create your Dare2Drive account and pick a hull class"
     )
     @traced_command
     async def start(self, interaction: discord.Interaction) -> None:
@@ -309,14 +306,14 @@ class GarageCog(commands.Cog):
                 )
                 return
 
-        view = BodyTypeSelect(interaction.user.id, interaction.user.display_name)
+        view = HullClassSelect(interaction.user.id, interaction.user.display_name)
         embed = discord.Embed(
-            title="🏁 Choose Your Body Type",
+            title="🏁 Choose Your Hull Class",
             description=(
-                "Pick your ride's identity. This is permanent and cosmetic only.\n\n"
-                "💪 **Muscle** — Raw American power\n"
-                "🏎️ **Sport** — Sleek and agile\n"
-                "🚗 **Compact** — Light and nimble"
+                "Pick your ship's frame. This is permanent and cosmetic only.\n\n"
+                "🚛 **Hauler** — Built tough, takes a beating\n"
+                "⚔️ **Skirmisher** — Fast and aggressive\n"
+                "🔭 **Scout** — Light, nimble, hard to catch"
             ),
             color=0xF59E0B,
         )
@@ -325,11 +322,11 @@ class GarageCog(commands.Cog):
         if not interaction.response.is_done():
             await interaction.response.send_message(embed=embed, view=view)
 
-    @app_commands.command(name="garage", description="View your current build")
+    @app_commands.command(name="hangar", description="View your current build")
     @app_commands.describe(build="Which build to view (default: your default build)")
     @app_commands.autocomplete(build=_build_name_autocomplete)
     @traced_command
-    async def garage(self, interaction: discord.Interaction, build: str | None = None) -> None:
+    async def hangar(self, interaction: discord.Interaction, build: str | None = None) -> None:
         async with async_session() as session:
             user = await session.get(User, str(interaction.user.id))
             if not user:
@@ -370,12 +367,12 @@ class GarageCog(commands.Cog):
 
             # Load title info if one is minted
             title = None
-            if b.rig_title_id:
-                title = await session.get(RigTitle, b.rig_title_id)
+            if b.ship_title_id:
+                title = await session.get(ShipTitle, b.ship_title_id)
 
-        build_bt = b.body_type or user.body_type
-        car_class = title.car_class if title else None
-        subclass = _subclass_label(car_class, build_bt)
+        build_hc = b.hull_class or user.hull_class
+        race_format = title.race_format if title else None
+        subclass = _subclass_label(race_format, build_hc)
 
         if title:
             display_name = title.custom_name or title.auto_name
@@ -386,7 +383,7 @@ class GarageCog(commands.Cog):
             header = f"**Type:** {subclass}\n**Slots:** {filled}/7 filled"
 
         embed = discord.Embed(
-            title=f"🔧 {interaction.user.display_name}'s Garage",
+            title=f"🔧 {interaction.user.display_name}'s Hangar",
             description=f"{header}\n\n" + "\n".join(slot_lines),
             color=RARITY_COLORS.get(best_rarity, 0x3B82F6),
         )
@@ -397,7 +394,7 @@ class GarageCog(commands.Cog):
 
         await interaction.response.send_message(embed=embed)
 
-        # Tutorial progression
+        # Tutorial progression — internal step name is "garage"
         from bot.cogs.tutorial import advance_tutorial
 
         await advance_tutorial(interaction, str(interaction.user.id), "garage")
@@ -454,22 +451,22 @@ class GarageCog(commands.Cog):
                 )
                 return
 
-            # Check body type compatibility
-            build_bt = b.body_type or user.body_type
-            if card.compatible_body_types is not None:
-                if build_bt and build_bt.value not in card.compatible_body_types:
-                    compat_str = ", ".join(t.title() for t in card.compatible_body_types)
+            # Check hull class compatibility
+            build_hc = b.hull_class or user.hull_class
+            if card.compatible_hull_classes is not None:
+                if build_hc and build_hc.value not in card.compatible_hull_classes:
+                    compat_str = ", ".join(t.title() for t in card.compatible_hull_classes)
                     await interaction.response.send_message(
-                        f"⚠️ **{card.name}** only fits **{compat_str}** builds. "
-                        f"Your build is **{build_bt.value.title()}**.",
+                        f"⚠️ **{card.name}** only fits **{compat_str}** ships. "
+                        f"Your ship is **{build_hc.value.title()}**.",
                         ephemeral=True,
                     )
                     return
 
-            # Core-lock check — can't swap engine or chassis while a title is active
+            # Core-lock check — can't swap reactor or hull while a title is active
             if b.core_locked and slot in CORE_SLOTS:
                 await interaction.response.send_message(
-                    f"🔒 Your rig has a Car Title. You can't replace the **{slot.title()}** "
+                    f"🔒 Your ship has a Ship Title. You can't replace the **{slot.title()}** "
                     f"without disassembling first (`/build disassemble`).",
                     ephemeral=True,
                 )
@@ -523,7 +520,7 @@ class GarageCog(commands.Cog):
 
             # If a title is active and this is a wear slot, log the swap
             old_card_name: str | None = None
-            if b.core_locked and b.rig_title_id:
+            if b.core_locked and b.ship_title_id:
                 old_uc_id = b.slots.get(slot)
                 if old_uc_id:
                     old_uc = await session.get(UserCard, uuid.UUID(old_uc_id))
@@ -537,8 +534,8 @@ class GarageCog(commands.Cog):
             b.slots = new_slots
 
             # Append to part_swap_log on the active title
-            if b.core_locked and b.rig_title_id:
-                title = await session.get(RigTitle, b.rig_title_id)
+            if b.core_locked and b.ship_title_id:
+                title = await session.get(ShipTitle, b.ship_title_id)
                 if title:
                     swap_log = list(title.part_swap_log or [])
                     swap_log.append(
@@ -659,8 +656,8 @@ class GarageCog(commands.Cog):
             b.slots = new_slots
 
             # Log part swaps to the title if minted
-            if b.core_locked and b.rig_title_id:
-                title = await session.get(RigTitle, b.rig_title_id)
+            if b.core_locked and b.ship_title_id:
+                title = await session.get(ShipTitle, b.ship_title_id)
                 if title:
                     ts = datetime.now(timezone.utc).isoformat()
                     swap_log = list(title.part_swap_log or [])
@@ -701,8 +698,8 @@ class GarageCog(commands.Cog):
 
         await advance_tutorial(interaction, str(interaction.user.id), "equip")
 
-    @app_commands.command(name="peek", description="View another player's garage (public)")
-    @app_commands.describe(target="The player whose garage to view")
+    @app_commands.command(name="peek", description="View another player's hangar (public)")
+    @app_commands.describe(target="The player whose hangar to view")
     @traced_command
     async def peek(self, interaction: discord.Interaction, target: discord.Member) -> None:
         async with async_session() as session:
@@ -743,10 +740,10 @@ class GarageCog(commands.Cog):
                             continue
                 slot_lines.append(f"**{slot.value.title()}:** — Empty —")
 
-        emoji = BODY_EMOJI.get(user.body_type, "🚗")
+        emoji = HULL_EMOJI.get(user.hull_class, "🚀")
         embed = discord.Embed(
-            title=f"{emoji} {target.display_name}'s Garage",
-            description=f"**Body Type:** {user.body_type.value.title()}\n\n"
+            title=f"{emoji} {target.display_name}'s Hangar",
+            description=f"**Hull Class:** {user.hull_class.value.title()}\n\n"
             + "\n".join(slot_lines),
             color=RARITY_COLORS.get(best_rarity, 0x3B82F6),
         )
@@ -761,12 +758,12 @@ class GarageCog(commands.Cog):
                 await interaction.response.send_message("Use `/start` first!", ephemeral=True)
                 return
 
-        emoji = BODY_EMOJI.get(user.body_type, "🚗")
+        emoji = HULL_EMOJI.get(user.hull_class, "🚀")
         embed = discord.Embed(
             title=f"{emoji} {user.username}",
             color=0x3B82F6,
         )
-        embed.add_field(name="Body Type", value=user.body_type.value.title(), inline=True)
+        embed.add_field(name="Hull Class", value=user.hull_class.value.title(), inline=True)
         embed.add_field(name="Creds", value=str(user.currency), inline=True)
         embed.add_field(name="XP", value=str(user.xp), inline=True)
         embed.set_footer(
@@ -776,9 +773,9 @@ class GarageCog(commands.Cog):
 
     # ── /build subcommands ─────────────────────────────────────────────────────
 
-    build_group = app_commands.Group(name="build", description="Manage your rig build")
+    build_group = app_commands.Group(name="build", description="Manage your ship build")
 
-    @build_group.command(name="preview", description="Preview your build's class and stats")
+    @build_group.command(name="preview", description="Preview your build's format and stats")
     @app_commands.describe(build="Which build to preview (default: your default build)")
     @app_commands.autocomplete(build=_build_name_autocomplete)
     @traced_command
@@ -815,34 +812,36 @@ class GarageCog(commands.Cog):
                 effective_stats = apply_stat_modifiers(card.stats, uc.stat_modifiers or {})
                 cards[uc_id_str] = {"slot": card.slot.value, "stats": effective_stats}
 
-            body_type = b.body_type or user.body_type
+            hull_class = b.hull_class or user.hull_class
             stats = aggregate_build(
-                b.slots, cards, body_type=body_type.value if body_type else None
+                b.slots, cards, body_type=hull_class.value if hull_class else None
             )
 
             filled = sum(1 for v in b.slots.values() if v is not None)
             all_filled = filled == len(CardSlot)
 
-            trending = trending_toward(stats, body_type)
+            trending = trending_toward(stats, hull_class)
 
             def bar(pct: float, width: int = 10) -> str:
                 filled_blocks = round(pct * width)
                 return "█" * filled_blocks + "░" * (width - filled_blocks)
 
             lines = []
-            for car_class, pct in trending[:5]:
-                emoji = CLASS_EMOJI.get(car_class, "")
+            for race_format, pct in trending[:5]:
+                fmt_emoji = FORMAT_EMOJI.get(race_format, "")
                 pct_display = f"{int(pct * 100)}%"
-                lines.append(f"{emoji} **{car_class.value.upper()}** {bar(pct)} {pct_display}")
+                lines.append(
+                    f"{fmt_emoji} **{race_format.value.upper()}** {bar(pct)} {pct_display}"
+                )
 
             if all_filled:
-                actual_class = calculate_class(stats, body_type)
-                subclass = _subclass_label(actual_class, body_type)
+                actual_format = calculate_race_format(stats, hull_class)
+                subclass = _subclass_label(actual_format, hull_class)
                 desc = f"**Type:** {subclass}\n\n"
             else:
-                subclass = _subclass_label(None, body_type)
+                subclass = _subclass_label(None, hull_class)
                 desc = (
-                    f"**Type:** {subclass} *(class assigned at mint)*\n"
+                    f"**Type:** {subclass} *(format assigned at mint)*\n"
                     f"**Slots filled:** {filled}/7\n\n"
                 )
 
@@ -855,7 +854,9 @@ class GarageCog(commands.Cog):
                 color=0x3B82F6,
             )
             if not b.core_locked:
-                embed.set_footer(text="Use /build mint to lock in your class and mint a Car Title")
+                embed.set_footer(
+                    text="Use /build mint to lock in your format and mint a Ship Title"
+                )
             await interaction.followup.send(embed=embed, ephemeral=True)
 
         # Tutorial progression
@@ -863,7 +864,7 @@ class GarageCog(commands.Cog):
 
         await advance_tutorial(interaction, str(interaction.user.id), "build_preview")
 
-    @build_group.command(name="mint", description="Mint a Car Title for your completed build")
+    @build_group.command(name="mint", description="Mint a Ship Title for your completed build")
     @app_commands.describe(build="Which build to mint (default: your default build)")
     @app_commands.autocomplete(build=_build_name_autocomplete)
     @traced_command
@@ -885,7 +886,7 @@ class GarageCog(commands.Cog):
 
             if b.core_locked:
                 await interaction.followup.send(
-                    "Your build already has a Car Title. "
+                    "Your build already has a Ship Title. "
                     "Use `/build disassemble` first to rebuild.",
                     ephemeral=True,
                 )
@@ -930,18 +931,18 @@ class GarageCog(commands.Cog):
                     "rarity": card.rarity.value,
                 }
 
-            body_type = b.body_type or user.body_type
+            hull_class = b.hull_class or user.hull_class
             stats = aggregate_build(
-                b.slots, cards, body_type=body_type.value if body_type else None
+                b.slots, cards, body_type=hull_class.value if hull_class else None
             )
-            car_class = calculate_class(stats, body_type)
-            auto_name = generate_ship_name(car_class, body_type, stats)
+            race_format = calculate_race_format(stats, hull_class)
+            auto_name = generate_ship_name(race_format, hull_class, stats)
 
             # Get the active release and atomically increment its serial
             release_result = await session.execute(
-                select(RigRelease)
-                .where(RigRelease.ended_at.is_(None))
-                .order_by(RigRelease.started_at)
+                select(ShipRelease)
+                .where(ShipRelease.ended_at.is_(None))
+                .order_by(ShipRelease.started_at)
                 .limit(1)
                 .with_for_update()
             )
@@ -955,15 +956,15 @@ class GarageCog(commands.Cog):
             release.serial_counter += 1
             serial = release.serial_counter
 
-            title = RigTitle(
+            title = ShipTitle(
                 id=uuid.uuid4(),
                 release_id=release.id,
                 release_serial=serial,
                 owner_id=user.discord_id,
                 build_id=b.id,
-                body_type=body_type,
-                car_class=car_class,
-                status=RigStatus.ACTIVE,
+                hull_class=hull_class,
+                race_format=race_format,
+                status=ShipStatus.ACTIVE,
                 auto_name=auto_name,
                 custom_name=None,
                 build_snapshot=snapshot,
@@ -982,18 +983,18 @@ class GarageCog(commands.Cog):
             await session.flush()  # get title.id before updating build
 
             b.core_locked = True
-            b.rig_title_id = title.id
+            b.ship_title_id = title.id
             await session.commit()
 
-        class_emoji = CLASS_EMOJI.get(car_class, "")
-        body_str = body_type.value.title() if body_type else "Unknown"
+        fmt_emoji = FORMAT_EMOJI.get(race_format, "")
+        hull_str = hull_class.value.title() if hull_class else "Unknown"
         embed = discord.Embed(
-            title="🏆 Car Title Minted!",
+            title="🏆 Ship Title Minted!",
             description=(
                 f'**"{auto_name}"**\n'
                 f"{release.name} #{serial:03d}\n\n"
-                f"{class_emoji} Class: **{car_class.value.upper()}**\n"
-                f"Body: **{body_str}**"
+                f"{fmt_emoji} Format: **{race_format.value.upper()}**\n"
+                f"Hull: **{hull_str}**"
             ),
             color=0xF59E0B,
         )
@@ -1003,8 +1004,8 @@ class GarageCog(commands.Cog):
         ]
         embed.add_field(name="Build", value="\n".join(slot_lines), inline=False)
         embed.set_footer(
-            text="Wear parts (tires, brakes, etc.) can still be swapped. "
-            "Core parts (engine, chassis) are locked."
+            text="Wear parts (thrusters, retros, etc.) can still be swapped. "
+            "Core parts (reactor, hull) are locked."
         )
         await interaction.followup.send(embed=embed)
 
@@ -1014,7 +1015,7 @@ class GarageCog(commands.Cog):
         await advance_tutorial(interaction, str(interaction.user.id), "build_mint")
 
     @build_group.command(
-        name="disassemble", description="Scrap your Car Title and unlock your build"
+        name="disassemble", description="Scrap your Ship Title and unlock your build"
     )
     @app_commands.describe(build="Which build to disassemble (default: your default build)")
     @app_commands.autocomplete(build=_build_name_autocomplete)
@@ -1031,15 +1032,15 @@ class GarageCog(commands.Cog):
                 return
 
             b = await _resolve_build(session, user.discord_id, build_id=build)
-            if not b or not b.core_locked or not b.rig_title_id:
+            if not b or not b.core_locked or not b.ship_title_id:
                 await interaction.response.send_message(
-                    "That build doesn't have a Car Title to disassemble.", ephemeral=True
+                    "That build doesn't have a Ship Title to disassemble.", ephemeral=True
                 )
                 return
 
-            title = await session.get(RigTitle, b.rig_title_id)
+            title = await session.get(ShipTitle, b.ship_title_id)
             if not title:
-                await interaction.response.send_message("Car Title not found.", ephemeral=True)
+                await interaction.response.send_message("Ship Title not found.", ephemeral=True)
                 return
 
             build_id_after_confirm = b.id
@@ -1053,9 +1054,9 @@ class GarageCog(commands.Cog):
             "\n\n⚠️ This is your default build — use `/build set-default` afterwards."
             if was_default
             else ""
-        )  # noqa: E501
+        )
         embed = discord.Embed(
-            title="⚠️ Disassemble Rig?",
+            title="⚠️ Disassemble Ship?",
             description=(
                 f'This will permanently scrap **"{title_display}"** {serial_str}.\n\n'
                 "The title's history is preserved but it can no longer be raced.\n"
@@ -1074,12 +1075,12 @@ class GarageCog(commands.Cog):
 
         async with async_session() as session:
             b = await session.get(Build, build_id_after_confirm)
-            title = await session.get(RigTitle, b.rig_title_id)
+            title = await session.get(ShipTitle, b.ship_title_id)
             if b and title:
-                title.status = RigStatus.SCRAPPED
+                title.status = ShipStatus.SCRAPPED
                 title.build_id = None
                 b.core_locked = False
-                b.rig_title_id = None
+                b.ship_title_id = None
                 await session.commit()
 
         await interaction.edit_original_response(
@@ -1089,16 +1090,16 @@ class GarageCog(commands.Cog):
         )
 
     @build_group.command(name="new", description="Open a new build slot (500 Creds)")
-    @app_commands.describe(body_type="Body type for the new build")
+    @app_commands.describe(hull_class="Hull class for the new build")
     @app_commands.choices(
-        body_type=[
-            app_commands.Choice(name="💪 Muscle", value="muscle"),
-            app_commands.Choice(name="🏎️ Sport", value="sport"),
-            app_commands.Choice(name="🚗 Compact", value="compact"),
+        hull_class=[
+            app_commands.Choice(name="🚛 Hauler", value="hauler"),
+            app_commands.Choice(name="⚔️ Skirmisher", value="skirmisher"),
+            app_commands.Choice(name="🔭 Scout", value="scout"),
         ]
     )
     @traced_command
-    async def build_new(self, interaction: discord.Interaction, body_type: str) -> None:
+    async def build_new(self, interaction: discord.Interaction, hull_class: str) -> None:
         from bot.cogs.tutorial import is_tutorial_complete
 
         BUILD_SLOT_COST = 500
@@ -1123,7 +1124,7 @@ class GarageCog(commands.Cog):
                 )
                 return
 
-            bt = BodyType(body_type)
+            hc = HullClass(hull_class)
 
             # Deactivate current default, deduct cost, create new build
             user.currency -= BUILD_SLOT_COST
@@ -1138,14 +1139,14 @@ class GarageCog(commands.Cog):
                 name="New Build",
                 slots={slot.value: None for slot in CardSlot},
                 is_active=True,
-                body_type=bt,
+                hull_class=hc,
             )
             session.add(new_build)
             await session.commit()
 
-        bt_emoji = BODY_EMOJI.get(bt, "🚗")
+        hc_emoji = HULL_EMOJI.get(hc, "🚀")
         await interaction.response.send_message(
-            f"✅ New **{bt_emoji} {bt.value.title()}** build created and set as default.\n"
+            f"✅ New **{hc_emoji} {hc.value.title()}** build created and set as default.\n"
             f"Use `/equip` or `/autoequip` to fill it. **−{BUILD_SLOT_COST} Creds**",
             ephemeral=True,
         )
@@ -1168,23 +1169,23 @@ class GarageCog(commands.Cog):
 
             lines = []
             for b in builds:
-                title = await session.get(RigTitle, b.rig_title_id) if b.rig_title_id else None
-                bt = b.body_type
-                bt_emoji = BODY_EMOJI.get(bt, "🚗")
+                title = await session.get(ShipTitle, b.ship_title_id) if b.ship_title_id else None
+                hc = b.hull_class
+                hc_emoji = HULL_EMOJI.get(hc, "🚀")
                 default_marker = " ★ **default**" if b.is_active else ""
 
                 if title:
                     display_name = title.custom_name or title.auto_name
-                    subclass = _subclass_label(title.car_class, title.body_type)
+                    subclass = _subclass_label(title.race_format, title.hull_class)
                     serial = f"#{title.release_serial:03d}"
                     lines.append(
-                        f"{bt_emoji} **{display_name}** {serial} · {subclass}{default_marker}"
+                        f"{hc_emoji} **{display_name}** {serial} · {subclass}{default_marker}"
                     )
                 else:
                     filled = sum(1 for v in b.slots.values() if v is not None)
-                    subclass = _subclass_label(None, bt)
+                    subclass = _subclass_label(None, hc)
                     lines.append(
-                        f"{bt_emoji} **{b.name}** · {subclass} ({filled}/7){default_marker}"
+                        f"{hc_emoji} **{b.name}** · {subclass} ({filled}/7){default_marker}"
                     )
 
         embed = discord.Embed(
@@ -1228,8 +1229,8 @@ class GarageCog(commands.Cog):
 
             # Get display name before committing
             title = (
-                await session.get(RigTitle, target.rig_title_id) if target.rig_title_id else None
-            )  # noqa: E501
+                await session.get(ShipTitle, target.ship_title_id) if target.ship_title_id else None
+            )
             display_name = (title.custom_name or title.auto_name) if title else target.name
 
             await session.execute(
@@ -1244,9 +1245,9 @@ class GarageCog(commands.Cog):
 
     # ── /rig subcommands ───────────────────────────────────────────────────────
 
-    rig_group = app_commands.Group(name="rig", description="Manage your Car Title")
+    rig_group = app_commands.Group(name="rig", description="Manage your Ship Title")
 
-    @rig_group.command(name="rename", description="Set a custom name for your Car Title")
+    @rig_group.command(name="rename", description="Set a custom name for your Ship Title")
     @app_commands.describe(
         name="Your custom name (max 50 characters)",
         build="Which build's title to rename (default: your default build)",
@@ -1269,16 +1270,16 @@ class GarageCog(commands.Cog):
                 return
 
             b = await _resolve_build(session, user.discord_id, build_id=build)
-            if not b or not b.core_locked or not b.rig_title_id:
+            if not b or not b.core_locked or not b.ship_title_id:
                 await interaction.response.send_message(
-                    "That build doesn't have a Car Title to rename. Mint one with `/build mint`.",
+                    "That build doesn't have a Ship Title to rename. Mint one with `/build mint`.",
                     ephemeral=True,
                 )
                 return
 
-            title = await session.get(RigTitle, b.rig_title_id)
+            title = await session.get(ShipTitle, b.ship_title_id)
             if not title:
-                await interaction.response.send_message("Car Title not found.", ephemeral=True)
+                await interaction.response.send_message("Ship Title not found.", ephemeral=True)
                 return
 
             old_name = title.custom_name or title.auto_name
@@ -1321,4 +1322,4 @@ class _ConfirmView(discord.ui.View):
 
 
 async def setup(bot: commands.Bot) -> None:
-    await bot.add_cog(GarageCog(bot))
+    await bot.add_cog(HangarCog(bot))

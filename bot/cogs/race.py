@@ -13,17 +13,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.metrics import parts_destroyed, races_completed, races_started
 from bot.cogs.tutorial import _load_tutorial_data, build_npc_race_data, is_tutorial_complete
+from bot.sector_gating import get_active_sector, sector_required_message
 from config.logging import get_logger
 from config.metrics import trace_exemplar
 from config.tracing import traced_command
 from db.models import (
-    BodyType,
     Build,
-    CarClass,
     Card,
     CardSlot,
+    HullClass,
     Race,
-    RigTitle,
+    RaceFormat,
+    ShipTitle,
     TutorialStep,
     User,
     UserCard,
@@ -37,15 +38,15 @@ log = get_logger(__name__)
 POSITION_EMOJI = {1: "🥇", 2: "🥈", 3: "🥉"}
 
 # How many races a part lasts before wearing out, by slot and rarity.
-# Tires/brakes wear fastest, chassis is tankiest. Higher rarity = longer life.
+# Thrusters/retros wear fastest, hull is tankiest. Higher rarity = longer life.
 SLOT_BASE_LIFESPAN: dict[str, int] = {
-    "tires": 5,
-    "brakes": 6,
-    "turbo": 7,
-    "suspension": 8,
-    "transmission": 10,
-    "engine": 12,
-    "chassis": 16,
+    "thrusters": 5,
+    "retros": 6,
+    "overdrive": 7,
+    "stabilizers": 8,
+    "drive": 10,
+    "reactor": 12,
+    "hull": 16,
 }
 
 RARITY_LIFESPAN_MULT: dict[str, float] = {
@@ -65,54 +66,55 @@ def get_part_lifespan(slot: str, rarity: str) -> int:
     return max(1, round(base * mult))
 
 
-def _subclass_str(car_class: CarClass, body_type: BodyType | None) -> str:
-    """Format a subclass label for error messages, e.g. 'Drift Compact'."""
-    body = body_type.value.title() if body_type else ""
-    return f"{car_class.value.title()} {body}".strip()
+def _subclass_str(race_format: RaceFormat, hull_class: HullClass | None) -> str:
+    """Format a subclass label for error messages, e.g. 'Sprint Hauler'."""
+    hull = hull_class.value.title() if hull_class else ""
+    return f"{race_format.value.title()} {hull}".strip()
 
 
 async def _check_class_gate(
     session: AsyncSession,
     build_dict: dict[str, Any],
-    required_class: CarClass,
-    required_body: BodyType | None = None,
+    required_format: RaceFormat,
+    required_hull: HullClass | None = None,
 ) -> str | None:
     """
     Return an error string if the build doesn't meet the race requirements, or None if it passes.
 
-    STREET with no body type requirement is always open (no title needed).
-    Any other class or a body type requirement needs a minted Car Title.
+    SPRINT with no hull class requirement is always open (no title needed).
+    Any other format or a hull class requirement needs a minted Ship Title.
     """
-    street_open = required_class == CarClass.STREET and required_body is None
-    if street_open:
+    sprint_open = required_format == RaceFormat.SPRINT and required_hull is None
+    if sprint_open:
         return None
 
     build = await session.get(Build, uuid.UUID(build_dict["build_id"]))
-    if not build or not build.core_locked or not build.rig_title_id:
-        req_str = _subclass_str(required_class, required_body)
+    if not build or not build.core_locked or not build.ship_title_id:
+        req_str = _subclass_str(required_format, required_hull)
         return (
-            f"❌ **{req_str}** races require a minted Car Title. "
+            f"❌ **{req_str}** races require a minted Ship Title. "
             "Fill all 7 slots and use `/build mint` first."
         )
 
-    title = await session.get(RigTitle, build.rig_title_id)
+    title = await session.get(ShipTitle, build.ship_title_id)
     if not title:
-        return "❌ Car Title not found. Try `/build mint` again."
+        return "❌ Ship Title not found. Try `/build mint` again."
 
     errors = []
-    if title.car_class != required_class:
+    if title.race_format != required_format:
         errors.append(
-            f"class **{title.car_class.value.title()}** "
-            f"(need **{required_class.value.title()}**)"
+            f"format **{title.race_format.value.title()}** "
+            f"(need **{required_format.value.title()}**)"
         )
-    if required_body and title.body_type != required_body:
+    if required_hull and title.hull_class != required_hull:
         errors.append(
-            f"body **{title.body_type.value.title()}** " f"(need **{required_body.value.title()}**)"
+            f"hull **{title.hull_class.value.title()}** "
+            f"(need **{required_hull.value.title()}**)"
         )
 
     if errors:
-        req_str = _subclass_str(required_class, required_body)
-        return f"❌ Your rig doesn't qualify for **{req_str}** — wrong {' and '.join(errors)}."
+        req_str = _subclass_str(required_format, required_hull)
+        return f"❌ Your ship doesn't qualify for **{req_str}** — wrong {' and '.join(errors)}."
 
     return None
 
@@ -176,21 +178,25 @@ async def _resolve_build_for_race(
     if not cards:
         return "Your build has no cards equipped. Use `/equip` to add parts before racing!"
 
-    # Check minimum required slots: engine, transmission, tires, chassis
-    required_slots = {"engine", "transmission", "tires", "chassis"}
+    # Check minimum required slots: reactor, drive, thrusters, hull
+    required_slots = {"reactor", "drive", "thrusters", "hull"}
     filled_slots = set()
     for card_data in cards.values():
         filled_slots.add(card_data["slot"])
     missing = required_slots - filled_slots
     if missing:
         missing_str = ", ".join(s.title() for s in sorted(missing))
-        return f"You need at least **Engine, Transmission, Tires, and Chassis** to race. Missing: **{missing_str}**."  # noqa: E501
+        return f"You need at least **Reactor, Drive, Thrusters, and Hull** to race. Missing: **{missing_str}**."  # noqa: E501
 
     return {
         "user_id": user.discord_id,
         "slots": build.slots,
         "cards": cards,
-        "body_type": (build.body_type or user.body_type).value,
+        "hull_class": (
+            (build.hull_class or user.hull_class).value
+            if (build.hull_class or user.hull_class)
+            else None
+        ),
         "build_id": str(build.id),
     }
 
@@ -256,6 +262,7 @@ async def _run_race_and_send(
     opp_display_name: str | None,
     opp_user: User | None,
     wager: int = 0,
+    sector_id: str | None = None,
 ) -> None:
     """Execute a race, save results, and send the result embed. Used by both PvP and tutorial flows."""  # noqa: E501
     race_type = "tutorial" if is_tutorial_race else "open"
@@ -281,6 +288,8 @@ async def _run_race_and_send(
                 },
                 environment=race_result.environment.to_dict(),
                 results=race_result.to_dict(),
+                format=RaceFormat.SPRINT,
+                sector_id=sector_id,
             )
             session.add(race_record)
             await session.flush()
@@ -391,7 +400,7 @@ async def _run_race_and_send(
                         lifespan,
                     )
 
-        # Update race_record on minted rigs
+        # Update race_record on minted ships
         if not is_tutorial_race:
             for bd in [challenger_build, opp_build]:
                 uid = bd["user_id"]
@@ -401,20 +410,20 @@ async def _run_race_and_send(
                 if not bid_str:
                     continue
                 b = await session.get(Build, uuid.UUID(bid_str))
-                if not b or not b.rig_title_id:
+                if not b or not b.ship_title_id:
                     continue
-                rig_title = await session.get(RigTitle, b.rig_title_id)
-                if not rig_title:
+                ship_title = await session.get(ShipTitle, b.ship_title_id)
+                if not ship_title:
                     continue
                 placement = next((p for p in race_result.placements if p.user_id == uid), None)
                 if not placement or placement.is_tie:
                     continue
-                rec = dict(rig_title.race_record or {"wins": 0, "losses": 0})
+                rec = dict(ship_title.race_record or {"wins": 0, "losses": 0})
                 if placement.position == 1:
                     rec["wins"] = rec.get("wins", 0) + 1
                 else:
                     rec["losses"] = rec.get("losses", 0) + 1
-                rig_title.race_record = rec
+                ship_title.race_record = rec
 
         await session.commit()
 
@@ -528,6 +537,7 @@ class _RaceRequestView(discord.ui.View):
         opponent_member: discord.Member,
         interaction: discord.Interaction,
         wager: int = 0,
+        sector_id: str | None = None,
     ) -> None:
         super().__init__(timeout=120)
         self.challenger = challenger
@@ -536,6 +546,7 @@ class _RaceRequestView(discord.ui.View):
         self.opponent_member = opponent_member
         self.original_interaction = interaction
         self.wager = wager
+        self.sector_id = sector_id
         self.resolved = False
 
     @discord.ui.button(label="Accept Race", style=discord.ButtonStyle.success, emoji="🏁")
@@ -584,7 +595,7 @@ class _RaceRequestView(discord.ui.View):
                 return
 
         wager_msg = f" for **{self.wager} Creds**" if self.wager > 0 else ""
-        await interaction.followup.send(f"Race accepted{wager_msg}! Engines revving... 🏎️💨")
+        await interaction.followup.send(f"Race accepted{wager_msg}! Thrusters firing... 🚀💨")
 
         await _run_race_and_send(
             interaction=self.original_interaction,
@@ -595,6 +606,7 @@ class _RaceRequestView(discord.ui.View):
             opp_display_name=None,
             opp_user=self.opponent,
             wager=self.wager,
+            sector_id=self.sector_id,
         )
         self.stop()
 
@@ -630,6 +642,7 @@ class _MultiRaceView(discord.ui.View):
         host_member: discord.Member,
         interaction: discord.Interaction,
         wager: int = 0,
+        sector_id: str | None = None,
     ) -> None:
         super().__init__(timeout=120)  # 2 minutes
         self.host = host
@@ -637,6 +650,7 @@ class _MultiRaceView(discord.ui.View):
         self.host_member = host_member
         self.original_interaction = interaction
         self.wager = wager
+        self.sector_id = sector_id
         self.entrants: list[tuple[User, dict[str, Any], discord.Member]] = [
             (host, host_build, host_member)
         ]
@@ -717,7 +731,7 @@ class _MultiRaceView(discord.ui.View):
             item.disabled = True
 
         await self.original_interaction.followup.send(
-            f"⏱️ Timer's up! **{len(self.entrants)} racers** — starting the race! 🏎️💨"
+            f"⏱️ Timer's up! **{len(self.entrants)} racers** — launching! 🚀💨"
         )
 
         # Run the multi-race
@@ -732,6 +746,8 @@ class _MultiRaceView(discord.ui.View):
                 participants={"players": [u.discord_id for u, _, _ in self.entrants]},
                 environment=race_result.environment.to_dict(),
                 results=race_result.to_dict(),
+                format=RaceFormat.SPRINT,
+                sector_id=self.sector_id,
             )
             session.add(race_record)
             await session.flush()
@@ -820,7 +836,7 @@ class _MultiRaceView(discord.ui.View):
                         await session.delete(uc)
                         multi_worn_out.append((uid, slot_name, card_name))
 
-            # Update race_record on minted rigs
+            # Update race_record on minted ships
             for bd in all_builds:
                 uid = bd["user_id"]
                 if uid.startswith("NPC_"):
@@ -829,20 +845,20 @@ class _MultiRaceView(discord.ui.View):
                 if not bid_str:
                     continue
                 b = await session.get(Build, uuid.UUID(bid_str))
-                if not b or not b.rig_title_id:
+                if not b or not b.ship_title_id:
                     continue
-                rig_title = await session.get(RigTitle, b.rig_title_id)
-                if not rig_title:
+                ship_title = await session.get(ShipTitle, b.ship_title_id)
+                if not ship_title:
                     continue
                 placement = next((p for p in race_result.placements if p.user_id == uid), None)
                 if not placement or placement.is_tie:
                     continue
-                rec = dict(rig_title.race_record or {"wins": 0, "losses": 0})
+                rec = dict(ship_title.race_record or {"wins": 0, "losses": 0})
                 if placement.position == 1:
                     rec["wins"] = rec.get("wins", 0) + 1
                 else:
                     rec["losses"] = rec.get("losses", 0) + 1
-                rig_title.race_record = rec
+                ship_title.race_record = rec
 
             await session.commit()
 
@@ -915,12 +931,12 @@ async def _race_build_autocomplete(
     interaction: discord.Interaction, current: str
 ) -> list[app_commands.Choice[str]]:
     """Autocomplete for /race build param — shows only eligible builds."""
-    race_class_val = getattr(interaction.namespace, "race_class", None) or "street"
-    race_body_val = getattr(interaction.namespace, "race_body", None)
+    race_format_val = getattr(interaction.namespace, "race_format", None) or "sprint"
+    race_hull_val = getattr(interaction.namespace, "race_hull", None)
 
-    required_class = CarClass(race_class_val)
-    required_body = BodyType(race_body_val) if race_body_val else None
-    street_open = required_class == CarClass.STREET and required_body is None
+    required_format = RaceFormat(race_format_val)
+    required_hull = HullClass(race_hull_val) if race_hull_val else None
+    sprint_open = required_format == RaceFormat.SPRINT and required_hull is None
 
     async with async_session() as session:
         result = await session.execute(
@@ -930,7 +946,7 @@ async def _race_build_autocomplete(
         )
         builds = list(result.scalars().all())
 
-        min_slots = {"engine", "transmission", "tires", "chassis"}
+        min_slots = {"reactor", "drive", "thrusters", "hull"}
         choices = []
 
         for b in builds:
@@ -938,26 +954,26 @@ async def _race_build_autocomplete(
             if not min_slots.issubset(filled):
                 continue
 
-            if not street_open:
-                if not b.rig_title_id or not b.core_locked:
+            if not sprint_open:
+                if not b.ship_title_id or not b.core_locked:
                     continue
-                title = await session.get(RigTitle, b.rig_title_id)
-                if not title or title.car_class != required_class:
+                title = await session.get(ShipTitle, b.ship_title_id)
+                if not title or title.race_format != required_format:
                     continue
-                if required_body and title.body_type != required_body:
+                if required_hull and title.hull_class != required_hull:
                     continue
                 name = title.custom_name or title.auto_name or "Unnamed"
-                cls_str = title.car_class.value.title()
-                body_str = title.body_type.value.title() if title.body_type else ""
-                label = f"{name} — {cls_str} {body_str}".strip()
+                fmt_str = title.race_format.value.title()
+                hull_str = title.hull_class.value.title() if title.hull_class else ""
+                label = f"{name} — {fmt_str} {hull_str}".strip()
             else:
-                title = await session.get(RigTitle, b.rig_title_id) if b.rig_title_id else None
+                title = await session.get(ShipTitle, b.ship_title_id) if b.ship_title_id else None
                 if title:
                     name = title.custom_name or title.auto_name or "Unnamed"
-                    label = f"{name} — {title.car_class.value.title()}"
+                    label = f"{name} — {title.race_format.value.title()}"
                 else:
-                    bt_str = b.body_type.value.title() if b.body_type else "Unknown"
-                    label = f"{b.name or 'Build'} · {bt_str} ({len(filled)}/7)"
+                    hc_str = b.hull_class.value.title() if b.hull_class else "Unknown"
+                    label = f"{b.name or 'Build'} · {hc_str} ({len(filled)}/7)"
 
             if b.is_active:
                 label += " ★"
@@ -978,25 +994,22 @@ class RaceCog(commands.Cog):
 
     @app_commands.command(name="race", description="Challenge another player to a race")
     @app_commands.describe(
-        opponent="The player to race against",
+        opponent="The ship to race against",
         wager="Creds to bet (min 10, winner takes all)",
-        race_class="Race class (default: Street — open to all builds)",
-        race_body="Body type filter (optional — combine with class for subclass events)",
-        build="Which of your eligible rigs to race with (default: your default build)",
+        race_format="Race format (default: Sprint — open to all builds)",
+        race_hull="Hull class filter (optional — combine with format for subclass events)",
+        build="Which of your eligible ships to race with (default: your default build)",
     )
     @app_commands.choices(
-        race_class=[
-            app_commands.Choice(name="🛣️ Street (open)", value="street"),
-            app_commands.Choice(name="💨 Drag", value="drag"),
-            app_commands.Choice(name="🏁 Circuit", value="circuit"),
-            app_commands.Choice(name="🌀 Drift", value="drift"),
-            app_commands.Choice(name="⛰️ Rally", value="rally"),
-            app_commands.Choice(name="👑 Elite", value="elite"),
+        race_format=[
+            app_commands.Choice(name="🛣️ Sprint (open)", value="sprint"),
+            app_commands.Choice(name="💨 Endurance", value="endurance"),
+            app_commands.Choice(name="🏁 Gauntlet", value="gauntlet"),
         ],
-        race_body=[
-            app_commands.Choice(name="💪 Muscle", value="muscle"),
-            app_commands.Choice(name="🏎️ Sport", value="sport"),
-            app_commands.Choice(name="🚗 Compact", value="compact"),
+        race_hull=[
+            app_commands.Choice(name="🚛 Hauler", value="hauler"),
+            app_commands.Choice(name="⚔️ Skirmisher", value="skirmisher"),
+            app_commands.Choice(name="🔭 Scout", value="scout"),
         ],
     )
     @app_commands.autocomplete(build=_race_build_autocomplete)
@@ -1006,8 +1019,8 @@ class RaceCog(commands.Cog):
         interaction: discord.Interaction,
         opponent: discord.Member | None = None,
         wager: int = 0,
-        race_class: str = "street",
-        race_body: str | None = None,
+        race_format: str = "sprint",
+        race_hull: str | None = None,
         build: str | None = None,
     ) -> None:
         if wager != 0 and wager < 10:
@@ -1018,6 +1031,13 @@ class RaceCog(commands.Cog):
         if wager < 0:
             await interaction.response.send_message("Wager can't be negative.", ephemeral=True)
             return
+
+        async with async_session() as session:
+            sector = await get_active_sector(interaction, session)
+            if sector is None:
+                await interaction.response.send_message(sector_required_message(), ephemeral=True)
+                return
+
         async with async_session() as session:
             challenger = await session.get(User, str(interaction.user.id))
             if not challenger:
@@ -1031,13 +1051,13 @@ class RaceCog(commands.Cog):
                 await interaction.response.send_message(challenger_build, ephemeral=True)
                 return
 
-            # --- Class gate (skip for tutorial races) ---
-            required_class = CarClass(race_class)
-            required_body = BodyType(race_body) if race_body else None
-            has_requirements = required_class != CarClass.STREET or required_body is not None
+            # --- Format gate (skip for tutorial races) ---
+            required_format = RaceFormat(race_format)
+            required_hull = HullClass(race_hull) if race_hull else None
+            has_requirements = required_format != RaceFormat.SPRINT or required_hull is not None
             if not is_tutorial_race and has_requirements:
                 gate_error = await _check_class_gate(
-                    session, challenger_build, required_class, required_body
+                    session, challenger_build, required_format, required_hull
                 )
                 if gate_error:
                     await interaction.response.send_message(gate_error, ephemeral=True)
@@ -1056,6 +1076,7 @@ class RaceCog(commands.Cog):
                     is_tutorial_race=True,
                     opp_display_name=npc_data["name"],
                     opp_user=None,
+                    sector_id=sector.channel_id,
                 )
                 return
 
@@ -1068,7 +1089,7 @@ class RaceCog(commands.Cog):
 
             if opponent.id == interaction.user.id:
                 await interaction.response.send_message(
-                    "You can't race yourself. That's just running.", ephemeral=True
+                    "You can't race yourself. That's just drifting in circles.", ephemeral=True
                 )
                 return
 
@@ -1104,12 +1125,13 @@ class RaceCog(commands.Cog):
             opponent_member=opponent,
             interaction=interaction,
             wager=wager,
+            sector_id=sector.channel_id,
         )
         wager_text = f"\n💰 **Wager: {wager} Creds** — winner takes all!" if wager > 0 else ""
         embed = discord.Embed(
             title="🏁 Race Challenge",
             description=(
-                f"{interaction.user.mention} is revving their engine and calling you out!\n"
+                f"{interaction.user.mention} is powering up their thrusters and calling you out!\n"
                 f"{wager_text}\n"
                 f"{opponent.mention}, you in?"
             ),
@@ -1131,6 +1153,12 @@ class RaceCog(commands.Cog):
         if wager < 0:
             await interaction.response.send_message("Wager can't be negative.", ephemeral=True)
             return
+
+        async with async_session() as session:
+            sector = await get_active_sector(interaction, session)
+            if sector is None:
+                await interaction.response.send_message(sector_required_message(), ephemeral=True)
+                return
 
         async with async_session() as session:
             host = await session.get(User, str(interaction.user.id))
@@ -1166,6 +1194,7 @@ class RaceCog(commands.Cog):
             host_member=interaction.user,
             interaction=interaction,
             wager=wager,
+            sector_id=sector.channel_id,
         )
         wager_text = f"\n💰 **Wager: {wager} Creds** — winner takes all!" if wager > 0 else ""
         embed = discord.Embed(
@@ -1176,7 +1205,7 @@ class RaceCog(commands.Cog):
                 f"**Conditions:** {env.description}\n"
                 f"{wager_text}\n\n"
                 f"⏱️ **2 minutes** to join (max 3 racers)\n"
-                f"Minimum parts: Engine, Transmission, Tires, Chassis"
+                f"Minimum parts: Reactor, Drive, Thrusters, Hull"
             ),
             color=0xF59E0B,
         )
@@ -1187,11 +1216,16 @@ class RaceCog(commands.Cog):
     @traced_command
     async def leaderboard(self, interaction: discord.Interaction) -> None:
         async with async_session() as session:
+            sector = await get_active_sector(interaction, session)
+            if sector is None:
+                await interaction.response.send_message(sector_required_message(), ephemeral=True)
+                return
+
             result = await session.execute(select(User).order_by(User.xp.desc()).limit(10))
             users = list(result.scalars().all())
 
         if not users:
-            await interaction.response.send_message("No players yet!")
+            await interaction.response.send_message("No pilots yet!")
             return
 
         lines = []
@@ -1210,6 +1244,11 @@ class RaceCog(commands.Cog):
     @traced_command
     async def wrecks(self, interaction: discord.Interaction) -> None:
         async with async_session() as session:
+            sector = await get_active_sector(interaction, session)
+            if sector is None:
+                await interaction.response.send_message(sector_required_message(), ephemeral=True)
+                return
+
             result = await session.execute(
                 select(WreckLog)
                 .where(WreckLog.user_id == str(interaction.user.id))

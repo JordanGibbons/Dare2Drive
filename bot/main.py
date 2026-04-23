@@ -128,7 +128,7 @@ class Dare2DriveBot(commands.Bot):
         cog_modules = [
             "bot.cogs.tutorial",
             "bot.cogs.cards",
-            "bot.cogs.garage",
+            "bot.cogs.hangar",
             "bot.cogs.race",
             "bot.cogs.market",
             "bot.cogs.admin",
