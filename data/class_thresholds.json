@@ -1,25 +1,19 @@
 {
-  "drag": {
+  "sprint": {
     "min_power": 80,
     "min_acceleration": 70,
     "max_handling": 55
   },
-  "circuit": {
+  "endurance": {
     "min_handling": 65,
     "min_braking": 60,
     "min_stability": 55
   },
-  "drift": {
+  "gauntlet": {
     "max_grip": 45,
     "min_torque": 70,
-    "min_stability": 45
-  },
-  "rally": {
+    "min_stability": 45,
     "min_durability": 70,
-    "min_stability": 60,
     "min_weather": 55
-  },
-  "elite": {
-    "min_pedigree_bonus": 2.0
   }
 }
