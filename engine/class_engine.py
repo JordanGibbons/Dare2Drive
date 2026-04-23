@@ -1,11 +1,11 @@
-"""Class engine — derives a rig's CarClass from its combined BuildStats."""
+"""Race format engine — derives a ship's RaceFormat from its combined BuildStats."""
 
 from __future__ import annotations
 
 import json
 from pathlib import Path
 
-from db.models import BodyType, CarClass
+from db.models import HullClass, RaceFormat
 from engine.stat_resolver import BuildStats
 
 _THRESHOLDS_PATH = Path(__file__).resolve().parent.parent / "data" / "class_thresholds.json"
@@ -78,72 +78,103 @@ def _class_pct(thresholds: dict, stats: BuildStats, pedigree_bonus: float = 0.0)
     return met / len(thresholds)
 
 
-# Evaluation order: most specific/exclusive first
-_CLASS_ORDER: list[CarClass] = [
-    CarClass.ELITE,
-    CarClass.DRAG,
-    CarClass.CIRCUIT,
-    CarClass.DRIFT,
-    CarClass.RALLY,
-    CarClass.STREET,
+# Evaluation order: sprint, endurance, gauntlet (most specific/exclusive first)
+_RACE_FORMAT_ORDER: list[RaceFormat] = [
+    RaceFormat.SPRINT,
+    RaceFormat.ENDURANCE,
+    RaceFormat.GAUNTLET,
 ]
 
 
-def calculate_class(
+def calculate_race_format(
     stats: BuildStats,
-    body_type: BodyType | None = None,
+    hull_class: HullClass | None = None,
     pedigree_bonus: float = 0.0,
-) -> CarClass:
+) -> RaceFormat:
     """
-    Derive a CarClass from the rig's aggregate stats.
+    Derive a RaceFormat from the ship's aggregate stats.
 
-    Evaluation proceeds in order: ELITE → DRAG → CIRCUIT → DRIFT → RALLY → STREET.
-    STREET is the fallback and always matches.
+    Evaluation proceeds in order: SPRINT → ENDURANCE → GAUNTLET.
+    SPRINT is the fallback and always matches.
+
+    Mapping from old 6-class system:
+    - drag (high acceleration + top speed) → SPRINT
+    - circuit (balanced, long-haul, durability) → ENDURANCE
+    - drift/rally (precision, handling) → GAUNTLET
+    - street (default) → SPRINT (most accessible)
+    - elite (prestige) → removed; not a format
     """
     thresholds = _get_thresholds()
 
-    for car_class in _CLASS_ORDER:
-        if car_class == CarClass.STREET:
-            return CarClass.STREET
+    # Try to read new 3-format keys from thresholds; fall back to old keys for compatibility
+    sprint_thresholds = thresholds.get("sprint", {})
+    endurance_thresholds = thresholds.get("endurance", {})
+    gauntlet_thresholds = thresholds.get("gauntlet", {})
 
-        class_key = car_class.value
-        class_thresholds = thresholds.get(class_key, {})
+    # If no new-format keys found, derive from old schema if available
+    if not sprint_thresholds and "drag" in thresholds:
+        # Fallback: use old drag thresholds for sprint
+        sprint_thresholds = thresholds.get("drag", {})
+    if not endurance_thresholds and "circuit" in thresholds:
+        # Fallback: use old circuit thresholds for endurance
+        endurance_thresholds = thresholds.get("circuit", {})
+    if not gauntlet_thresholds:
+        # Fallback: merge drift and rally constraints with permissive thresholds
+        drift_t = thresholds.get("drift", {})
+        rally_t = thresholds.get("rally", {})
+        # For gauntlet, we accept if either drift OR rally criteria are met
+        # For now, just use drift as the primary gauntlet threshold
+        gauntlet_thresholds = drift_t if drift_t else rally_t
 
-        if car_class == CarClass.ELITE:
-            elite_t = class_thresholds.get("min_pedigree_bonus", 0)
-            if pedigree_bonus >= elite_t and elite_t > 0:
-                return CarClass.ELITE
-            continue
+    # Evaluate in order: if SPRINT criteria met, return SPRINT; else try ENDURANCE; else GAUNTLET
+    if _class_met(sprint_thresholds, stats):
+        return RaceFormat.SPRINT
+    if _class_met(endurance_thresholds, stats):
+        return RaceFormat.ENDURANCE
+    if _class_met(gauntlet_thresholds, stats):
+        return RaceFormat.GAUNTLET
 
-        if _class_met(class_thresholds, stats):
-            return car_class
-
-    return CarClass.STREET
+    # Default fallback to SPRINT (the most accessible format)
+    return RaceFormat.SPRINT
 
 
 def trending_toward(
     stats: BuildStats,
-    body_type: BodyType | None = None,
+    hull_class: HullClass | None = None,
     pedigree_bonus: float = 0.0,
-) -> list[tuple[CarClass, float]]:
+) -> list[tuple[RaceFormat, float]]:
     """
-    Return each class with a completion percentage [0.0–1.0] of its requirements.
+    Return each format with a completion percentage [0.0–1.0] of its requirements.
 
-    Used for the /build preview command to show which class the build is trending toward.
+    Used for the /build preview command to show which format the build is trending toward.
     Results are sorted by completion descending.
     """
     thresholds = _get_thresholds()
-    results: list[tuple[CarClass, float]] = []
+    results: list[tuple[RaceFormat, float]] = []
 
-    for car_class in _CLASS_ORDER:
-        if car_class == CarClass.STREET:
-            results.append((CarClass.STREET, 1.0))
-            continue
+    # Try to read new 3-format keys from thresholds; fall back to old keys for compatibility
+    sprint_thresholds = thresholds.get("sprint", {})
+    endurance_thresholds = thresholds.get("endurance", {})
+    gauntlet_thresholds = thresholds.get("gauntlet", {})
 
-        class_key = car_class.value
-        class_thresholds = thresholds.get(class_key, {})
-        pct = _class_pct(class_thresholds, stats, pedigree_bonus)
-        results.append((car_class, pct))
+    # If no new-format keys found, derive from old schema if available
+    if not sprint_thresholds and "drag" in thresholds:
+        sprint_thresholds = thresholds.get("drag", {})
+    if not endurance_thresholds and "circuit" in thresholds:
+        endurance_thresholds = thresholds.get("circuit", {})
+    if not gauntlet_thresholds:
+        drift_t = thresholds.get("drift", {})
+        rally_t = thresholds.get("rally", {})
+        gauntlet_thresholds = drift_t if drift_t else rally_t
+
+    for race_format in _RACE_FORMAT_ORDER:
+        if race_format == RaceFormat.SPRINT:
+            pct = _class_pct(sprint_thresholds, stats, pedigree_bonus)
+        elif race_format == RaceFormat.ENDURANCE:
+            pct = _class_pct(endurance_thresholds, stats, pedigree_bonus)
+        else:  # GAUNTLET
+            pct = _class_pct(gauntlet_thresholds, stats, pedigree_bonus)
+        results.append((race_format, pct))
 
     results.sort(key=lambda x: x[1], reverse=True)
     return results
