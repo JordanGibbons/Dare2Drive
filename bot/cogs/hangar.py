@@ -11,6 +11,7 @@ from discord.ext import commands
 from sqlalchemy import select, update
 
 from api.metrics import currency_spent, users_registered
+from bot.sector_gating import get_active_sector
 from config.logging import get_logger
 from config.metrics import trace_exemplar
 from config.tracing import traced_command
@@ -306,10 +307,19 @@ class HangarCog(commands.Cog):
                 )
                 return
 
+            sector = await get_active_sector(interaction, session)
+
+        sector_label = sector.name if sector else "the outer rim"
+        opening_line = (
+            f"You've drifted into **{sector_label}**. "
+            "Sketchy Dave runs the strip here — he'll show you the ropes."
+        )
+
         view = HullClassSelect(interaction.user.id, interaction.user.display_name)
         embed = discord.Embed(
             title="🏁 Choose Your Hull Class",
             description=(
+                f"{opening_line}\n\n"
                 "Pick your ship's frame. This is permanent and cosmetic only.\n\n"
                 "🚛 **Hauler** — Built tough, takes a beating\n"
                 "⚔️ **Skirmisher** — Fast and aggressive\n"

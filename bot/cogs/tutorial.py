@@ -75,11 +75,11 @@ def get_blocked_message(user: User, command_name: str) -> str:
         TutorialStep.STARTED: "Hold on, your story's still unfolding. Sit tight.",
         TutorialStep.INVENTORY: "Easy there. Use `/inventory` first — gotta know what you've got before you do anything with it.",  # noqa: E501
         TutorialStep.INSPECT: "You've got parts but haven't looked at them. Try `/inspect` on one of your cards first.",  # noqa: E501
-        TutorialStep.EQUIP: "Parts on the floor don't make the car go. Use `/equip` or `/autoequip best` to install them.",  # noqa: E501
-        TutorialStep.MINT: "All slots filled — use `/build preview` to see your class, then `/build mint` to lock it in.",  # noqa: E501
-        TutorialStep.GARAGE: "Your rig is minted. Use `/garage` to look it over, then head to the strip.",  # noqa: E501
-        TutorialStep.RACE: "Your car's ready. Stop stalling and use `/race` already.",
-        TutorialStep.PACK: "You've got a pack to open. Patience.",
+        TutorialStep.EQUIP: "Parts on the floor don't make the ship fly. Use `/equip` or `/autoequip best` to install them.",  # noqa: E501
+        TutorialStep.MINT: "All slots filled — use `/build preview` to see your format, then `/build mint` to lock it in.",  # noqa: E501
+        TutorialStep.GARAGE: "Your ship's minted. Use `/hangar` to look it over, then head out for a run.",  # noqa: E501
+        TutorialStep.RACE: "Your ship's ready. Stop stalling and use `/race` already.",
+        TutorialStep.PACK: "You've got a salvage crate to open. Patience.",
     }
     return step_hints.get(
         step, f"You can't use `/{command_name}` yet. Keep following the tutorial."
@@ -174,13 +174,13 @@ def build_npc_race_data() -> dict[str, Any]:
 
     # Build slots and cards dicts in the format compute_race expects
     slots: dict[str, str | None] = {
-        "engine": "npc_engine",
-        "transmission": "npc_transmission",
-        "tires": "npc_tires",
-        "suspension": "npc_suspension",
-        "chassis": "npc_chassis",
-        "turbo": "npc_turbo",
-        "brakes": "npc_brakes",
+        "reactor": "npc_reactor",
+        "drive": "npc_drive",
+        "thrusters": "npc_thrusters",
+        "stabilizers": "npc_stabilizers",
+        "hull": "npc_hull",
+        "overdrive": "npc_overdrive",
+        "retros": "npc_retros",
     }
     cards: dict[str, dict[str, Any]] = {}
     for slot_name, card_data in npc["cards"].items():
@@ -232,7 +232,7 @@ async def advance_tutorial(
         elif step == TutorialStep.INSPECT and command_name == "inspect":
             # They inspected a card — teach equip
             starter_cards = data["starter_cards"]
-            engine_card = starter_cards[0] if starter_cards else "your engine"
+            engine_card = starter_cards[0] if starter_cards else "your reactor"
             lines = [line.replace("{engine_card}", engine_card) for line in dialogue["teach_equip"]]
             user.tutorial_step = TutorialStep.EQUIP
             await session.commit()
@@ -251,22 +251,22 @@ async def advance_tutorial(
             build = build_result.scalar_one_or_none()
             if build:
                 slots = build.slots
-                has_engine = slots.get("engine") is not None
-                has_transmission = slots.get("transmission") is not None
-                has_tires = slots.get("tires") is not None
-                has_chassis = slots.get("chassis") is not None
-                has_suspension = slots.get("suspension") is not None
-                has_brakes = slots.get("brakes") is not None
-                has_turbo = slots.get("turbo") is not None
+                has_reactor = slots.get("reactor") is not None
+                has_drive = slots.get("drive") is not None
+                has_thrusters = slots.get("thrusters") is not None
+                has_hull = slots.get("hull") is not None
+                has_stabilizers = slots.get("stabilizers") is not None
+                has_retros = slots.get("retros") is not None
+                has_overdrive = slots.get("overdrive") is not None
 
                 all_filled = (
-                    has_engine
-                    and has_transmission
-                    and has_tires
-                    and has_chassis
-                    and has_suspension
-                    and has_brakes
-                    and has_turbo
+                    has_reactor
+                    and has_drive
+                    and has_thrusters
+                    and has_hull
+                    and has_stabilizers
+                    and has_retros
+                    and has_overdrive
                 )
 
                 if all_filled:
@@ -275,24 +275,24 @@ async def advance_tutorial(
                     await send_dialogue(
                         interaction,
                         dialogue["teach_build_preview"],
-                        title="🏎️ All Slots Filled",
+                        title="🚀 All Slots Filled",
                     )
                 else:
                     missing = []
-                    if not has_engine:
-                        missing.append("Engine")
-                    if not has_transmission:
-                        missing.append("Transmission")
-                    if not has_tires:
-                        missing.append("Tires")
-                    if not has_chassis:
-                        missing.append("Chassis")
-                    if not has_suspension:
-                        missing.append("Suspension")
-                    if not has_brakes:
-                        missing.append("Brakes")
-                    if not has_turbo:
-                        missing.append("Turbo")
+                    if not has_reactor:
+                        missing.append("Reactor")
+                    if not has_drive:
+                        missing.append("Drive")
+                    if not has_thrusters:
+                        missing.append("Thrusters")
+                    if not has_hull:
+                        missing.append("Hull")
+                    if not has_stabilizers:
+                        missing.append("Stabilizers")
+                    if not has_retros:
+                        missing.append("Retros")
+                    if not has_overdrive:
+                        missing.append("Overdrive")
                     await send_dialogue(
                         interaction,
                         [
@@ -305,7 +305,7 @@ async def advance_tutorial(
             await send_dialogue(
                 interaction,
                 dialogue["teach_build_mint"],
-                title="📄 Mint Your Car Title",
+                title="📄 Mint Your Ship Title",
             )
 
         elif step == TutorialStep.MINT and command_name == "build_mint":
@@ -351,7 +351,7 @@ async def advance_tutorial(
                 await send_dialogue(
                     interaction,
                     [
-                        "Those junkyard parts? They're yours for real now. Not much, but enough to race."  # noqa: E501
+                        "Those salvage parts? They're yours for real now. Not much, but enough to race."  # noqa: E501
                     ],
                     title="🔧 Starter Parts",
                 )
@@ -371,12 +371,12 @@ async def advance_tutorial(
             await send_dialogue(
                 interaction,
                 dialogue["teach_pack"],
-                title="🎴 Junkyard Pack",
+                title="🎴 Salvage Crate",
             )
 
             # Show the pack cards in the scrollable reveal widget
             pack_view = _PackRevealView(
-                minted=pack_cards, display_name="Junkyard Pack", owner_id=interaction.user.id
+                minted=pack_cards, display_name="Salvage Crate", owner_id=interaction.user.id
             )
             await interaction.followup.send(
                 embed=pack_view.build_embed(), view=pack_view, ephemeral=True
@@ -393,7 +393,7 @@ async def advance_tutorial(
 
             await send_dialogue(
                 interaction,
-                ["Here's **1,000 Creds** to get you started. Don't blow it all on one pack."]
+                ["Here's **1,000 Creds** to get you started. Don't blow it all on one crate."]
                 + dialogue["outro"],
                 title="🏁 You're In. Good Luck.",
                 color=0x22C55E,
@@ -428,7 +428,7 @@ async def _grant_tutorial_completion(
             await mint_card(session, user.discord_id, card)
             starter_cards.append(card)
 
-    # Roll and grant a full junkyard pack
+    # Roll and grant a full salvage crate
     from config.settings import settings
 
     pack_cards = await _roll_cards(session, "junkyard_pack", settings.JUNKYARD_PACK_SIZE)
@@ -490,13 +490,13 @@ class TutorialCog(commands.Cog):
             title="⏩ Tutorial Skipped",
             description=(
                 "No story for you. Here's the short version: your uncle died, you got robbed, "  # noqa: E501
-                "you raided a junkyard.\n\n"
+                "you raided a salvage yard.\n\n"
                 "**Starter Parts:**\n" + "\n".join(parts_lines) + "\n\n"
-                "**Junkyard Pack:**\n" + "\n".join(pack_lines) + "\n\n"
+                "**Salvage Crate:**\n" + "\n".join(pack_lines) + "\n\n"
                 "💰 **+1,000 Creds**\n\n"
                 "Use `/autoequip best` to fill all 7 slots, then `/build mint` to mint your title. "
-                "Most races are class-gated — Street is open, higher classes need the right build. "
-                "Rare events also lock to a specific body type. Good luck."
+                "Most races are format-gated — Street is open, higher formats need the right build. "  # noqa: E501
+                "Rare events also lock to a specific hull class. Good luck."
             ),
             color=0x22C55E,
         )
