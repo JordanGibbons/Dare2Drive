@@ -2,9 +2,76 @@
 
 from __future__ import annotations
 
+import os
 import uuid
 
 import pytest
+import pytest_asyncio
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+
+# ---------------------------------------------------------------------------
+# Async DB session fixture (for Tasks 16-18 and future DB-backed tests).
+# Uses localhost so tests run from the host machine can reach the docker DB.
+# ---------------------------------------------------------------------------
+
+_TEST_DATABASE_URL = os.environ.get(
+    "TEST_DATABASE_URL",
+    "postgresql+asyncpg://dare2drive:dare2drive@localhost:5432/dare2drive",
+)
+
+
+@pytest_asyncio.fixture
+async def db_session():
+    """Async DB session with per-test rollback isolation.
+
+    Opens a real connection to the dev database (via Docker) and wraps
+    every test in a transaction that is rolled back at teardown so that
+    tests never leak rows.
+
+    A fresh engine is created per-fixture invocation to avoid event-loop
+    conflicts across tests when using asyncpg connection pools.
+    """
+    engine = create_async_engine(_TEST_DATABASE_URL, echo=False, pool_size=1, max_overflow=0)
+    session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    async with session_factory() as session:
+        trans = await session.begin()
+        try:
+            yield session
+        finally:
+            await trans.rollback()
+    await engine.dispose()
+
+
+@pytest_asyncio.fixture
+async def sample_system(db_session):
+    """A persisted System row (rolled back after test)."""
+    from db.models import System
+
+    sys = System(
+        guild_id="111111111",
+        name="Test System",
+        owner_discord_id="999999999",
+    )
+    db_session.add(sys)
+    await db_session.flush()
+    await db_session.refresh(sys)
+    return sys
+
+
+@pytest_asyncio.fixture
+async def sample_sector(db_session, sample_system):
+    """A persisted Sector row linked to sample_system (rolled back after test)."""
+    from db.models import Sector
+
+    sec = Sector(
+        channel_id="222222222",
+        system_id=sample_system.guild_id,
+        name="Test Sector",
+    )
+    db_session.add(sec)
+    await db_session.flush()
+    await db_session.refresh(sec)
+    return sec
 
 
 @pytest.fixture
