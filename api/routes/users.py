@@ -18,7 +18,7 @@ router = APIRouter()
 class UserResponse(BaseModel):
     discord_id: str
     username: str
-    body_type: str
+    hull_class: str
     currency: int
     xp: int
 
@@ -28,7 +28,7 @@ class UserResponse(BaseModel):
 class UserCreate(BaseModel):
     discord_id: str
     username: str
-    body_type: str
+    hull_class: str
 
 
 @router.get("/", response_model=list[UserResponse])
