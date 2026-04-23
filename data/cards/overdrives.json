@@ -1,7 +1,7 @@
 [
   {
-    "name": "Junkyard Snail",
-    "slot": "turbo",
+    "name": "Junkyard Overdrive",
+    "slot": "overdrive",
     "rarity": "common",
     "stats": {
       "primary": {
@@ -14,11 +14,11 @@
         "torque_spike_modifier": 4
       }
     },
-    "compatible_body_types": null
+    "compatible_hull_classes": null
   },
   {
-    "name": "Budget Blower",
-    "slot": "turbo",
+    "name": "Budget Overdrive",
+    "slot": "overdrive",
     "rarity": "common",
     "stats": {
       "primary": {
@@ -31,11 +31,11 @@
         "torque_spike_modifier": 6
       }
     },
-    "compatible_body_types": null
+    "compatible_hull_classes": null
   },
   {
-    "name": "Cyclone Charger",
-    "slot": "turbo",
+    "name": "Cyclone Overdrive",
+    "slot": "overdrive",
     "rarity": "uncommon",
     "stats": {
       "primary": {
@@ -48,11 +48,11 @@
         "torque_spike_modifier": 12
       }
     },
-    "compatible_body_types": null
+    "compatible_hull_classes": null
   },
   {
-    "name": "Blastcore Turbo",
-    "slot": "turbo",
+    "name": "Blastcore Overdrive",
+    "slot": "overdrive",
     "rarity": "rare",
     "stats": {
       "primary": {
@@ -65,11 +65,11 @@
         "torque_spike_modifier": 18
       }
     },
-    "compatible_body_types": null
+    "compatible_hull_classes": null
   },
   {
-    "name": "Tempest Twin-Scroll",
-    "slot": "turbo",
+    "name": "Tempest Overdrive",
+    "slot": "overdrive",
     "rarity": "epic",
     "stats": {
       "primary": {
@@ -82,11 +82,11 @@
         "torque_spike_modifier": 24
       }
     },
-    "compatible_body_types": null
+    "compatible_hull_classes": null
   },
   {
-    "name": "Voidhowl Supercharger",
-    "slot": "turbo",
+    "name": "Voidhowl Overdrive",
+    "slot": "overdrive",
     "rarity": "legendary",
     "stats": {
       "primary": {
@@ -100,11 +100,11 @@
       }
     },
     "print_max": 500,
-    "compatible_body_types": null
+    "compatible_hull_classes": null
   },
   {
-    "name": "Ghostwhisper Compressor",
-    "slot": "turbo",
+    "name": "Ghostwhisper Overdrive",
+    "slot": "overdrive",
     "rarity": "ghost",
     "stats": {
       "primary": {
@@ -118,6 +118,6 @@
       }
     },
     "print_max": 100,
-    "compatible_body_types": null
+    "compatible_hull_classes": null
   }
 ]

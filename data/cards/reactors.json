@@ -1,14 +1,14 @@
 [
   {
-    "name": "Rustbucket Inline-4",
-    "slot": "engine",
+    "name": "Rustbucket Reactor",
+    "slot": "reactor",
     "rarity": "common",
     "stats": {
       "primary": {
         "power": 20,
         "acceleration": 18,
         "torque": 22,
-        "max_engine_temp": 65
+        "max_reactor_temp": 65
       },
       "secondary": {
         "weight": -10,
@@ -16,18 +16,18 @@
         "fuel_efficiency": 50
       }
     },
-    "compatible_body_types": null
+    "compatible_hull_classes": null
   },
   {
-    "name": "Workhorse V6",
-    "slot": "engine",
+    "name": "Workhorse Power-Cell",
+    "slot": "reactor",
     "rarity": "common",
     "stats": {
       "primary": {
         "power": 28,
         "acceleration": 22,
         "torque": 30,
-        "max_engine_temp": 60
+        "max_reactor_temp": 60
       },
       "secondary": {
         "weight": -15,
@@ -35,18 +35,18 @@
         "fuel_efficiency": 45
       }
     },
-    "compatible_body_types": null
+    "compatible_hull_classes": null
   },
   {
-    "name": "Streethawk V6",
-    "slot": "engine",
+    "name": "Streethawk Plasma Core",
+    "slot": "reactor",
     "rarity": "uncommon",
     "stats": {
       "primary": {
         "power": 42,
         "acceleration": 38,
         "torque": 40,
-        "max_engine_temp": 70
+        "max_reactor_temp": 70
       },
       "secondary": {
         "weight": -14,
@@ -54,18 +54,18 @@
         "fuel_efficiency": 55
       }
     },
-    "compatible_body_types": null
+    "compatible_hull_classes": null
   },
   {
-    "name": "Thunderclap V8",
-    "slot": "engine",
+    "name": "Thunderclap Fusion Cell",
+    "slot": "reactor",
     "rarity": "uncommon",
     "stats": {
       "primary": {
         "power": 48,
         "acceleration": 35,
         "torque": 50,
-        "max_engine_temp": 68
+        "max_reactor_temp": 68
       },
       "secondary": {
         "weight": -20,
@@ -73,18 +73,18 @@
         "fuel_efficiency": 40
       }
     },
-    "compatible_body_types": null
+    "compatible_hull_classes": null
   },
   {
-    "name": "Ironforge V8",
-    "slot": "engine",
+    "name": "Ironforge Reactor",
+    "slot": "reactor",
     "rarity": "rare",
     "stats": {
       "primary": {
         "power": 65,
         "acceleration": 55,
         "torque": 68,
-        "max_engine_temp": 78
+        "max_reactor_temp": 78
       },
       "secondary": {
         "weight": -22,
@@ -92,18 +92,18 @@
         "fuel_efficiency": 38
       }
     },
-    "compatible_body_types": null
+    "compatible_hull_classes": null
   },
   {
-    "name": "Vortex Flat-6",
-    "slot": "engine",
+    "name": "Vortex Pulse Reactor",
+    "slot": "reactor",
     "rarity": "rare",
     "stats": {
       "primary": {
         "power": 60,
         "acceleration": 62,
         "torque": 55,
-        "max_engine_temp": 80
+        "max_reactor_temp": 80
       },
       "secondary": {
         "weight": -12,
@@ -111,18 +111,18 @@
         "fuel_efficiency": 52
       }
     },
-    "compatible_body_types": null
+    "compatible_hull_classes": null
   },
   {
-    "name": "Hellion V12",
-    "slot": "engine",
+    "name": "Hellion Core",
+    "slot": "reactor",
     "rarity": "epic",
     "stats": {
       "primary": {
         "power": 82,
         "acceleration": 70,
         "torque": 85,
-        "max_engine_temp": 85
+        "max_reactor_temp": 85
       },
       "secondary": {
         "weight": -28,
@@ -130,18 +130,18 @@
         "fuel_efficiency": 30
       }
     },
-    "compatible_body_types": null
+    "compatible_hull_classes": null
   },
   {
-    "name": "Apex Titan V10",
-    "slot": "engine",
+    "name": "Apex Titan Reactor",
+    "slot": "reactor",
     "rarity": "legendary",
     "stats": {
       "primary": {
         "power": 94,
         "acceleration": 88,
         "torque": 92,
-        "max_engine_temp": 92
+        "max_reactor_temp": 92
       },
       "secondary": {
         "weight": -25,
@@ -150,18 +150,18 @@
       }
     },
     "print_max": 500,
-    "compatible_body_types": null
+    "compatible_hull_classes": null
   },
   {
-    "name": "Phantom Pulse Engine",
-    "slot": "engine",
+    "name": "Phantom Pulse Reactor",
+    "slot": "reactor",
     "rarity": "ghost",
     "stats": {
       "primary": {
         "power": 98,
         "acceleration": 95,
         "torque": 96,
-        "max_engine_temp": 98
+        "max_reactor_temp": 98
       },
       "secondary": {
         "weight": -8,
@@ -170,6 +170,6 @@
       }
     },
     "print_max": 100,
-    "compatible_body_types": null
+    "compatible_hull_classes": null
   }
 ]
