@@ -1,4 +1,4 @@
-"""SQLAlchemy async models for Dare2Drive."""
+"""SQLAlchemy async models for Dare2Drive (Salvage-Pulp universe)."""
 
 from __future__ import annotations
 
@@ -27,22 +27,19 @@ class Base(DeclarativeBase):
 # ──────────── Enums ────────────
 
 
-class BodyType(str, enum.Enum):
-    MUSCLE = "muscle"
-    SPORT = "sport"
-    COMPACT = "compact"
+class HullClass(str, enum.Enum):
+    HAULER = "hauler"
+    SKIRMISHER = "skirmisher"
+    SCOUT = "scout"
 
 
-class CarClass(str, enum.Enum):
-    STREET = "street"
-    DRAG = "drag"
-    CIRCUIT = "circuit"
-    DRIFT = "drift"
-    RALLY = "rally"
-    ELITE = "elite"
+class RaceFormat(str, enum.Enum):
+    SPRINT = "sprint"
+    ENDURANCE = "endurance"
+    GAUNTLET = "gauntlet"
 
 
-class RigStatus(str, enum.Enum):
+class ShipStatus(str, enum.Enum):
     ACTIVE = "active"
     SCRAPPED = "scrapped"
 
@@ -50,25 +47,25 @@ class RigStatus(str, enum.Enum):
 class TutorialStep(str, enum.Enum):
     """Tracks player progress through the onboarding tutorial."""
 
-    STARTED = "started"  # Just picked body type, story playing
-    INVENTORY = "inventory"  # Told to use /inventory
-    INSPECT = "inspect"  # Told to use /inspect
-    EQUIP = "equip"  # Told to use /equip
-    MINT = "mint"  # All 7 slots filled — learn /build preview + /build mint
-    GARAGE = "garage"  # Told to check /garage
-    RACE = "race"  # Told to /race the NPC
-    PACK = "pack"  # Won/lost, opening reward pack
-    COMPLETE = "complete"  # Tutorial done, all commands unlocked
+    STARTED = "started"
+    INVENTORY = "inventory"
+    INSPECT = "inspect"
+    EQUIP = "equip"
+    MINT = "mint"
+    GARAGE = "garage"  # internal name retained; UI surfaces /hangar
+    RACE = "race"
+    PACK = "pack"
+    COMPLETE = "complete"
 
 
 class CardSlot(str, enum.Enum):
-    ENGINE = "engine"
-    TRANSMISSION = "transmission"
-    TIRES = "tires"
-    SUSPENSION = "suspension"
-    CHASSIS = "chassis"
-    TURBO = "turbo"
-    BRAKES = "brakes"
+    REACTOR = "reactor"
+    DRIVE = "drive"
+    THRUSTERS = "thrusters"
+    STABILIZERS = "stabilizers"
+    HULL = "hull"
+    OVERDRIVE = "overdrive"
+    RETROS = "retros"
 
 
 class Rarity(str, enum.Enum):
@@ -80,7 +77,42 @@ class Rarity(str, enum.Enum):
     GHOST = "ghost"
 
 
-# ──────────── Models ────────────
+# ──────────── Multi-tenant Models ────────────
+
+
+class System(Base):
+    __tablename__ = "systems"
+
+    guild_id: Mapped[str] = mapped_column(String(20), primary_key=True)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    flavor_text: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    sector_cap: Mapped[int] = mapped_column(Integer, default=1, nullable=False, server_default="1")
+    owner_discord_id: Mapped[str] = mapped_column(String(20), nullable=False)
+    registered_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    sectors: Mapped[list[Sector]] = relationship(back_populates="system", lazy="selectin")
+
+
+class Sector(Base):
+    __tablename__ = "sectors"
+
+    channel_id: Mapped[str] = mapped_column(String(20), primary_key=True)
+    system_id: Mapped[str] = mapped_column(
+        String(20), ForeignKey("systems.guild_id"), nullable=False
+    )
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    flavor_text: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    config: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+    enabled_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    system: Mapped[System] = relationship(back_populates="sectors")
+
+
+# ──────────── Player Models ────────────
 
 
 class User(Base):
@@ -88,8 +120,8 @@ class User(Base):
 
     discord_id: Mapped[str] = mapped_column(String(20), primary_key=True)
     username: Mapped[str] = mapped_column(String(100), nullable=False)
-    body_type: Mapped[BodyType] = mapped_column(
-        Enum(BodyType, values_callable=lambda x: [e.value for e in x]), nullable=False
+    hull_class: Mapped[HullClass] = mapped_column(
+        Enum(HullClass, values_callable=lambda x: [e.value for e in x]), nullable=False
     )
     currency: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     xp: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
@@ -107,7 +139,6 @@ class User(Base):
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
-    # relationships
     user_cards: Mapped[list[UserCard]] = relationship(back_populates="user", lazy="selectin")
     builds: Mapped[list[Build]] = relationship(back_populates="user", lazy="selectin")
     market_listings: Mapped[list[MarketListing]] = relationship(
@@ -134,7 +165,7 @@ class Card(Base):
     total_minted: Mapped[int] = mapped_column(
         Integer, default=0, nullable=False, server_default="0"
     )
-    compatible_body_types: Mapped[list | None] = mapped_column(JSONB, nullable=True, default=None)
+    compatible_hull_classes: Mapped[list | None] = mapped_column(JSONB, nullable=True, default=None)
 
     user_cards: Mapped[list[UserCard]] = relationship(back_populates="card", lazy="selectin")
 
@@ -164,33 +195,35 @@ class Build(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[str] = mapped_column(String(20), ForeignKey("users.discord_id"), nullable=False)
-    name: Mapped[str] = mapped_column(String(120), nullable=False, default="My Build")
+    name: Mapped[str] = mapped_column(String(120), nullable=False, default="My Ship")
     slots: Mapped[dict] = mapped_column(
         JSONB,
         nullable=False,
         default=lambda: {
-            "engine": None,
-            "transmission": None,
-            "tires": None,
-            "suspension": None,
-            "chassis": None,
-            "turbo": None,
-            "brakes": None,
+            "reactor": None,
+            "drive": None,
+            "thrusters": None,
+            "stabilizers": None,
+            "hull": None,
+            "overdrive": None,
+            "retros": None,
         },
     )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
-    body_type: Mapped[BodyType] = mapped_column(
-        Enum(BodyType, values_callable=lambda x: [e.value for e in x]),
+    hull_class: Mapped[HullClass] = mapped_column(
+        Enum(HullClass, values_callable=lambda x: [e.value for e in x]),
         nullable=True,
     )
     core_locked: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    rig_title_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("rig_titles.id"), nullable=True
+    ship_title_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("ship_titles.id", use_alter=True, name="fk_builds_ship_title_id"),
+        nullable=True,
     )
 
     user: Mapped[User] = relationship(back_populates="builds")
-    rig_title: Mapped[RigTitle | None] = relationship(  # type: ignore[name-defined]
-        "RigTitle", foreign_keys="[Build.rig_title_id]", lazy="selectin"
+    ship_title: Mapped[ShipTitle | None] = relationship(  # type: ignore[name-defined]
+        "ShipTitle", foreign_keys="[Build.ship_title_id]", lazy="selectin"
     )
 
 
@@ -201,6 +234,14 @@ class Race(Base):
     participants: Mapped[dict] = mapped_column(JSONB, nullable=False)
     environment: Mapped[dict] = mapped_column(JSONB, nullable=False)
     results: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    format: Mapped[RaceFormat] = mapped_column(
+        Enum(RaceFormat, values_callable=lambda x: [e.value for e in x]),
+        nullable=False,
+        server_default="sprint",
+    )
+    sector_id: Mapped[str | None] = mapped_column(
+        String(20), ForeignKey("sectors.channel_id"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -249,8 +290,8 @@ class WreckLog(Base):
     user: Mapped[User] = relationship(back_populates="wreck_logs")
 
 
-class RigRelease(Base):
-    __tablename__ = "rig_releases"
+class ShipRelease(Base):
+    __tablename__ = "ship_releases"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(120), nullable=False)
@@ -263,17 +304,17 @@ class RigRelease(Base):
         Integer, default=0, nullable=False, server_default="0"
     )
 
-    titles: Mapped[list[RigTitle]] = relationship(  # type: ignore[name-defined]
-        "RigTitle", back_populates="release", lazy="selectin"
+    titles: Mapped[list[ShipTitle]] = relationship(  # type: ignore[name-defined]
+        "ShipTitle", back_populates="release", lazy="selectin"
     )
 
 
-class RigTitle(Base):
-    __tablename__ = "rig_titles"
+class ShipTitle(Base):
+    __tablename__ = "ship_titles"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     release_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("rig_releases.id"), nullable=False
+        UUID(as_uuid=True), ForeignKey("ship_releases.id"), nullable=False
     )
     release_serial: Mapped[int] = mapped_column(Integer, nullable=False)
     owner_id: Mapped[str] = mapped_column(
@@ -282,16 +323,16 @@ class RigTitle(Base):
     build_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("builds.id"), nullable=True
     )
-    body_type: Mapped[BodyType] = mapped_column(
-        Enum(BodyType, values_callable=lambda x: [e.value for e in x]), nullable=False
+    hull_class: Mapped[HullClass] = mapped_column(
+        Enum(HullClass, values_callable=lambda x: [e.value for e in x]), nullable=False
     )
-    car_class: Mapped[CarClass] = mapped_column(
-        Enum(CarClass, values_callable=lambda x: [e.value for e in x]), nullable=False
+    race_format: Mapped[RaceFormat] = mapped_column(
+        Enum(RaceFormat, values_callable=lambda x: [e.value for e in x]), nullable=False
     )
-    status: Mapped[RigStatus] = mapped_column(
-        Enum(RigStatus, values_callable=lambda x: [e.value for e in x]),
+    status: Mapped[ShipStatus] = mapped_column(
+        Enum(ShipStatus, values_callable=lambda x: [e.value for e in x]),
         nullable=False,
-        default=RigStatus.ACTIVE,
+        default=ShipStatus.ACTIVE,
     )
     auto_name: Mapped[str] = mapped_column(String(120), nullable=False)
     custom_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
@@ -308,5 +349,5 @@ class RigTitle(Base):
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
-    release: Mapped[RigRelease] = relationship(back_populates="titles")
+    release: Mapped[ShipRelease] = relationship(back_populates="titles")
     owner: Mapped[User] = relationship("User", foreign_keys=[owner_id])
