@@ -125,13 +125,13 @@
     ],
     "teach_equip": [
       "Knowledge is power. Unfortunately, power is also power, and yours is currently sitting on the floor.",
-      "Use `/equip` to bolt these parts onto your ship. You need all **7 slots** filled before you can mint your rig.",
+      "Use `/equip` to bolt these parts onto your ship. You need all **7 slots** filled before you can mint your Ship Title.",
       "Slots to fill: **Reactor, Drive, Thrusters, Hull, Stabilizers, Retros, Overdrive**.",
       "Try: `/equip slot:Reactor card_name:{reactor_card}`",
       "Or skip the grease work — `/autoequip best` will install your best parts automatically."
     ],
     "teach_build_preview": [
-      "All 7 slots bolted. Your rig is starting to look like something.",
+      "All 7 slots bolted. Your ship is starting to look like something.",
       "Before you make it official, run `/build preview` — it shows which class your build is trending toward.",
       "Class determines what races you're eligible for. It's not a choice — it comes from your stats."
     ],
@@ -141,8 +141,8 @@
       "The title seals your **Reactor** and **Hull** — those are the core of the build. Swap thrusters, retros, stabilizers, and overdrive freely. Touch the core and you void the title."
     ],
     "teach_garage": [
-      "Your rig has a name now. And a serial number. That's more than most things in this salvage yard.",
-      "Use `/garage` to see your full build, class, and title details.",
+      "Your ship has a name now. And a serial number. That's more than most things in this salvage yard.",
+      "Use `/hangar` to see your full build, class, and title details.",
       "Want to scout the competition? `/peek @player` lets you see anyone's build."
     ],
     "teach_race": [
@@ -173,7 +173,7 @@
     ],
     "outro": [
       "That's the basics. Build your ship, mint your title, race the sector, trade cards, and try not to wreck.",
-      "Upgrade your rig — swap wear parts (thrusters, retros, stabilizers, overdrive) any time. Replace your reactor or hull and you'll need to `/build disassemble` and re-mint.",
+      "Upgrade your ship — swap wear parts (thrusters, retros, stabilizers, overdrive) any time. Replace your reactor or hull and you'll need to `/build disassemble` and re-mint.",
       "The `/market` has parts for sale. `/trade` if you want to deal with other players directly.",
       "Use `/multirace` to host a bigger event. Parts degrade each race, so keep an eye on your build.",
       "Good luck out there. You're gonna need it."

@@ -1,4 +1,4 @@
-"""Hangar cog — /start, /hangar, /equip, /build, /rig commands."""
+"""Hangar cog — /start, /hangar, /equip, /build, /ship commands."""
 
 from __future__ import annotations
 
@@ -824,7 +824,7 @@ class HangarCog(commands.Cog):
 
             hull_class = b.hull_class or user.hull_class
             stats = aggregate_build(
-                b.slots, cards, body_type=hull_class.value if hull_class else None
+                b.slots, cards, hull_class=hull_class.value if hull_class else None
             )
 
             filled = sum(1 for v in b.slots.values() if v is not None)
@@ -943,7 +943,7 @@ class HangarCog(commands.Cog):
 
             hull_class = b.hull_class or user.hull_class
             stats = aggregate_build(
-                b.slots, cards, body_type=hull_class.value if hull_class else None
+                b.slots, cards, hull_class=hull_class.value if hull_class else None
             )
             race_format = calculate_race_format(stats, hull_class)
             auto_name = generate_ship_name(race_format, hull_class, stats)
@@ -1253,18 +1253,18 @@ class HangarCog(commands.Cog):
             f"✅ **{display_name}** is now your default build.", ephemeral=True
         )
 
-    # ── /rig subcommands ───────────────────────────────────────────────────────
+    # ── /ship subcommands ──────────────────────────────────────────────────────
 
-    rig_group = app_commands.Group(name="rig", description="Manage your Ship Title")
+    ship_group = app_commands.Group(name="ship", description="Manage your Ship Title")
 
-    @rig_group.command(name="rename", description="Set a custom name for your Ship Title")
+    @ship_group.command(name="rename", description="Set a custom name for your Ship Title")
     @app_commands.describe(
         name="Your custom name (max 50 characters)",
         build="Which build's title to rename (default: your default build)",
     )
     @app_commands.autocomplete(build=_build_name_autocomplete)
     @traced_command
-    async def rig_rename(
+    async def ship_rename(
         self, interaction: discord.Interaction, name: str, build: str | None = None
     ) -> None:
         if len(name) > 50:
