@@ -1,0 +1,7 @@
+{
+  "pilot":     { "primary": "effective_handling",             "secondary": "effective_stability" },
+  "engineer":  { "primary": "effective_power",                "secondary": "effective_acceleration" },
+  "gunner":    { "primary": "effective_top_speed",            "secondary": "effective_braking" },
+  "navigator": { "primary": "effective_weather_performance",  "secondary": "effective_grip" },
+  "medic":     { "primary": "effective_durability",           "secondary": "effective_stability" }
+}

@@ -1,0 +1,32 @@
+{
+  "first_names": [
+    "Jax", "Mira", "Rook", "Vash", "Nova", "Cas", "Sable", "Orin", "Lyra", "Hale",
+    "Dax", "Kira", "Tov", "Ren", "Ash", "Bren", "Cyril", "Donna", "Eiko", "Finch",
+    "Garm", "Hex", "Iyla", "Jett", "Kale", "Lox", "Mags", "Nix", "Ode", "Pell",
+    "Quinn", "Rae", "Saff", "Tam", "Uzi", "Vale", "Wren", "Xan", "Yara", "Zed",
+    "Brim", "Ciri", "Dove", "Eli", "Fable", "Gil", "Huck", "Ira", "Jolan", "Kest",
+    "Lark", "Moth", "Niko", "Otto", "Pax", "Quill", "Ros", "Sev", "Thorne", "Una",
+    "Vek", "Wade", "Xero", "Yuri", "Zan"
+  ],
+  "last_names": [
+    "Krell", "Voss", "Marek", "Ren", "Cask", "Thorn", "Vex", "Harrow", "Drax", "Lund",
+    "Oro", "Solch", "Tain", "Urbane", "Weld", "Yark", "Zhou", "Abrek", "Bessel", "Crosh",
+    "Duvin", "Escher", "Felk", "Grash", "Halk", "Itzel", "Jarn", "Korzun", "Luma", "Mosk",
+    "Nine", "Orlov", "Pram", "Quist", "Rake", "Sakar", "Tull", "Ushi", "Velk", "Wold",
+    "Yoruba", "Zek", "Brock", "Cleft", "Dome", "Eyre", "Fuller", "Grave", "Holt", "Ince",
+    "Jasp", "Klang", "Lithe", "Mule", "Nash", "Osk", "Prax", "Quench", "Rowe", "Strat",
+    "Tovek", "Urn", "Vance", "Wurt", "Yost"
+  ],
+  "callsigns": [
+    "Blackjack", "Sixgun", "Crow", "Ironhand", "Ghostwhistle", "Dustdevil", "Prowler",
+    "Shade", "Briar", "Hollowpoint", "Driftwood", "Tin-Man", "Ratchet", "Patchwork",
+    "Skinflint", "Holdout", "Scrapjaw", "Rustlung", "Saltwire", "Bonecold",
+    "Clockwork", "Deadeye", "Echoback", "Flashfire", "Gutterball", "Halfpenny", "Ironjaw",
+    "Junker", "Knucklehead", "Lightfoot", "Muzzleflash", "Nightcrawler", "Outrunner", "Panhandle",
+    "Quickdraw", "Roadkill", "Salvager", "Tumbleweed", "Undercut", "Vagrant",
+    "Warpath", "Xerox", "Yardbird", "Zincwright", "Ashcloud", "Bramblehand", "Coalfoot",
+    "Ditchrunner", "Edgewise", "Fenceline", "Gravedigger", "Hellbent", "Ironshore", "Jawsmith",
+    "Kerosene", "Latenight", "Moonshine", "Nearside", "Overhang", "Pitworker",
+    "Quicksilver", "Rawhide", "Shinwreck", "Tarpit", "Underwire"
+  ]
+}
