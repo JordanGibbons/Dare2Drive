@@ -4,16 +4,19 @@ from __future__ import annotations
 
 import enum
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 
 from sqlalchemy import (
     Boolean,
+    Date,
     DateTime,
     Enum,
     Float,
     ForeignKey,
+    Index,
     Integer,
     String,
+    UniqueConstraint,
     func,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
@@ -75,6 +78,14 @@ class Rarity(str, enum.Enum):
     EPIC = "epic"
     LEGENDARY = "legendary"
     GHOST = "ghost"
+
+
+class CrewArchetype(str, enum.Enum):
+    PILOT = "pilot"
+    ENGINEER = "engineer"
+    GUNNER = "gunner"
+    NAVIGATOR = "navigator"
+    MEDIC = "medic"
 
 
 # ──────────── Multi-tenant Models ────────────
@@ -351,3 +362,89 @@ class ShipTitle(Base):
 
     release: Mapped[ShipRelease] = relationship(back_populates="titles")
     owner: Mapped[User] = relationship("User", foreign_keys=[owner_id])
+
+
+class CrewMember(Base):
+    __tablename__ = "crew_members"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[str] = mapped_column(
+        String(20), ForeignKey("users.discord_id"), nullable=False, index=True
+    )
+    first_name: Mapped[str] = mapped_column(String(60), nullable=False)
+    last_name: Mapped[str] = mapped_column(String(60), nullable=False)
+    callsign: Mapped[str] = mapped_column(String(60), nullable=False)
+    archetype: Mapped[CrewArchetype] = mapped_column(
+        Enum(CrewArchetype, values_callable=lambda x: [e.value for e in x]), nullable=False
+    )
+    rarity: Mapped[Rarity] = mapped_column(
+        Enum(Rarity, values_callable=lambda x: [e.value for e in x]), nullable=False
+    )
+    level: Mapped[int] = mapped_column(Integer, default=1, nullable=False, server_default="1")
+    xp: Mapped[int] = mapped_column(Integer, default=0, nullable=False, server_default="0")
+    portrait_key: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    acquired_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    retired_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id",
+            "first_name",
+            "last_name",
+            "callsign",
+            name="uq_crew_members_user_name",
+        ),
+        Index("ix_crew_members_user_archetype", "user_id", "archetype"),
+    )
+
+
+class CrewAssignment(Base):
+    __tablename__ = "crew_assignments"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    crew_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("crew_members.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+    )
+    build_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("builds.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    archetype: Mapped[CrewArchetype] = mapped_column(
+        Enum(CrewArchetype, values_callable=lambda x: [e.value for e in x]), nullable=False
+    )
+    assigned_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        UniqueConstraint("build_id", "archetype", name="uq_crew_assignments_build_archetype"),
+    )
+
+
+class CrewDailyLead(Base):
+    __tablename__ = "crew_daily_leads"
+
+    user_id: Mapped[str] = mapped_column(
+        String(20), ForeignKey("users.discord_id"), primary_key=True
+    )
+    rolled_for_date: Mapped[date] = mapped_column(Date, primary_key=True)
+    archetype: Mapped[CrewArchetype] = mapped_column(
+        Enum(CrewArchetype, values_callable=lambda x: [e.value for e in x]), nullable=False
+    )
+    rarity: Mapped[Rarity] = mapped_column(
+        Enum(Rarity, values_callable=lambda x: [e.value for e in x]), nullable=False
+    )
+    first_name: Mapped[str] = mapped_column(String(60), nullable=False)
+    last_name: Mapped[str] = mapped_column(String(60), nullable=False)
+    callsign: Mapped[str] = mapped_column(String(60), nullable=False)
+    claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
