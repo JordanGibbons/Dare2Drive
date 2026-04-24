@@ -8,7 +8,7 @@ import pytest
 from sqlalchemy.sql.dml import Delete, Update
 
 from bot.cogs.admin import _delete_player_data
-from db.models import Build, MarketListing, RigTitle, UserCard, WreckLog
+from db.models import Build, MarketListing, ShipTitle, UserCard, WreckLog
 
 
 class TestDeletePlayerData:
@@ -66,7 +66,7 @@ class TestDeletePlayerData:
         await _delete_player_data(session, "123456789", user)
 
         null_idx = ops.index(("UPDATE", Build))
-        del_rig_idx = ops.index(("DELETE", RigTitle))
+        del_rig_idx = ops.index(("DELETE", ShipTitle))
         assert null_idx < del_rig_idx, (
             "builds.rig_title_id must be NULLed before DELETE rig_titles "
             "to break the circular FK"
@@ -74,30 +74,30 @@ class TestDeletePlayerData:
 
     @pytest.mark.asyncio
     async def test_rig_title_deleted_before_build(self, ops_recorder):
-        """RigTitle rows must be deleted before Build rows (FK: rig_titles.build_id → builds.id)."""
+        """ShipTitle rows must be deleted before Build rows (FK: ship_titles.build_id)."""
         ops, session, user = ops_recorder
         await _delete_player_data(session, "123456789", user)
 
-        rig_idx = ops.index(("DELETE", RigTitle))
+        rig_idx = ops.index(("DELETE", ShipTitle))
         build_idx = ops.index(("DELETE", Build))
         assert rig_idx < build_idx, (
-            f"RigTitle must be deleted before Build; "
-            f"got RigTitle at {rig_idx}, Build at {build_idx}"
+            f"ShipTitle must be deleted before Build; "
+            f"got ShipTitle at {rig_idx}, Build at {build_idx}"
         )
 
     @pytest.mark.asyncio
     async def test_rig_title_deleted_before_user(self, ops_recorder):
-        """RigTitle rows must be deleted before the user row (FK: rig_titles.owner_id → users)."""
+        """ShipTitle rows must be deleted before the user row (FK: rig_titles.owner_id → users)."""
         ops, session, user = ops_recorder
         await _delete_player_data(session, "123456789", user)
 
-        rig_idx = ops.index(("DELETE", RigTitle))
+        rig_idx = ops.index(("DELETE", ShipTitle))
         # user is passed as an instance (MagicMock), not a class — find it by position
         user_idx = next(
             i
             for i, (op, _) in enumerate(ops)
             if op == "DELETE"
-            and ops[i][1] is not RigTitle
+            and ops[i][1] is not ShipTitle
             and ops[i][1] not in (WreckLog, MarketListing, UserCard, Build)
         )  # noqa: E501
         assert rig_idx < user_idx
@@ -114,7 +114,7 @@ class TestDeletePlayerData:
         assert WreckLog in deleted
         assert MarketListing in deleted
         assert UserCard in deleted
-        assert RigTitle in deleted
+        assert ShipTitle in deleted
         assert Build in deleted
         assert Build in updated  # rig_title_id nulled
         session.delete.assert_awaited_once_with(user)
@@ -124,7 +124,7 @@ class TestDeletePlayerData:
         """
         Exact sequence:
           DELETE WreckLog → DELETE MarketListing → DELETE UserCard
-          → UPDATE Build (NULL rig_title_id) → DELETE RigTitle → DELETE Build → DELETE user
+          → UPDATE Build (NULL rig_title_id) → DELETE ShipTitle → DELETE Build → DELETE user
         """
         ops, session, user = ops_recorder
         await _delete_player_data(session, "123456789", user)
@@ -135,7 +135,7 @@ class TestDeletePlayerData:
         assert entity_sequence[1] is MarketListing
         assert entity_sequence[2] is UserCard
         assert entity_sequence[3] is Build  # UPDATE — NULL rig_title_id
-        assert entity_sequence[4] is RigTitle
+        assert entity_sequence[4] is ShipTitle
         assert entity_sequence[5] is Build  # DELETE
         # entity_sequence[6] is the user instance's type (MagicMock) — just confirm it ran
         session.delete.assert_awaited_once_with(user)

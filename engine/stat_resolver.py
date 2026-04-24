@@ -97,7 +97,7 @@ def aggregate_build(
     raw_power = _get_stat(reactor_stats, "primary", "power")
     raw_accel = _get_stat(reactor_stats, "primary", "acceleration")
     raw_torque = _get_stat(reactor_stats, "primary", "torque")
-    bs.engine_max_temp = _get_stat(reactor_stats, "primary", "max_engine_temp")
+    bs.engine_max_temp = _get_stat(reactor_stats, "primary", "max_reactor_temp")
     reactor_weight = _get_stat(reactor_stats, "secondary", "weight")
     reactor_durability = _get_stat(reactor_stats, "secondary", "durability")
     _get_stat(reactor_stats, "secondary", "fuel_efficiency")

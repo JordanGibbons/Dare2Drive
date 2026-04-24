@@ -75,26 +75,26 @@ async def sample_sector(db_session, sample_system):
 
 
 @pytest.fixture
-def sample_engine_card():
-    """Return a sample engine card data dict."""
+def sample_reactor_card():
+    """Return a sample reactor card data dict."""
     return {
         "id": str(uuid.uuid4()),
-        "name": "Ironforge V8",
-        "slot": "engine",
+        "name": "Ironforge Reactor",
+        "slot": "reactor",
         "rarity": "rare",
         "stats": {
-            "primary": {"power": 65, "acceleration": 55, "torque": 68, "max_engine_temp": 78},
+            "primary": {"power": 65, "acceleration": 55, "torque": 68, "max_reactor_temp": 78},
             "secondary": {"weight": -22, "durability": 65, "fuel_efficiency": 38},
         },
     }
 
 
 @pytest.fixture
-def sample_transmission_card():
+def sample_drive_card():
     return {
         "id": str(uuid.uuid4()),
-        "name": "Quickdraw 6-Speed",
-        "slot": "transmission",
+        "name": "Quickdraw Drive",
+        "slot": "drive",
         "rarity": "rare",
         "stats": {
             "primary": {
@@ -108,11 +108,11 @@ def sample_transmission_card():
 
 
 @pytest.fixture
-def sample_tires_card():
+def sample_thrusters_card():
     return {
         "id": str(uuid.uuid4()),
-        "name": "Driftcore Slicks",
-        "slot": "tires",
+        "name": "Driftcore Thrusters",
+        "slot": "thrusters",
         "rarity": "rare",
         "stats": {
             "primary": {"grip": 62, "handling": 65, "launch_acceleration": 55},
@@ -122,11 +122,11 @@ def sample_tires_card():
 
 
 @pytest.fixture
-def sample_suspension_card():
+def sample_stabilizers_card():
     return {
         "id": str(uuid.uuid4()),
-        "name": "Viperstance Adjustables",
-        "slot": "suspension",
+        "name": "Viperstance Stabilizers",
+        "slot": "stabilizers",
         "rarity": "rare",
         "stats": {
             "primary": {"handling": 60, "stability": 62, "ride_height_modifier": -10},
@@ -136,11 +136,11 @@ def sample_suspension_card():
 
 
 @pytest.fixture
-def sample_chassis_card():
+def sample_hull_card():
     return {
         "id": str(uuid.uuid4()),
-        "name": "Phantom Coupe",
-        "slot": "chassis",
+        "name": "Phantom Hull",
+        "slot": "hull",
         "rarity": "rare",
         "stats": {
             "primary": {"drag": -5, "weight": -8, "durability": 65, "style": 65},
@@ -150,11 +150,11 @@ def sample_chassis_card():
 
 
 @pytest.fixture
-def sample_turbo_card():
+def sample_overdrive_card():
     return {
         "id": str(uuid.uuid4()),
-        "name": "Blastcore Turbo",
-        "slot": "turbo",
+        "name": "Blastcore Overdrive",
+        "slot": "overdrive",
         "rarity": "rare",
         "stats": {
             "primary": {
@@ -168,11 +168,11 @@ def sample_turbo_card():
 
 
 @pytest.fixture
-def sample_brakes_card():
+def sample_retros_card():
     return {
         "id": str(uuid.uuid4()),
-        "name": "Scorchstop Ceramics",
-        "slot": "brakes",
+        "name": "Scorchstop Retros",
+        "slot": "retros",
         "rarity": "rare",
         "stats": {
             "primary": {"brake_force": 65, "corner_entry_speed": 60, "stability_under_decel": 62},
@@ -183,32 +183,32 @@ def sample_brakes_card():
 
 @pytest.fixture
 def full_build(
-    sample_engine_card,
-    sample_transmission_card,
-    sample_tires_card,
-    sample_suspension_card,
-    sample_chassis_card,
-    sample_turbo_card,
-    sample_brakes_card,
+    sample_reactor_card,
+    sample_drive_card,
+    sample_thrusters_card,
+    sample_stabilizers_card,
+    sample_hull_card,
+    sample_overdrive_card,
+    sample_retros_card,
 ):
     """Return a complete build with all 7 slots filled."""
     cards = {
-        sample_engine_card["id"]: sample_engine_card,
-        sample_transmission_card["id"]: sample_transmission_card,
-        sample_tires_card["id"]: sample_tires_card,
-        sample_suspension_card["id"]: sample_suspension_card,
-        sample_chassis_card["id"]: sample_chassis_card,
-        sample_turbo_card["id"]: sample_turbo_card,
-        sample_brakes_card["id"]: sample_brakes_card,
+        sample_reactor_card["id"]: sample_reactor_card,
+        sample_drive_card["id"]: sample_drive_card,
+        sample_thrusters_card["id"]: sample_thrusters_card,
+        sample_stabilizers_card["id"]: sample_stabilizers_card,
+        sample_hull_card["id"]: sample_hull_card,
+        sample_overdrive_card["id"]: sample_overdrive_card,
+        sample_retros_card["id"]: sample_retros_card,
     }
     slots = {
-        "engine": sample_engine_card["id"],
-        "transmission": sample_transmission_card["id"],
-        "tires": sample_tires_card["id"],
-        "suspension": sample_suspension_card["id"],
-        "chassis": sample_chassis_card["id"],
-        "turbo": sample_turbo_card["id"],
-        "brakes": sample_brakes_card["id"],
+        "reactor": sample_reactor_card["id"],
+        "drive": sample_drive_card["id"],
+        "thrusters": sample_thrusters_card["id"],
+        "stabilizers": sample_stabilizers_card["id"],
+        "hull": sample_hull_card["id"],
+        "overdrive": sample_overdrive_card["id"],
+        "retros": sample_retros_card["id"],
     }
     return {"user_id": "123456789", "slots": slots, "cards": cards}
 
@@ -219,13 +219,13 @@ def empty_build():
     return {
         "user_id": "987654321",
         "slots": {
-            "engine": None,
-            "transmission": None,
-            "tires": None,
-            "suspension": None,
-            "chassis": None,
-            "turbo": None,
-            "brakes": None,
+            "reactor": None,
+            "drive": None,
+            "thrusters": None,
+            "stabilizers": None,
+            "hull": None,
+            "overdrive": None,
+            "retros": None,
         },
         "cards": {},
     }

@@ -2,18 +2,18 @@
 
 from __future__ import annotations
 
-from db.models import BodyType, CardSlot, Rarity
+from db.models import CardSlot, HullClass, Rarity
 
 
 class TestEnums:
-    def test_body_types(self):
-        assert BodyType.MUSCLE.value == "muscle"
-        assert BodyType.SPORT.value == "sport"
-        assert BodyType.COMPACT.value == "compact"
-        assert len(BodyType) == 3
+    def test_hull_classes(self):
+        assert HullClass.HAULER.value == "hauler"
+        assert HullClass.SKIRMISHER.value == "skirmisher"
+        assert HullClass.SCOUT.value == "scout"
+        assert len(HullClass) == 3
 
     def test_card_slots(self):
-        expected = {"engine", "transmission", "tires", "suspension", "chassis", "turbo", "brakes"}
+        expected = {"reactor", "drive", "thrusters", "stabilizers", "hull", "overdrive", "retros"}
         actual = {s.value for s in CardSlot}
         assert actual == expected
         assert len(CardSlot) == 7
