@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.metrics import parts_destroyed, races_completed, races_started
 from bot.cogs.tutorial import _load_tutorial_data, build_npc_race_data, is_tutorial_complete
-from bot.sector_gating import get_active_sector, sector_required_message
+from bot.system_gating import get_active_system, system_required_message
 from config.logging import get_logger
 from config.metrics import trace_exemplar
 from config.tracing import traced_command
@@ -262,7 +262,7 @@ async def _run_race_and_send(
     opp_display_name: str | None,
     opp_user: User | None,
     wager: int = 0,
-    sector_id: str | None = None,
+    system_id: str | None = None,
 ) -> None:
     """Execute a race, save results, and send the result embed. Used by both PvP and tutorial flows."""  # noqa: E501
     race_type = "tutorial" if is_tutorial_race else "open"
@@ -289,7 +289,7 @@ async def _run_race_and_send(
                 environment=race_result.environment.to_dict(),
                 results=race_result.to_dict(),
                 format=RaceFormat.SPRINT,
-                sector_id=sector_id,
+                system_id=system_id,
             )
             session.add(race_record)
             await session.flush()
@@ -537,7 +537,7 @@ class _RaceRequestView(discord.ui.View):
         opponent_member: discord.Member,
         interaction: discord.Interaction,
         wager: int = 0,
-        sector_id: str | None = None,
+        system_id: str | None = None,
     ) -> None:
         super().__init__(timeout=120)
         self.challenger = challenger
@@ -546,7 +546,7 @@ class _RaceRequestView(discord.ui.View):
         self.opponent_member = opponent_member
         self.original_interaction = interaction
         self.wager = wager
-        self.sector_id = sector_id
+        self.system_id = system_id
         self.resolved = False
 
     @discord.ui.button(label="Accept Race", style=discord.ButtonStyle.success, emoji="🏁")
@@ -606,7 +606,7 @@ class _RaceRequestView(discord.ui.View):
             opp_display_name=None,
             opp_user=self.opponent,
             wager=self.wager,
-            sector_id=self.sector_id,
+            system_id=self.system_id,
         )
         self.stop()
 
@@ -642,7 +642,7 @@ class _MultiRaceView(discord.ui.View):
         host_member: discord.Member,
         interaction: discord.Interaction,
         wager: int = 0,
-        sector_id: str | None = None,
+        system_id: str | None = None,
     ) -> None:
         super().__init__(timeout=120)  # 2 minutes
         self.host = host
@@ -650,7 +650,7 @@ class _MultiRaceView(discord.ui.View):
         self.host_member = host_member
         self.original_interaction = interaction
         self.wager = wager
-        self.sector_id = sector_id
+        self.system_id = system_id
         self.entrants: list[tuple[User, dict[str, Any], discord.Member]] = [
             (host, host_build, host_member)
         ]
@@ -747,7 +747,7 @@ class _MultiRaceView(discord.ui.View):
                 environment=race_result.environment.to_dict(),
                 results=race_result.to_dict(),
                 format=RaceFormat.SPRINT,
-                sector_id=self.sector_id,
+                system_id=self.system_id,
             )
             session.add(race_record)
             await session.flush()
@@ -1033,9 +1033,9 @@ class RaceCog(commands.Cog):
             return
 
         async with async_session() as session:
-            sector = await get_active_sector(interaction, session)
-            if sector is None:
-                await interaction.response.send_message(sector_required_message(), ephemeral=True)
+            system = await get_active_system(interaction, session)
+            if system is None:
+                await interaction.response.send_message(system_required_message(), ephemeral=True)
                 return
 
         async with async_session() as session:
@@ -1076,7 +1076,7 @@ class RaceCog(commands.Cog):
                     is_tutorial_race=True,
                     opp_display_name=npc_data["name"],
                     opp_user=None,
-                    sector_id=sector.channel_id,
+                    system_id=system.channel_id,
                 )
                 return
 
@@ -1125,7 +1125,7 @@ class RaceCog(commands.Cog):
             opponent_member=opponent,
             interaction=interaction,
             wager=wager,
-            sector_id=sector.channel_id,
+            system_id=system.channel_id,
         )
         wager_text = f"\n💰 **Wager: {wager} Creds** — winner takes all!" if wager > 0 else ""
         embed = discord.Embed(
@@ -1155,9 +1155,9 @@ class RaceCog(commands.Cog):
             return
 
         async with async_session() as session:
-            sector = await get_active_sector(interaction, session)
-            if sector is None:
-                await interaction.response.send_message(sector_required_message(), ephemeral=True)
+            system = await get_active_system(interaction, session)
+            if system is None:
+                await interaction.response.send_message(system_required_message(), ephemeral=True)
                 return
 
         async with async_session() as session:
@@ -1194,7 +1194,7 @@ class RaceCog(commands.Cog):
             host_member=interaction.user,
             interaction=interaction,
             wager=wager,
-            sector_id=sector.channel_id,
+            system_id=system.channel_id,
         )
         wager_text = f"\n💰 **Wager: {wager} Creds** — winner takes all!" if wager > 0 else ""
         embed = discord.Embed(
@@ -1216,9 +1216,9 @@ class RaceCog(commands.Cog):
     @traced_command
     async def leaderboard(self, interaction: discord.Interaction) -> None:
         async with async_session() as session:
-            sector = await get_active_sector(interaction, session)
-            if sector is None:
-                await interaction.response.send_message(sector_required_message(), ephemeral=True)
+            system = await get_active_system(interaction, session)
+            if system is None:
+                await interaction.response.send_message(system_required_message(), ephemeral=True)
                 return
 
             result = await session.execute(select(User).order_by(User.xp.desc()).limit(10))
@@ -1244,9 +1244,9 @@ class RaceCog(commands.Cog):
     @traced_command
     async def wrecks(self, interaction: discord.Interaction) -> None:
         async with async_session() as session:
-            sector = await get_active_sector(interaction, session)
-            if sector is None:
-                await interaction.response.send_message(sector_required_message(), ephemeral=True)
+            system = await get_active_system(interaction, session)
+            if system is None:
+                await interaction.response.send_message(system_required_message(), ephemeral=True)
                 return
 
             result = await session.execute(

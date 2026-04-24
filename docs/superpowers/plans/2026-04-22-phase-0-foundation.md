@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Pivot Dare2Drive from car/race vocabulary to ship/salvage-pulp vocabulary while introducing multi-tenant System/Sector tables — single PR, fresh schema, no live users.
+**Goal:** Pivot Dare2Drive from car/race vocabulary to ship/salvage-pulp vocabulary while introducing multi-tenant Sector/System tables — single PR, fresh schema, no live users.
 
-**Architecture:** Squash all 10 existing migrations into a fresh `0001_initial.py` reflecting the post-pivot schema. Add `System` and `Sector` tables. Rename `BodyType→HullClass`, `CarClass→RaceFormat` (cut 6→3 values: sprint/endurance/gauntlet), `Rig*→Ship*`, slot keys (`engine→reactor`, `transmission→drive`, `tires→thrusters`, `suspension→stabilizers`, `chassis→hull`, `turbo→overdrive`, `brakes→retros`). Player state stays universe-wide; only `Race` gains `sector_id` FK. Gameplay commands gated to enabled sectors via central registry. No mechanical behavior changes.
+**Architecture:** Squash all 10 existing migrations into a fresh `0001_initial.py` reflecting the post-pivot schema. Add `Sector` and `System` tables. Rename `BodyType→HullClass`, `CarClass→RaceFormat` (cut 6→3 values: sprint/endurance/gauntlet), `Rig*→Ship*`, slot keys (`engine→reactor`, `transmission→drive`, `tires→thrusters`, `suspension→stabilizers`, `chassis→hull`, `turbo→overdrive`, `brakes→retros`). Player state stays universe-wide; only `Race` gains `system_id` FK. Gameplay commands gated to enabled systems via central registry. No mechanical behavior changes.
 
 **Tech Stack:** Python 3.11+, FastAPI, discord.py 2.x, SQLAlchemy 2 async, Alembic, PostgreSQL 16, Redis 7, pytest.
 
@@ -17,10 +17,10 @@
 ## Working principles
 
 - **Big rename, no live users.** Be aggressive. The goal is one cohesive PR ready to merge to `main`.
-- **Renames first, then new behavior.** Schema → engine → data files → cogs → new sector commands → tests → verification.
+- **Renames first, then new behavior.** Schema → engine → data files → cogs → new system commands → tests → verification.
 - **Tests are the safety net.** After each rename layer, run the full suite. Fix breakage immediately, don't let it pile up.
 - **Frequent commits.** Commit after each task at minimum. Use `feat:` for new behavior, `refactor:` for renames, `chore:` for data file updates.
-- **TDD applies to new code.** Sector gating helper, admin commands, and the audit script get test-first treatment. Pure renames don't — the existing tests are the test, just with renamed fixtures.
+- **TDD applies to new code.** System gating helper, admin commands, and the audit script get test-first treatment. Pure renames don't — the existing tests are the test, just with renamed fixtures.
 
 ---
 
@@ -28,11 +28,11 @@
 
 ### Created
 
-- `bot/sector_gating.py` — Helper `get_active_sector()` + registry of sector-gated vs universe-wide commands
+- `bot/system_gating.py` — Helper `get_active_system()` + registry of system-gated vs universe-wide commands
 - `db/migrations/versions/0001_initial.py` — **New**, replaces all 10 existing migrations
 - `scripts/audit_pivot.py` — Grep audit script that fails CI on car-vocabulary leaks
-- `tests/test_sector_gating.py` — Tests for the gating helper
-- `tests/test_systems_sectors.py` — Tests for System/Sector model + admin commands
+- `tests/test_system_gating.py` — Tests for the gating helper
+- `tests/test_sectors_systems.py` — Tests for Sector/System model + admin commands
 
 ### Renamed (file moves)
 
@@ -50,7 +50,7 @@
 
 ### Modified
 
-- `db/models.py` — model + enum renames + new System/Sector
+- `db/models.py` — model + enum renames + new Sector/System
 - `engine/race_engine.py`, `engine/stat_resolver.py`, `engine/card_mint.py`, `engine/class_engine.py`, `engine/durability.py`, `engine/environment.py` — slot/enum refs
 - `bot/main.py` — `on_guild_join` listener + startup reconciliation
 - `bot/cogs/race.py`, `cards.py`, `market.py`, `tutorial.py`, `admin.py` — copy + gating
@@ -109,7 +109,7 @@ Record the "X passed" line. Every downstream task must end with at least this ma
 
 ## Task 2: Update `db/models.py` with full post-pivot schema
 
-Single atomic rewrite of the models file. All model renames, enum renames, slot enum value changes, and new `System`/`Sector` models land together. Migrations don't run yet — this only updates Python definitions.
+Single atomic rewrite of the models file. All model renames, enum renames, slot enum value changes, and new `Sector`/`System` models land together. Migrations don't run yet — this only updates Python definitions.
 
 **Files:**
 - Modify: `db/models.py`
@@ -191,26 +191,26 @@ class Rarity(str, enum.Enum):
 
 # ──────────── New Multi-Tenant Models ────────────
 
-class System(Base):
-    __tablename__ = "systems"
+class Sector(Base):
+    __tablename__ = "sectors"
 
     guild_id: Mapped[str] = mapped_column(String(20), primary_key=True)
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     flavor_text: Mapped[str | None] = mapped_column(String(500), nullable=True)
-    sector_cap: Mapped[int] = mapped_column(Integer, default=1, nullable=False, server_default="1")
+    system_cap: Mapped[int] = mapped_column(Integer, default=1, nullable=False, server_default="1")
     owner_discord_id: Mapped[str] = mapped_column(String(20), nullable=False)
     registered_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
-    sectors: Mapped[list["Sector"]] = relationship(back_populates="system", lazy="selectin")
+    systems: Mapped[list["System"]] = relationship(back_populates="sector", lazy="selectin")
 
 
-class Sector(Base):
-    __tablename__ = "sectors"
+class System(Base):
+    __tablename__ = "systems"
 
     channel_id: Mapped[str] = mapped_column(String(20), primary_key=True)
-    system_id: Mapped[str] = mapped_column(String(20), ForeignKey("systems.guild_id"), nullable=False)
+    sector_id: Mapped[str] = mapped_column(String(20), ForeignKey("sectors.guild_id"), nullable=False)
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     flavor_text: Mapped[str | None] = mapped_column(String(500), nullable=True)
     config: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
@@ -218,7 +218,7 @@ class Sector(Base):
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
-    system: Mapped[System] = relationship(back_populates="sectors")
+    sector: Mapped[Sector] = relationship(back_populates="systems")
 
 
 # ──────────── Existing Models (renamed) ────────────
@@ -328,8 +328,8 @@ class Race(Base):
         Enum(RaceFormat, values_callable=lambda x: [e.value for e in x]),
         nullable=False, server_default="sprint",
     )
-    sector_id: Mapped[str | None] = mapped_column(
-        String(20), ForeignKey("sectors.channel_id"), nullable=True
+    system_id: Mapped[str | None] = mapped_column(
+        String(20), ForeignKey("systems.channel_id"), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
@@ -428,7 +428,7 @@ class ShipTitle(Base):
 - [ ] **Step 2: Verify Python compiles the new models**
 
 ```bash
-python -c "from db.models import (System, Sector, User, Card, UserCard, Build, Race, MarketListing, WreckLog, ShipRelease, ShipTitle, HullClass, RaceFormat, ShipStatus, CardSlot, Rarity, TutorialStep)"
+python -c "from db.models import (Sector, System, User, Card, UserCard, Build, Race, MarketListing, WreckLog, ShipRelease, ShipTitle, HullClass, RaceFormat, ShipStatus, CardSlot, Rarity, TutorialStep)"
 ```
 
 Expected: no output (success). If `ImportError` or `NameError`, fix the broken reference before continuing.
@@ -498,9 +498,9 @@ mv db/migrations/versions/<generated_hash>_initial_salvage_pulp_schema.py db/mig
 - [ ] **Step 4: Inspect the generated migration**
 
 Open `db/migrations/versions/0001_initial.py` and verify:
-- All 11 tables created (`systems`, `sectors`, `users`, `cards`, `user_cards`, `builds`, `races`, `market_listings`, `wreck_logs`, `ship_releases`, `ship_titles`)
+- All 11 tables created (`sectors`, `systems`, `users`, `cards`, `user_cards`, `builds`, `races`, `market_listings`, `wreck_logs`, `ship_releases`, `ship_titles`)
 - Enums: `hullclass`, `raceformat`, `shipstatus`, `tutorialstep`, `cardslot`, `rarity` all defined with the new values
-- `races.sector_id` FK present
+- `races.system_id` FK present
 - `races.format` column present
 - No leftover references to `bodytype`, `carclass`, `rigstatus`, `engine`/`transmission`/etc as enum values
 
@@ -531,7 +531,7 @@ git rm db/migrations/versions/0002_*.py db/migrations/versions/0003_*.py db/migr
 git commit -m "refactor!: squash migrations to fresh 0001 with salvage-pulp schema
 
 Replaces 10 car-era migrations with a single initial migration
-reflecting the post-pivot ship schema. Adds System and Sector
+reflecting the post-pivot ship schema. Adds Sector and System
 tables. No live users, so squash is safe.
 
 BREAKING: drops all existing data. Dev environments must drop
@@ -759,7 +759,7 @@ Map old → new while preserving the same stat-weight keys. Sketch:
 {
   "clear_space": {
     "display_name": "Clear Space",
-    "description": "An empty stretch of sector. Nothing to see, nothing to dodge.",
+    "description": "An empty stretch of system. Nothing to see, nothing to dodge.",
     "weights": {<neutral baseline weights>}
   },
   "nebula": {
@@ -779,7 +779,7 @@ Map old → new while preserving the same stat-weight keys. Sketch:
   },
   "gravity_well": {
     "display_name": "Gravity Well",
-    "description": "A heavy pull dragging on every system. Drive power is what gets you out.",
+    "description": "A heavy pull dragging on every sector. Drive power is what gets you out.",
     "weights": {<emphasize drive power, raw acceleration>}
   },
   "ion_storm": {
@@ -1056,70 +1056,70 @@ git commit -m "feat(config): add BOT_OWNER_DISCORD_ID setting"
 
 ---
 
-## Task 16: Create `bot/sector_gating.py` with helper + command registry (TDD)
+## Task 16: Create `bot/system_gating.py` with helper + command registry (TDD)
 
 **Files:**
-- Create: `bot/sector_gating.py`
-- Create: `tests/test_sector_gating.py`
+- Create: `bot/system_gating.py`
+- Create: `tests/test_system_gating.py`
 
 - [ ] **Step 1: Write failing tests**
 
-Create `tests/test_sector_gating.py`:
+Create `tests/test_system_gating.py`:
 
 ```python
-"""Tests for the sector gating helper."""
+"""Tests for the system gating helper."""
 from __future__ import annotations
 
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from bot.sector_gating import (
+from bot.system_gating import (
     UNIVERSE_WIDE_COMMANDS,
-    SECTOR_GATED_COMMANDS,
-    get_active_sector,
-    requires_sector,
+    SYSTEM_GATED_COMMANDS,
+    get_active_system,
+    requires_system,
 )
-from db.models import Sector
+from db.models import System
 
 
 @pytest.mark.asyncio
-async def test_get_active_sector_returns_sector_when_enabled(db_session, sample_system, sample_sector):
-    """When the channel is an enabled sector, the helper returns the Sector row."""
+async def test_get_active_system_returns_system_when_enabled(db_session, sample_sector, sample_system):
+    """When the channel is an enabled system, the helper returns the System row."""
     interaction = MagicMock()
-    interaction.channel_id = int(sample_sector.channel_id)
-    interaction.guild_id = int(sample_sector.system_id)
+    interaction.channel_id = int(sample_system.channel_id)
+    interaction.guild_id = int(sample_system.sector_id)
 
-    result = await get_active_sector(interaction, db_session)
+    result = await get_active_system(interaction, db_session)
     assert result is not None
-    assert result.channel_id == sample_sector.channel_id
+    assert result.channel_id == sample_system.channel_id
 
 
 @pytest.mark.asyncio
-async def test_get_active_sector_returns_none_for_unregistered_channel(db_session, sample_system):
+async def test_get_active_system_returns_none_for_unregistered_channel(db_session, sample_sector):
     """An unregistered channel returns None."""
     interaction = MagicMock()
     interaction.channel_id = 999999
-    interaction.guild_id = int(sample_system.guild_id)
+    interaction.guild_id = int(sample_sector.guild_id)
 
-    result = await get_active_sector(interaction, db_session)
+    result = await get_active_system(interaction, db_session)
     assert result is None
 
 
 @pytest.mark.asyncio
-async def test_get_active_sector_returns_none_in_dm(db_session):
+async def test_get_active_system_returns_none_in_dm(db_session):
     """A DM (no guild) returns None."""
     interaction = MagicMock()
     interaction.channel_id = 12345
     interaction.guild_id = None
 
-    result = await get_active_sector(interaction, db_session)
+    result = await get_active_system(interaction, db_session)
     assert result is None
 
 
 def test_command_registries_are_disjoint():
-    """A command can't be both universe-wide and sector-gated."""
-    assert UNIVERSE_WIDE_COMMANDS.isdisjoint(SECTOR_GATED_COMMANDS)
+    """A command can't be both universe-wide and system-gated."""
+    assert UNIVERSE_WIDE_COMMANDS.isdisjoint(SYSTEM_GATED_COMMANDS)
 
 
 def test_known_universe_wide_commands_listed():
@@ -1128,25 +1128,25 @@ def test_known_universe_wide_commands_listed():
         assert cmd in UNIVERSE_WIDE_COMMANDS
 
 
-def test_known_sector_gated_commands_listed():
-    """Race, pack, equip, etc. require an enabled sector."""
+def test_known_system_gated_commands_listed():
+    """Race, pack, equip, etc. require an enabled system."""
     for cmd in {"race", "pack", "equip", "autoequip", "preview", "mint"}:
-        assert cmd in SECTOR_GATED_COMMANDS
+        assert cmd in SYSTEM_GATED_COMMANDS
 
 
-def test_requires_sector_helper():
-    """requires_sector('race') returns True; requires_sector('profile') returns False."""
-    assert requires_sector("race") is True
-    assert requires_sector("profile") is False
+def test_requires_system_helper():
+    """requires_system('race') returns True; requires_system('profile') returns False."""
+    assert requires_system("race") is True
+    assert requires_system("profile") is False
 ```
 
-Add the `sample_system` and `sample_sector` fixtures to `tests/conftest.py`:
+Add the `sample_sector` and `sample_system` fixtures to `tests/conftest.py`:
 
 ```python
 @pytest.fixture
-async def sample_system(db_session):
-    from db.models import System
-    sys = System(guild_id="111111111", name="Test System", owner_discord_id="999999999")
+async def sample_sector(db_session):
+    from db.models import Sector
+    sys = Sector(guild_id="111111111", name="Test Sector", owner_discord_id="999999999")
     db_session.add(sys)
     await db_session.commit()
     await db_session.refresh(sys)
@@ -1154,34 +1154,34 @@ async def sample_system(db_session):
 
 
 @pytest.fixture
-async def sample_sector(db_session, sample_system):
-    from db.models import Sector
-    sec = Sector(channel_id="222222222", system_id=sample_system.guild_id, name="Test Sector")
+async def sample_system(db_session, sample_sector):
+    from db.models import System
+    sec = System(channel_id="222222222", sector_id=sample_sector.guild_id, name="Test System")
     db_session.add(sec)
     await db_session.commit()
     await db_session.refresh(sec)
     return sec
 ```
 
-- [ ] **Step 2: Run test, confirm failures are about missing `bot.sector_gating` module**
+- [ ] **Step 2: Run test, confirm failures are about missing `bot.system_gating` module**
 
 ```bash
-pytest tests/test_sector_gating.py -v
+pytest tests/test_system_gating.py -v
 ```
 
-Expected: ImportError on `bot.sector_gating`.
+Expected: ImportError on `bot.system_gating`.
 
-- [ ] **Step 3: Create `bot/sector_gating.py`**
+- [ ] **Step 3: Create `bot/system_gating.py`**
 
 ```python
-"""Central registry + helper for sector gating of gameplay commands."""
+"""Central registry + helper for system gating of gameplay commands."""
 from __future__ import annotations
 
 import discord
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from db.models import Sector
+from db.models import System
 
 # Commands that work anywhere (DMs, any channel, registered or not).
 UNIVERSE_WIDE_COMMANDS: frozenset[str] = frozenset({
@@ -1197,13 +1197,13 @@ UNIVERSE_WIDE_COMMANDS: frozenset[str] = frozenset({
     "admin_reset_player",
     "admin_set_tutorial_step",
     "admin_give_creds",
-    # sector/system commands themselves
-    "sector",
+    # system/sector commands themselves
     "system",
+    "sector",
 })
 
-# Commands that require an enabled sector.
-SECTOR_GATED_COMMANDS: frozenset[str] = frozenset({
+# Commands that require an enabled system.
+SYSTEM_GATED_COMMANDS: frozenset[str] = frozenset({
     "race",
     "challenge",
     "pack",
@@ -1220,34 +1220,34 @@ SECTOR_GATED_COMMANDS: frozenset[str] = frozenset({
 })
 
 
-def requires_sector(command_name: str) -> bool:
-    """Return True if a command requires an enabled sector to run."""
-    return command_name in SECTOR_GATED_COMMANDS
+def requires_system(command_name: str) -> bool:
+    """Return True if a command requires an enabled system to run."""
+    return command_name in SYSTEM_GATED_COMMANDS
 
 
-async def get_active_sector(
+async def get_active_system(
     interaction: discord.Interaction, session: AsyncSession
-) -> Sector | None:
-    """Return the Sector row for this interaction's channel, or None if unregistered/DM."""
+) -> System | None:
+    """Return the System row for this interaction's channel, or None if unregistered/DM."""
     if interaction.guild_id is None:
         return None
     result = await session.execute(
-        select(Sector).where(Sector.channel_id == str(interaction.channel_id))
+        select(System).where(System.channel_id == str(interaction.channel_id))
     )
     return result.scalar_one_or_none()
 
 
-def sector_required_message() -> str:
+def system_required_message() -> str:
     """User-facing message when a gameplay command runs in an unregistered channel."""
     return (
-        "Game not enabled here. Ask a server admin to `/sector enable` this channel."
+        "Game not enabled here. Ask a server admin to `/system enable` this channel."
     )
 ```
 
 - [ ] **Step 4: Run tests, confirm all pass**
 
 ```bash
-pytest tests/test_sector_gating.py -v
+pytest tests/test_system_gating.py -v
 ```
 
 Expected: 6 passed.
@@ -1255,8 +1255,8 @@ Expected: 6 passed.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add bot/sector_gating.py tests/test_sector_gating.py tests/conftest.py
-git commit -m "feat(bot): add sector gating helper + command registry"
+git add bot/system_gating.py tests/test_system_gating.py tests/conftest.py
+git commit -m "feat(bot): add system gating helper + command registry"
 ```
 
 ---
@@ -1265,93 +1265,93 @@ git commit -m "feat(bot): add sector gating helper + command registry"
 
 **Files:**
 - Modify: `bot/main.py`
-- Create test: `tests/test_systems_sectors.py`
+- Create test: `tests/test_sectors_systems.py`
 
 - [ ] **Step 1: Write failing test for guild auto-registration**
 
-Create `tests/test_systems_sectors.py`:
+Create `tests/test_sectors_systems.py`:
 
 ```python
-"""Tests for System/Sector models and admin commands."""
+"""Tests for Sector/System models and admin commands."""
 from __future__ import annotations
 
 import pytest
 from unittest.mock import MagicMock, AsyncMock
 from sqlalchemy import select
 
-from db.models import System, Sector
-from bot.main import register_system_for_guild, reconcile_systems_with_guilds
+from db.models import Sector, System
+from bot.main import register_sector_for_guild, reconcile_sectors_with_guilds
 
 
 @pytest.mark.asyncio
-async def test_register_system_for_guild_creates_row(db_session):
-    """register_system_for_guild inserts a System row with correct fields."""
+async def test_register_sector_for_guild_creates_row(db_session):
+    """register_sector_for_guild inserts a Sector row with correct fields."""
     guild = MagicMock()
     guild.id = 111111111
     guild.name = "Test Guild"
     guild.owner_id = 999999999
 
-    await register_system_for_guild(guild, db_session)
+    await register_sector_for_guild(guild, db_session)
 
-    result = await db_session.execute(select(System).where(System.guild_id == "111111111"))
+    result = await db_session.execute(select(Sector).where(Sector.guild_id == "111111111"))
     sys = result.scalar_one()
     assert sys.name == "Test Guild"
     assert sys.owner_discord_id == "999999999"
-    assert sys.sector_cap == 1
+    assert sys.system_cap == 1
 
 
 @pytest.mark.asyncio
-async def test_register_system_idempotent(db_session, sample_system):
-    """Calling register_system_for_guild twice does not duplicate."""
+async def test_register_sector_idempotent(db_session, sample_sector):
+    """Calling register_sector_for_guild twice does not duplicate."""
     guild = MagicMock()
-    guild.id = int(sample_system.guild_id)
-    guild.name = sample_system.name
-    guild.owner_id = int(sample_system.owner_discord_id)
+    guild.id = int(sample_sector.guild_id)
+    guild.name = sample_sector.name
+    guild.owner_id = int(sample_sector.owner_discord_id)
 
-    await register_system_for_guild(guild, db_session)
-    await register_system_for_guild(guild, db_session)
+    await register_sector_for_guild(guild, db_session)
+    await register_sector_for_guild(guild, db_session)
 
-    result = await db_session.execute(select(System).where(System.guild_id == sample_system.guild_id))
+    result = await db_session.execute(select(Sector).where(Sector.guild_id == sample_sector.guild_id))
     rows = result.scalars().all()
     assert len(rows) == 1
 
 
 @pytest.mark.asyncio
-async def test_reconcile_creates_missing_systems(db_session):
-    """reconcile_systems_with_guilds inserts rows for guilds the bot is in but DB has not seen."""
+async def test_reconcile_creates_missing_sectors(db_session):
+    """reconcile_sectors_with_guilds inserts rows for guilds the bot is in but DB has not seen."""
     guild_a = MagicMock(id=111, name="A", owner_id=999)
     guild_b = MagicMock(id=222, name="B", owner_id=999)
 
-    await reconcile_systems_with_guilds([guild_a, guild_b], db_session)
+    await reconcile_sectors_with_guilds([guild_a, guild_b], db_session)
 
-    result = await db_session.execute(select(System))
-    systems = result.scalars().all()
-    assert {s.guild_id for s in systems} == {"111", "222"}
+    result = await db_session.execute(select(Sector))
+    sectors = result.scalars().all()
+    assert {s.guild_id for s in sectors} == {"111", "222"}
 ```
 
-- [ ] **Step 2: Run, confirm failure on missing `register_system_for_guild`**
+- [ ] **Step 2: Run, confirm failure on missing `register_sector_for_guild`**
 
 ```bash
-pytest tests/test_systems_sectors.py -v
+pytest tests/test_sectors_systems.py -v
 ```
 
 - [ ] **Step 3: Add the helpers + listener to `bot/main.py`**
 
 ```python
 # Near the other imports
-from db.models import System
+from db.models import Sector
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-async def register_system_for_guild(guild: discord.Guild, session: AsyncSession) -> System:
-    """Insert a System row for this guild if not already present. Idempotent."""
+async def register_sector_for_guild(guild: discord.Guild, session: AsyncSession) -> Sector:
+    """Insert a Sector row for this guild if not already present. Idempotent."""
     existing = await session.execute(
-        select(System).where(System.guild_id == str(guild.id))
+        select(Sector).where(Sector.guild_id == str(guild.id))
     )
     sys = existing.scalar_one_or_none()
     if sys is not None:
         return sys
-    sys = System(
+    sys = Sector(
         guild_id=str(guild.id),
         name=guild.name,
         owner_discord_id=str(guild.owner_id) if guild.owner_id else "0",
@@ -1362,34 +1362,34 @@ async def register_system_for_guild(guild: discord.Guild, session: AsyncSession)
     return sys
 
 
-async def reconcile_systems_with_guilds(
+async def reconcile_sectors_with_guilds(
     guilds: list[discord.Guild], session: AsyncSession
 ) -> None:
-    """Ensure every current guild has a System row. Call on bot startup."""
+    """Ensure every current guild has a Sector row. Call on bot startup."""
     for guild in guilds:
-        await register_system_for_guild(guild, session)
+        await register_sector_for_guild(guild, session)
 
 
 @bot.event
 async def on_guild_join(guild: discord.Guild):
-    """Auto-register a System row when the bot joins a new guild."""
+    """Auto-register a Sector row when the bot joins a new guild."""
     async with async_session() as session:
-        await register_system_for_guild(guild, session)
-    log.info("registered_system", guild_id=guild.id, guild_name=guild.name)
+        await register_sector_for_guild(guild, session)
+    log.info("registered_sector", guild_id=guild.id, guild_name=guild.name)
 
 
 @bot.event
 async def on_ready():
-    """On startup, reconcile guild list with systems table."""
+    """On startup, reconcile guild list with sectors table."""
     # ... existing on_ready logic ...
     async with async_session() as session:
-        await reconcile_systems_with_guilds(list(bot.guilds), session)
+        await reconcile_sectors_with_guilds(list(bot.guilds), session)
 ```
 
 - [ ] **Step 4: Run tests**
 
 ```bash
-pytest tests/test_systems_sectors.py -v
+pytest tests/test_sectors_systems.py -v
 ```
 
 Expected: 3 passed.
@@ -1397,121 +1397,121 @@ Expected: 3 passed.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add bot/main.py tests/test_systems_sectors.py
-git commit -m "feat(bot): auto-register systems on guild_join + startup reconcile"
+git add bot/main.py tests/test_sectors_systems.py
+git commit -m "feat(bot): auto-register sectors on guild_join + startup reconcile"
 ```
 
 ---
 
-## Task 18: Add new sector/system admin commands (TDD)
+## Task 18: Add new system/sector admin commands (TDD)
 
 **Files:**
 - Modify: `bot/cogs/admin.py`
-- Modify: `tests/test_systems_sectors.py` (extend with command tests)
+- Modify: `tests/test_sectors_systems.py` (extend with command tests)
 
-- [ ] **Step 1: Extend `tests/test_systems_sectors.py`** with tests for each new command. Cover:
-- `/sector enable` happy path
-- `/sector enable` rejects when at cap
-- `/sector enable` rejects non-admin
-- `/sector disable`
-- `/sector rename`
-- `/system info`
-- `/system set-flavor` owner-only
-- `/system admin set-sector-cap` bot-owner-only
+- [ ] **Step 1: Extend `tests/test_sectors_systems.py`** with tests for each new command. Cover:
+- `/system enable` happy path
+- `/system enable` rejects when at cap
+- `/system enable` rejects non-admin
+- `/system disable`
+- `/system rename`
+- `/sector info`
+- `/sector set-flavor` owner-only
+- `/sector admin set-system-cap` bot-owner-only
 
 ```python
-# Add to tests/test_systems_sectors.py:
+# Add to tests/test_sectors_systems.py:
 
 @pytest.mark.asyncio
-async def test_sector_enable_creates_sector_when_under_cap(db_session, sample_system):
-    """Admin can enable a sector when under cap."""
-    from bot.cogs.admin import _sector_enable_logic
+async def test_system_enable_creates_system_when_under_cap(db_session, sample_sector):
+    """Admin can enable a system when under cap."""
+    from bot.cogs.admin import _system_enable_logic
     interaction = MagicMock()
-    interaction.guild_id = int(sample_system.guild_id)
+    interaction.guild_id = int(sample_sector.guild_id)
     interaction.channel_id = 333333
     interaction.channel.name = "test-channel"
     interaction.user.guild_permissions.manage_channels = True
 
-    result = await _sector_enable_logic(interaction, db_session)
+    result = await _system_enable_logic(interaction, db_session)
     assert result.success is True
 
     sec = (await db_session.execute(
-        select(Sector).where(Sector.channel_id == "333333")
+        select(System).where(System.channel_id == "333333")
     )).scalar_one()
-    assert sec.system_id == sample_system.guild_id
+    assert sec.sector_id == sample_sector.guild_id
 
 
 @pytest.mark.asyncio
-async def test_sector_enable_rejects_at_cap(db_session, sample_system, sample_sector):
-    """When at cap, sector enable rejects with cap message."""
-    from bot.cogs.admin import _sector_enable_logic
-    # sample_system has sector_cap=1, sample_sector already counts as 1
+async def test_system_enable_rejects_at_cap(db_session, sample_sector, sample_system):
+    """When at cap, system enable rejects with cap message."""
+    from bot.cogs.admin import _system_enable_logic
+    # sample_sector has system_cap=1, sample_system already counts as 1
     interaction = MagicMock()
-    interaction.guild_id = int(sample_system.guild_id)
+    interaction.guild_id = int(sample_sector.guild_id)
     interaction.channel_id = 444444
     interaction.user.guild_permissions.manage_channels = True
 
-    result = await _sector_enable_logic(interaction, db_session)
+    result = await _system_enable_logic(interaction, db_session)
     assert result.success is False
     assert "cap" in result.message.lower() or "sustain" in result.message.lower()
 
 
 @pytest.mark.asyncio
-async def test_sector_enable_rejects_non_admin(db_session, sample_system):
+async def test_system_enable_rejects_non_admin(db_session, sample_sector):
     """Non-admin gets permission rejection."""
-    from bot.cogs.admin import _sector_enable_logic
+    from bot.cogs.admin import _system_enable_logic
     interaction = MagicMock()
-    interaction.guild_id = int(sample_system.guild_id)
+    interaction.guild_id = int(sample_sector.guild_id)
     interaction.channel_id = 555555
     interaction.user.guild_permissions.manage_channels = False
 
-    result = await _sector_enable_logic(interaction, db_session)
+    result = await _system_enable_logic(interaction, db_session)
     assert result.success is False
     assert "admin" in result.message.lower() or "permission" in result.message.lower()
 
 
 @pytest.mark.asyncio
-async def test_sector_disable_removes_row(db_session, sample_system, sample_sector):
-    """Disable removes the Sector row."""
-    from bot.cogs.admin import _sector_disable_logic
+async def test_system_disable_removes_row(db_session, sample_sector, sample_system):
+    """Disable removes the System row."""
+    from bot.cogs.admin import _system_disable_logic
     interaction = MagicMock()
-    interaction.guild_id = int(sample_system.guild_id)
-    interaction.channel_id = int(sample_sector.channel_id)
+    interaction.guild_id = int(sample_sector.guild_id)
+    interaction.channel_id = int(sample_system.channel_id)
     interaction.user.guild_permissions.manage_channels = True
 
-    result = await _sector_disable_logic(interaction, db_session)
+    result = await _system_disable_logic(interaction, db_session)
     assert result.success is True
     sec = (await db_session.execute(
-        select(Sector).where(Sector.channel_id == sample_sector.channel_id)
+        select(System).where(System.channel_id == sample_system.channel_id)
     )).scalar_one_or_none()
     assert sec is None
 
 
 @pytest.mark.asyncio
-async def test_system_admin_set_sector_cap_bot_owner_only(db_session, sample_system, monkeypatch):
-    """Only bot owner can set sector cap."""
-    from bot.cogs.admin import _set_sector_cap_logic
+async def test_sector_admin_set_system_cap_bot_owner_only(db_session, sample_sector, monkeypatch):
+    """Only bot owner can set system cap."""
+    from bot.cogs.admin import _set_system_cap_logic
     monkeypatch.setattr("config.settings.settings.bot_owner_discord_id", "999999999")
 
     interaction_owner = MagicMock()
     interaction_owner.user.id = 999999999
-    interaction_owner.guild_id = int(sample_system.guild_id)
+    interaction_owner.guild_id = int(sample_sector.guild_id)
 
-    result_ok = await _set_sector_cap_logic(interaction_owner, 5, db_session)
+    result_ok = await _set_system_cap_logic(interaction_owner, 5, db_session)
     assert result_ok.success is True
 
     interaction_other = MagicMock()
     interaction_other.user.id = 111
-    interaction_other.guild_id = int(sample_system.guild_id)
+    interaction_other.guild_id = int(sample_sector.guild_id)
 
-    result_deny = await _set_sector_cap_logic(interaction_other, 10, db_session)
+    result_deny = await _set_system_cap_logic(interaction_other, 10, db_session)
     assert result_deny.success is False
 ```
 
-- [ ] **Step 2: Run tests, confirm failures on missing `_sector_enable_logic`, etc.**
+- [ ] **Step 2: Run tests, confirm failures on missing `_system_enable_logic`, etc.**
 
 ```bash
-pytest tests/test_systems_sectors.py -v
+pytest tests/test_sectors_systems.py -v
 ```
 
 - [ ] **Step 3: Add the command implementations to `bot/cogs/admin.py`**
@@ -1526,112 +1526,112 @@ class CommandResult:
     success: bool
     message: str
 
-async def _sector_enable_logic(interaction, session) -> CommandResult:
+async def _system_enable_logic(interaction, session) -> CommandResult:
     if not interaction.user.guild_permissions.manage_channels:
-        return CommandResult(False, "Only server admins (manage_channels) can enable sectors.")
+        return CommandResult(False, "Only server admins (manage_channels) can enable systems.")
     sys = (await session.execute(
-        select(System).where(System.guild_id == str(interaction.guild_id))
+        select(Sector).where(Sector.guild_id == str(interaction.guild_id))
     )).scalar_one_or_none()
     if sys is None:
-        return CommandResult(False, "System not registered. Try kicking and re-inviting the bot.")
+        return CommandResult(False, "Sector not registered. Try kicking and re-inviting the bot.")
     enabled_count = (await session.execute(
-        select(func.count()).select_from(Sector).where(Sector.system_id == sys.guild_id)
+        select(func.count()).select_from(System).where(System.sector_id == sys.guild_id)
     )).scalar_one()
-    if enabled_count >= sys.sector_cap:
+    if enabled_count >= sys.system_cap:
         return CommandResult(
             False,
-            f"The {sys.name} can only sustain {sys.sector_cap} active sector"
-            f"{'s' if sys.sector_cap != 1 else ''} at its current influence. "
-            f"Disable another to relocate, or grow the system to expand."
+            f"The {sys.name} can only sustain {sys.system_cap} active system"
+            f"{'s' if sys.system_cap != 1 else ''} at its current influence. "
+            f"Disable another to relocate, or grow the sector to expand."
         )
     existing = (await session.execute(
-        select(Sector).where(Sector.channel_id == str(interaction.channel_id))
+        select(System).where(System.channel_id == str(interaction.channel_id))
     )).scalar_one_or_none()
     if existing is not None:
-        return CommandResult(False, "This channel is already an enabled sector.")
-    sec = Sector(
+        return CommandResult(False, "This channel is already an enabled system.")
+    sec = System(
         channel_id=str(interaction.channel_id),
-        system_id=sys.guild_id,
+        sector_id=sys.guild_id,
         name=interaction.channel.name,
     )
     session.add(sec)
     await session.commit()
     return CommandResult(
         True,
-        f"#{sec.name} enabled as a sector. ({enabled_count + 1}/{sys.sector_cap} sectors active.)"
+        f"#{sec.name} enabled as a system. ({enabled_count + 1}/{sys.system_cap} systems active.)"
     )
 
 
-async def _sector_disable_logic(interaction, session) -> CommandResult:
+async def _system_disable_logic(interaction, session) -> CommandResult:
     if not interaction.user.guild_permissions.manage_channels:
-        return CommandResult(False, "Only server admins (manage_channels) can disable sectors.")
+        return CommandResult(False, "Only server admins (manage_channels) can disable systems.")
     sec = (await session.execute(
-        select(Sector).where(Sector.channel_id == str(interaction.channel_id))
+        select(System).where(System.channel_id == str(interaction.channel_id))
     )).scalar_one_or_none()
     if sec is None:
-        return CommandResult(False, "This channel is not an enabled sector.")
+        return CommandResult(False, "This channel is not an enabled system.")
     await session.delete(sec)
     await session.commit()
-    return CommandResult(True, "Sector disabled. Gameplay commands will no longer work here.")
+    return CommandResult(True, "System disabled. Gameplay commands will no longer work here.")
 
 
-async def _sector_rename_logic(interaction, new_name: str, session) -> CommandResult:
+async def _system_rename_logic(interaction, new_name: str, session) -> CommandResult:
     if not interaction.user.guild_permissions.manage_channels:
-        return CommandResult(False, "Only server admins can rename sectors.")
+        return CommandResult(False, "Only server admins can rename systems.")
     sec = (await session.execute(
-        select(Sector).where(Sector.channel_id == str(interaction.channel_id))
+        select(System).where(System.channel_id == str(interaction.channel_id))
     )).scalar_one_or_none()
     if sec is None:
-        return CommandResult(False, "This channel is not an enabled sector.")
+        return CommandResult(False, "This channel is not an enabled system.")
     sec.name = new_name[:100]
     await session.commit()
-    return CommandResult(True, f"Sector renamed to {sec.name}.")
+    return CommandResult(True, f"System renamed to {sec.name}.")
 
 
-async def _system_info_logic(interaction, session) -> CommandResult:
+async def _sector_info_logic(interaction, session) -> CommandResult:
     sys = (await session.execute(
-        select(System).where(System.guild_id == str(interaction.guild_id))
+        select(Sector).where(Sector.guild_id == str(interaction.guild_id))
     )).scalar_one_or_none()
     if sys is None:
-        return CommandResult(False, "System not registered.")
-    sectors = (await session.execute(
-        select(Sector).where(Sector.system_id == sys.guild_id)
+        return CommandResult(False, "Sector not registered.")
+    systems = (await session.execute(
+        select(System).where(System.sector_id == sys.guild_id)
     )).scalars().all()
-    sector_lines = "\n".join(f"  • #{s.name}" for s in sectors) or "  (none enabled)"
+    system_lines = "\n".join(f"  • #{s.name}" for s in systems) or "  (none enabled)"
     msg = (
         f"**{sys.name}**\n"
         f"{sys.flavor_text or '(no flavor set)'}\n\n"
-        f"Capacity: {len(sectors)}/{sys.sector_cap} sectors\n"
-        f"Active sectors:\n{sector_lines}"
+        f"Capacity: {len(systems)}/{sys.system_cap} systems\n"
+        f"Active systems:\n{system_lines}"
     )
     return CommandResult(True, msg)
 
 
-async def _system_set_flavor_logic(interaction, flavor: str, session) -> CommandResult:
+async def _sector_set_flavor_logic(interaction, flavor: str, session) -> CommandResult:
     sys = (await session.execute(
-        select(System).where(System.guild_id == str(interaction.guild_id))
+        select(Sector).where(Sector.guild_id == str(interaction.guild_id))
     )).scalar_one_or_none()
     if sys is None:
-        return CommandResult(False, "System not registered.")
+        return CommandResult(False, "Sector not registered.")
     if str(interaction.user.id) != sys.owner_discord_id:
-        return CommandResult(False, "Only the system owner can set flavor text.")
+        return CommandResult(False, "Only the sector owner can set flavor text.")
     sys.flavor_text = flavor[:500]
     await session.commit()
-    return CommandResult(True, "System flavor updated.")
+    return CommandResult(True, "Sector flavor updated.")
 
 
-async def _set_sector_cap_logic(interaction, new_cap: int, session) -> CommandResult:
+async def _set_system_cap_logic(interaction, new_cap: int, session) -> CommandResult:
     from config.settings import settings
     if str(interaction.user.id) != settings.bot_owner_discord_id:
         return CommandResult(False, "Unknown command.")  # no info leak
     sys = (await session.execute(
-        select(System).where(System.guild_id == str(interaction.guild_id))
+        select(Sector).where(Sector.guild_id == str(interaction.guild_id))
     )).scalar_one_or_none()
     if sys is None:
-        return CommandResult(False, "System not registered.")
-    sys.sector_cap = new_cap
+        return CommandResult(False, "Sector not registered.")
+    sys.system_cap = new_cap
     await session.commit()
-    return CommandResult(True, f"Sector cap for {sys.name} set to {new_cap}.")
+    return CommandResult(True, f"System cap for {sys.name} set to {new_cap}.")
 ```
 
 Then add the discord-side wrappers (slash command decorators) that call these helpers and respond to interactions. These are not unit-tested directly; the helpers are.
@@ -1639,7 +1639,7 @@ Then add the discord-side wrappers (slash command decorators) that call these he
 - [ ] **Step 4: Run tests**
 
 ```bash
-pytest tests/test_systems_sectors.py -v
+pytest tests/test_sectors_systems.py -v
 ```
 
 Expected: all pass.
@@ -1647,13 +1647,13 @@ Expected: all pass.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add bot/cogs/admin.py tests/test_systems_sectors.py
-git commit -m "feat(bot): add sector/system admin commands"
+git add bot/cogs/admin.py tests/test_sectors_systems.py
+git commit -m "feat(bot): add system/sector admin commands"
 ```
 
 ---
 
-## Task 19: Apply sector gating + ship copy to `bot/cogs/race.py`
+## Task 19: Apply system gating + ship copy to `bot/cogs/race.py`
 
 **Files:**
 - Modify: `bot/cogs/race.py`
@@ -1665,25 +1665,25 @@ git commit -m "feat(bot): add sector/system admin commands"
 - [ ] **Step 3: At the top of each gameplay command, add gating check**
 
 ```python
-from bot.sector_gating import get_active_sector, sector_required_message
+from bot.system_gating import get_active_system, system_required_message
 
 @app_commands.command(name="race", description="...")
 async def race(self, interaction: discord.Interaction):
     async with async_session() as session:
-        sector = await get_active_sector(interaction, session)
-        if sector is None:
+        system = await get_active_system(interaction, session)
+        if system is None:
             await interaction.response.send_message(
-                sector_required_message(), ephemeral=True
+                system_required_message(), ephemeral=True
             )
             return
         # ... existing race logic ...
-        # Pass sector.channel_id to Race(...) on creation:
+        # Pass system.channel_id to Race(...) on creation:
         race = Race(
             participants=...,
             environment=...,
             results=...,
             format=resolved_format,
-            sector_id=sector.channel_id,
+            system_id=system.channel_id,
         )
 ```
 
@@ -1697,12 +1697,12 @@ python -c "from bot.cogs.race import *"
 
 ```bash
 git add bot/cogs/race.py
-git commit -m "feat(bot): gate race commands by sector + ship vocabulary"
+git commit -m "feat(bot): gate race commands by system + ship vocabulary"
 ```
 
 ---
 
-## Task 20: Apply sector gating + ship copy to `bot/cogs/cards.py`
+## Task 20: Apply system gating + ship copy to `bot/cogs/cards.py`
 
 **Files:**
 - Modify: `bot/cogs/cards.py`
@@ -1723,7 +1723,7 @@ python -c "from bot.cogs.cards import *"
 
 ```bash
 git add bot/cogs/cards.py
-git commit -m "feat(bot): gate card commands by sector + ship vocabulary"
+git commit -m "feat(bot): gate card commands by system + ship vocabulary"
 ```
 
 ---
@@ -1744,7 +1744,7 @@ git mv bot/cogs/garage.py bot/cogs/hangar.py
 
 - [ ] **Step 3: Update `bot/main.py` cog-loading list** to load `bot.cogs.hangar` instead of `bot.cogs.garage`.
 
-- [ ] **Step 4: Note: `/hangar` stays universe-wide** (`UNIVERSE_WIDE_COMMANDS` already includes both `garage` and `hangar` for legacy/transitional listing — see `bot/sector_gating.py`).
+- [ ] **Step 4: Note: `/hangar` stays universe-wide** (`UNIVERSE_WIDE_COMMANDS` already includes both `garage` and `hangar` for legacy/transitional listing — see `bot/system_gating.py`).
 
 - [ ] **Step 5: Verify import**
 
@@ -1762,7 +1762,7 @@ git commit -m "refactor(bot): rename garage cog to hangar"
 
 ---
 
-## Task 22: Apply sector gating + ship copy to `bot/cogs/market.py`
+## Task 22: Apply system gating + ship copy to `bot/cogs/market.py`
 
 **Files:**
 - Modify: `bot/cogs/market.py`
@@ -1779,7 +1779,7 @@ python -c "from bot.cogs.market import *"
 
 ```bash
 git add bot/cogs/market.py
-git commit -m "feat(bot): gate market commands by sector + ship vocabulary"
+git commit -m "feat(bot): gate market commands by system + ship vocabulary"
 ```
 
 ---
@@ -1804,16 +1804,16 @@ step_hints = {
 }
 ```
 
-- [ ] **Step 2: Add opening sector line** in the `STARTED` step rendering function. Get sector name via:
+- [ ] **Step 2: Add opening system line** in the `STARTED` step rendering function. Get system name via:
 
 ```python
-from bot.sector_gating import get_active_sector
+from bot.system_gating import get_active_system
 
 # In the /start command body, before sending the body-type prompt:
 async with async_session() as session:
-    sector = await get_active_sector(interaction, session)
-sector_label = sector.name if sector else "the outer rim"
-opening_line = f"You've drifted into **{sector_label}**. Sketchy Dave runs the strip here — he'll show you the ropes."
+    system = await get_active_system(interaction, session)
+system_label = system.name if system else "the outer rim"
+opening_line = f"You've drifted into **{system_label}**. Sketchy Dave runs the strip here — he'll show you the ropes."
 ```
 
 - [ ] **Step 3: Replace any car/race noun references with ship vocabulary** (engine, transmission, etc.).
@@ -1828,7 +1828,7 @@ python -c "from bot.cogs.tutorial import *"
 
 ```bash
 git add bot/cogs/tutorial.py
-git commit -m "feat(tutorial): rewrite copy for ship vocabulary + opening sector line"
+git commit -m "feat(tutorial): rewrite copy for ship vocabulary + opening system line"
 ```
 
 ---
@@ -2114,7 +2114,7 @@ This task runs end-to-end checks before declaring Phase 0 complete.
 pytest --tb=short
 ```
 
-Expected: pass count >= baseline (Task 1) plus the new sector/audit tests added in Tasks 16, 17, 18, 28.
+Expected: pass count >= baseline (Task 1) plus the new system/audit tests added in Tasks 16, 17, 18, 28.
 
 - [ ] **Step 2: Audit script clean**
 
@@ -2142,12 +2142,12 @@ python scripts/dev.py bot   # or whatever the existing bot start command is
 ```
 
 In a test Discord guild:
-1. Confirm `systems` row was auto-created on bot join
-2. Run `/sector enable` in a channel as admin → verify sector created
-3. Run `/sector enable` in a second channel → verify cap rejection
+1. Confirm `sectors` row was auto-created on bot join
+2. Run `/system enable` in a channel as admin → verify system created
+3. Run `/system enable` in a second channel → verify cap rejection
 4. Run a gameplay command (e.g., `/race`) in the unregistered channel → verify "Game not enabled here" message
-5. Run `/start` in the enabled sector, walk through tutorial — verify ship vocabulary, opening sector line, tutorial completes
-6. Open a salvage crate, build a ship, run a race — verify slot names, hull class, race format, `Race.sector_id` populated
+5. Run `/start` in the enabled system, walk through tutorial — verify ship vocabulary, opening system line, tutorial completes
+6. Open a salvage crate, build a ship, run a race — verify slot names, hull class, race format, `Race.system_id` populated
 
 In a second test guild with the same player:
 7. Run `/inventory` — verify cards from guild 1 appear (universe-wide state)
@@ -2156,8 +2156,8 @@ In a second test guild with the same player:
 
 ```bash
 # Set BOT_OWNER_DISCORD_ID env var to your test user
-# Run /system admin set-sector-cap 3 in the test guild
-# Verify sector cap raised; verify second sector enable now succeeds
+# Run /sector admin set-system-cap 3 in the test guild
+# Verify system cap raised; verify second system enable now succeeds
 ```
 
 - [ ] **Step 6: Tag the completion**
@@ -2181,9 +2181,9 @@ PR body should reference both [the roadmap](docs/roadmap/2026-04-22-salvage-pulp
 
 ## Self-review notes
 
-- **Spec coverage:** Every locked decision in the spec maps to a task. Schema → T2/T3. Slot renames → T4-8. Race format → T7+T13. Environments → T9. Card data → T10. Tutorial → T11+T23. Loot tables → T12. Ship namer → T14. Settings → T15. Sector gating → T16. Auto-register → T17. Admin commands → T18. Cog gating + copy → T19-T24. API → T25. Tests → T26. Scripts/CLI → T27. Audit → T28. Verification → T29.
+- **Spec coverage:** Every locked decision in the spec maps to a task. Schema → T2/T3. Slot renames → T4-8. Race format → T7+T13. Environments → T9. Card data → T10. Tutorial → T11+T23. Loot tables → T12. Ship namer → T14. Settings → T15. System gating → T16. Auto-register → T17. Admin commands → T18. Cog gating + copy → T19-T24. API → T25. Tests → T26. Scripts/CLI → T27. Audit → T28. Verification → T29.
 - **No placeholders:** Every step has either real code or a precise instruction with a grep pattern.
-- **Type consistency:** `CommandResult` dataclass introduced in T18 used consistently. `get_active_sector()` signature consistent across T16 (definition), T19/T20/T22 (callers), T23 (tutorial caller).
+- **Type consistency:** `CommandResult` dataclass introduced in T18 used consistently. `get_active_system()` signature consistent across T16 (definition), T19/T20/T22 (callers), T23 (tutorial caller).
 - **Worktree note:** Working directly on `d2d-space`. Phase 0 is the natural completion of this branch.
 
 ---

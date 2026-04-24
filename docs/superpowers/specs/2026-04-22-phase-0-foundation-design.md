@@ -1,4 +1,4 @@
-# Phase 0 — Foundation: Theme Pivot + Multi-Tenant Sector Model
+# Phase 0 — Foundation: Theme Pivot + Multi-Tenant System Model
 
 **Status:** Approved 2026-04-22
 **Phase:** 0 of 6 (see [salvage-pulp revamp roadmap](../../roadmap/2026-04-22-salvage-pulp-revamp.md))
@@ -12,11 +12,11 @@
 This phase lays the foundation for the larger Salvage-Pulp revamp by doing two structurally heavy things at once:
 
 1. **Theme pivot.** Rename every car/race noun to its salvage-pulp ship equivalent across the schema, code, copy, card data, tutorial, and API surface. The existing game loop (pack → build → race) functions identically post-pivot — only the vocabulary changes.
-2. **Multi-tenant foundation.** Introduce `System` (= Discord guild) and `Sector` (= enabled Discord channel) tables, register them on bot install / admin command, and constrain gameplay commands to enabled sectors. Player state remains universe-wide.
+2. **Multi-tenant foundation.** Introduce `Sector` (= Discord guild) and `System` (= enabled Discord channel) tables, register them on bot install / admin command, and constrain gameplay commands to enabled systems. Player state remains universe-wide.
 
 The reason both land together: the project has zero live users today. Adding the multi-tenant layer in a separate PR after the rename would require a second migration that touches many of the same models again. Doing them in one fresh `0001_initial.py` is cheaper and gives Phase 0 a clean canonical shape.
 
-Phase 0 ships **no new mechanics**. No crew (Phase 1), no scheduler (Phase 2), no events or sector control (Phase 3). The deliverable is "the existing game, in the new universe, ready for multi-tenant deployment."
+Phase 0 ships **no new mechanics**. No crew (Phase 1), no scheduler (Phase 2), no events or system control (Phase 3). The deliverable is "the existing game, in the new universe, ready for multi-tenant deployment."
 
 ---
 
@@ -76,25 +76,25 @@ Removed: `street` (was a casual default — no longer modeled as a format, just 
 
 ### Universe term
 
-- **System** = Discord guild
-- **Sector** = enabled Discord channel
-- **Universe** = federation of all D2D systems
+- **Sector** = Discord guild
+- **System** = enabled Discord channel
+- **Universe** = federation of all D2D sectors
 
 ### Player state scope
 
-- Universe-wide. No FK from `User`, `UserCard`, `Build`, `MarketListing`, `WreckLog`, `ShipTitle`, or `ShipRelease` to `System` or `Sector`.
-- Only `Race` gains a sector FK (where the race happened — useful for later sector-scoped leaderboards).
+- Universe-wide. No FK from `User`, `UserCard`, `Build`, `MarketListing`, `WreckLog`, `ShipTitle`, or `ShipRelease` to `Sector` or `System`.
+- Only `Race` gains a system FK (where the race happened — useful for later system-scoped leaderboards).
 
-### Sector cap
+### System cap
 
-- Each `System` starts with `sector_cap = 1`.
-- Phase 0 enforces the cap on `/sector enable` but does **not** implement any progression mechanism that grows it. Growth is deferred to Phase 2 or 3.
-- A bot-owner-only `/system admin set-sector-cap <n>` command exists for manual overrides during testing and early server bootstrapping.
+- Each `Sector` starts with `system_cap = 1`.
+- Phase 0 enforces the cap on `/system enable` but does **not** implement any progression mechanism that grows it. Growth is deferred to Phase 2 or 3.
+- A bot-owner-only `/sector admin set-system-cap <n>` command exists for manual overrides during testing and early server bootstrapping.
 
 ### Tutorial voice
 
 - Existing snarky/gritty/gearhead voice retained. It already reads as salvage-pulp.
-- Add 2–3 lines at tutorial open establishing the sector concept.
+- Add 2–3 lines at tutorial open establishing the system concept.
 - "Sketchy Dave" stays — pulp loves mundane names alongside weird tech.
 
 ---
@@ -103,27 +103,27 @@ Removed: `street` (was a casual default — no longer modeled as a format, just 
 
 The fresh `0001_initial.py` reflects this state. All other migration files are deleted.
 
-### `systems`
+### `sectors`
 
 | Column | Type | Notes |
 |---|---|---|
 | `guild_id` | `String(20)` PK | Discord guild snowflake |
 | `name` | `String(100)` not null | Default: guild name at registration; admin can override |
-| `flavor_text` | `String(500)` nullable | Optional system-level fiction (e.g., "The Tannhäuser Cluster") |
-| `sector_cap` | `Integer` not null default `1` | How many sectors this system can currently enable |
-| `owner_discord_id` | `String(20)` not null | Whoever invited the bot or first claimed the system |
+| `flavor_text` | `String(500)` nullable | Optional sector-level fiction (e.g., "The Tannhäuser Cluster") |
+| `system_cap` | `Integer` not null default `1` | How many systems this sector can currently enable |
+| `owner_discord_id` | `String(20)` not null | Whoever invited the bot or first claimed the sector |
 | `registered_at` | `DateTime(timezone=True)` not null | Auto-set on bot guild-join |
 
-### `sectors`
+### `systems`
 
 | Column | Type | Notes |
 |---|---|---|
 | `channel_id` | `String(20)` PK | Discord channel snowflake |
-| `system_id` | `String(20)` FK → `systems.guild_id` not null | Parent system |
+| `sector_id` | `String(20)` FK → `sectors.guild_id` not null | Parent sector |
 | `name` | `String(100)` not null | Default: channel name; admin can override |
-| `flavor_text` | `String(500)` nullable | Optional sector-level fiction |
-| `config` | `JSONB` not null default `{}` | Reserved for per-sector config (Phase 3+) |
-| `enabled_at` | `DateTime(timezone=True)` not null | Set by `/sector enable` |
+| `flavor_text` | `String(500)` nullable | Optional system-level fiction |
+| `config` | `JSONB` not null default `{}` | Reserved for per-system config (Phase 3+) |
+| `enabled_at` | `DateTime(timezone=True)` not null | Set by `/system enable` |
 
 ### `users` (renames only)
 
@@ -181,7 +181,7 @@ Schema identical. Copy/help references updated to new vocabulary.
 | `environment` | `JSONB` not null | Unchanged shape; values reflect new space conditions |
 | `results` | `JSONB` not null | Unchanged |
 | `format` | `Enum(RaceFormat)` not null default `sprint` | **New column** — captures sprint/endurance/gauntlet |
-| `sector_id` | `String(20)` FK → `sectors.channel_id` nullable | **New column** — where the race happened (nullable for DM/test races) |
+| `system_id` | `String(20)` FK → `systems.channel_id` nullable | **New column** — where the race happened (nullable for DM/test races) |
 | `created_at` | `DateTime` not null default `now()` | Unchanged |
 
 ### `market_listings` (no schema changes)
@@ -244,13 +244,13 @@ Copy updates only — wrecks fit salvage-pulp without rewording.
 ### `bot/`
 
 - `bot/main.py` — register the new `on_guild_join` listener and the startup guild-list reconciliation
-- `bot/sector_gating.py` — **new module** holding the gameplay-vs-universe-wide command registry and the `get_active_sector()` helper
+- `bot/system_gating.py` — **new module** holding the gameplay-vs-universe-wide command registry and the `get_active_system()` helper
 - `bot/cogs/race.py` — copy: "race" stays as gameplay term but car-specific phrases (parts, engine, etc.) rewritten for ships; gating helper applied at command top
 - `bot/cogs/cards.py` — pack-opening copy + slot displays rewritten; gating helper applied
 - `bot/cogs/garage.py` → `bot/cogs/hangar.py` (slash command renamed `/garage` → `/hangar`); copy updated
 - `bot/cogs/market.py` — copy updates
 - `bot/cogs/tutorial.py` — see Tutorial Copy section
-- `bot/cogs/admin.py` — extended with new sector/system commands (see Sector Registration section)
+- `bot/cogs/admin.py` — extended with new system/sector commands (see System Registration section)
 - All cogs: `body_type` → `hull_class`, slot key references, etc.
 
 ### `api/`
@@ -287,77 +287,77 @@ All existing tests updated for new vocabulary, model names, and enum values. Tes
 
 ---
 
-## Sector registration logic
+## System registration logic
 
-### Auto-register System on guild join
+### Auto-register Sector on guild join
 
 Bot listener `on_guild_join`:
 
-1. Insert `systems` row with `guild_id`, `name = guild.name`, `owner_discord_id = guild.owner_id`, `registered_at = now()`, `sector_cap = 1`.
-2. Send a welcome embed in the guild's system channel (or first writable channel) explaining: "D2D installed. An admin needs to `/sector enable` a channel before gameplay can begin."
+1. Insert `sectors` row with `guild_id`, `name = guild.name`, `owner_discord_id = guild.owner_id`, `registered_at = now()`, `system_cap = 1`.
+2. Send a welcome embed in the guild's sector channel (or first writable channel) explaining: "D2D installed. An admin needs to `/system enable` a channel before gameplay can begin."
 
-If the bot is restarted into a guild it had previously joined (no event fires), a guild-list reconciliation on bot startup ensures every current guild has a `systems` row. Missing rows are inserted.
+If the bot is restarted into a guild it had previously joined (no event fires), a guild-list reconciliation on bot startup ensures every current guild has a `sectors` row. Missing rows are inserted.
 
-### `/sector enable` (admin-only)
+### `/system enable` (admin-only)
 
-Permission check: `interaction.user.guild_permissions.manage_channels` is true OR user is the guild owner. Otherwise reject ephemerally with "Only server admins (manage_channels) can enable sectors."
+Permission check: `interaction.user.guild_permissions.manage_channels` is true OR user is the guild owner. Otherwise reject ephemerally with "Only server admins (manage_channels) can enable systems."
 
 Logic:
 
-1. Look up `systems` row for current guild. (Should always exist due to auto-register.)
-2. Count existing `sectors` rows where `system_id = guild_id`. If `count >= sector_cap`, reject:
-   > "The [system name] can only sustain [sector_cap] active sector[s] at its current influence. Disable another to relocate, or grow the system to expand."
-3. If channel already a sector: reject with "This channel is already an enabled sector."
-4. Otherwise, insert `sectors` row with `channel_id`, `system_id`, `name = channel.name`, `enabled_at = now()`, `config = {}`.
-5. Reply with confirmation embed: "[Channel name] enabled as sector [sector name]. Run gameplay commands here. (System: [system name], [count]/[cap] sectors.)"
+1. Look up `sectors` row for current guild. (Should always exist due to auto-register.)
+2. Count existing `systems` rows where `sector_id = guild_id`. If `count >= system_cap`, reject:
+   > "The [sector name] can only sustain [system_cap] active system[s] at its current influence. Disable another to relocate, or grow the sector to expand."
+3. If channel already a system: reject with "This channel is already an enabled system."
+4. Otherwise, insert `systems` row with `channel_id`, `sector_id`, `name = channel.name`, `enabled_at = now()`, `config = {}`.
+5. Reply with confirmation embed: "[Channel name] enabled as system [system name]. Run gameplay commands here. (Sector: [sector name], [count]/[cap] systems.)"
 
-### `/sector disable` (admin-only)
+### `/system disable` (admin-only)
 
 Permission check: same as enable.
 
 Logic:
 
-1. If channel is not a sector: reject ephemerally.
-2. Delete `sectors` row.
-3. Confirmation: "Sector disabled. Gameplay commands will no longer work in this channel until re-enabled."
+1. If channel is not a system: reject ephemerally.
+2. Delete `systems` row.
+3. Confirmation: "System disabled. Gameplay commands will no longer work in this channel until re-enabled."
 
 Player data (cards, builds, race history) is untouched; only the channel-level enablement flips.
 
-### `/sector rename <name>` (admin-only)
+### `/system rename <name>` (admin-only)
 
-Updates `sectors.name` for the current channel.
+Updates `systems.name` for the current channel.
 
-### `/system info`
+### `/sector info`
 
-Public read command. Shows: system name, flavor_text (if set), owner, sector_cap, list of enabled sectors with their names + flavor.
+Public read command. Shows: sector name, flavor_text (if set), owner, system_cap, list of enabled systems with their names + flavor.
 
-### `/system set-flavor <text>`
+### `/sector set-flavor <text>`
 
-Owner-only (system.owner_discord_id must match interaction.user.id). Updates `systems.flavor_text`.
+Owner-only (sector.owner_discord_id must match interaction.user.id). Updates `sectors.flavor_text`.
 
-### `/system admin set-sector-cap <n>` (bot-owner-only)
+### `/sector admin set-system-cap <n>` (bot-owner-only)
 
 Permission check: interaction.user.id matches the configured `BOT_OWNER_DISCORD_ID` env var. Reject all other invocations with no information leak.
 
-Logic: updates `systems.sector_cap` for the specified system (defaults to current guild). Used for manual overrides during testing and bootstrapping early communities.
+Logic: updates `sectors.system_cap` for the specified sector (defaults to current guild). Used for manual overrides during testing and bootstrapping early communities.
 
 ### Gameplay command gating
 
 Define a helper:
 
 ```python
-async def get_active_sector(interaction: discord.Interaction, session: AsyncSession) -> Sector | None:
-    """Return the Sector for this interaction's channel, or None if not enabled."""
+async def get_active_system(interaction: discord.Interaction, session: AsyncSession) -> System | None:
+    """Return the System for this interaction's channel, or None if not enabled."""
 ```
 
 Each gameplay command (`/race`, `/pack`, `/equip`, etc.) calls this helper at the top:
 
-- If `None` → reject with: "Game not enabled here. Ask a server admin to `/sector enable` this channel."
-- If a `Sector` → proceed; pass `sector.channel_id` into `Race.sector_id` on race creation.
+- If `None` → reject with: "Game not enabled here. Ask a server admin to `/system enable` this channel."
+- If a `System` → proceed; pass `system.channel_id` into `Race.system_id` on race creation.
 
 DM commands and universe-wide commands (`/profile`, `/inventory`, `/help`, etc.) skip the helper entirely.
 
-A central registry of which commands require a sector vs. are universe-wide lives in `bot/sector_gating.py` (new module). This file is the single source of truth for gating decisions, parallel to the existing `STEP_ALLOWED_COMMANDS` table in `tutorial.py`.
+A central registry of which commands require a system vs. are universe-wide lives in `bot/system_gating.py` (new module). This file is the single source of truth for gating decisions, parallel to the existing `STEP_ALLOWED_COMMANDS` table in `tutorial.py`.
 
 ---
 
@@ -389,9 +389,9 @@ Unchanged. The existing snarky/gritty/gearhead tone reads as salvage-pulp withou
 
 Insert at the start of the `STARTED` step, before the body-type pick:
 
-> "You've drifted into [sector name]. Sketchy Dave runs the strip here — he'll show you the ropes."
+> "You've drifted into [system name]. Sketchy Dave runs the strip here — he'll show you the ropes."
 
-`[sector name]` is interpolated from the active sector. If the player is in a DM (no sector), substitute `"the outer rim"`.
+`[system name]` is interpolated from the active system. If the player is in a DM (no system), substitute `"the outer rim"`.
 
 ### NPC
 
@@ -435,12 +435,12 @@ Renamed in both `data/tutorial.json` and the relevant `data/cards/*.json` files:
 
 Explicitly NOT in Phase 0:
 
-- Crew system (Phase 1)
+- Crew sector (Phase 1)
 - Scheduler / timers / accrual / expeditions (Phase 2)
-- Job board, channel events, villains, sector control (Phase 3)
+- Job board, channel events, villains, system control (Phase 3)
 - Fleet PvP (Phase 4)
 - New artist tiers, Discord activity (Phase 5)
-- Sector-cap progression mechanic — only the cap and override exist; growth comes later
+- System-cap progression mechanic — only the cap and override exist; growth comes later
 - Any data migration logic — no live users, so squashing is safe; if Phase 0 ships and *then* gains users before Phase 1 is built, a separate hotfix migration handles any real-world data evolution
 - Renaming "race" to "run" or "mission" — race stays as the model name; "mission" is reserved as a UI/copy umbrella for later phases when battles/expeditions/events join
 - Renaming `/garage` to `/hangar` is in scope for Phase 0 (small, fits the rename pass); renaming user-facing `/race` to anything else is out of scope
@@ -464,20 +464,20 @@ Explicitly NOT in Phase 0:
 
 - Tutorial end-to-end: register, pick hull class, walk through each tutorial step, verify all copy reads naturally
 - Open a salvage crate: card names, slot names, art display all reflect new vocabulary
-- Build a ship, mint a ShipTitle, run a race — confirm `Race.sector_id` is populated and `Race.format` is one of the three new values
+- Build a ship, mint a ShipTitle, run a race — confirm `Race.system_id` is populated and `Race.format` is one of the three new values
 - Two-server smoke test:
-  - Install bot in two test guilds; verify `systems` rows auto-created
-  - `/sector enable` in one channel of each guild
+  - Install bot in two test guilds; verify `sectors` rows auto-created
+  - `/system enable` in one channel of each guild
   - Same player runs commands in both guilds; verify cards / builds / credits visible in both
-  - `/sector enable` a second channel in either guild → verify cap rejection message
-  - `/system admin set-sector-cap 2` from bot-owner account → second `/sector enable` succeeds
+  - `/system enable` a second channel in either guild → verify cap rejection message
+  - `/sector admin set-system-cap 2` from bot-owner account → second `/system enable` succeeds
 - Wreck a ship in a race → confirm `wreck_logs` row written with new slot names in `lost_parts`
 
 ### Observability
 
 - Existing OpenTelemetry spans continue to fire on every command and race
 - Existing Prometheus metrics (`dare2drive_*`) continue to emit; metric names stay car-agnostic where they already are, get renamed where they aren't
-- New: `dare2drive_systems_registered_total`, `dare2drive_sectors_enabled_total` counters
+- New: `dare2drive_sectors_registered_total`, `dare2drive_systems_enabled_total` counters
 
 ---
 

@@ -11,7 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.metrics import currency_spent
-from bot.sector_gating import get_active_sector, sector_required_message
+from bot.system_gating import get_active_system, system_required_message
 from config.logging import get_logger
 from config.metrics import trace_exemplar
 from config.tracing import traced_command
@@ -361,9 +361,9 @@ class MarketCog(commands.Cog):
     @traced_command
     async def market(self, interaction: discord.Interaction) -> None:
         async with async_session() as session:
-            sector = await get_active_sector(interaction, session)
-            if sector is None:
-                await interaction.response.send_message(sector_required_message(), ephemeral=True)
+            system = await get_active_system(interaction, session)
+            if system is None:
+                await interaction.response.send_message(system_required_message(), ephemeral=True)
                 return
 
             result = await session.execute(
@@ -420,9 +420,9 @@ class MarketCog(commands.Cog):
         parsed_name, parsed_serial = _parse_card_input(card_name)
 
         async with async_session() as session:
-            sector = await get_active_sector(interaction, session)
-            if sector is None:
-                await interaction.response.send_message(sector_required_message(), ephemeral=True)
+            system = await get_active_system(interaction, session)
+            if system is None:
+                await interaction.response.send_message(system_required_message(), ephemeral=True)
                 return
 
             user = await session.get(User, str(interaction.user.id))
@@ -537,9 +537,9 @@ class MarketCog(commands.Cog):
     @traced_command
     async def buy(self, interaction: discord.Interaction, card_name: str) -> None:
         async with async_session() as session:
-            sector = await get_active_sector(interaction, session)
-            if sector is None:
-                await interaction.response.send_message(sector_required_message(), ephemeral=True)
+            system = await get_active_system(interaction, session)
+            if system is None:
+                await interaction.response.send_message(system_required_message(), ephemeral=True)
                 return
 
             user = await session.get(User, str(interaction.user.id))
@@ -737,9 +737,9 @@ class MarketCog(commands.Cog):
     @traced_command
     async def shop(self, interaction: discord.Interaction) -> None:
         async with async_session() as session:
-            sector = await get_active_sector(interaction, session)
-            if sector is None:
-                await interaction.response.send_message(sector_required_message(), ephemeral=True)
+            system = await get_active_system(interaction, session)
+            if system is None:
+                await interaction.response.send_message(system_required_message(), ephemeral=True)
                 return
 
             user = await session.get(User, str(interaction.user.id))
@@ -791,9 +791,9 @@ class MarketCog(commands.Cog):
         price = NPC_SHOP_PRICES.get(slot, 100)
 
         async with async_session() as session:
-            sector = await get_active_sector(interaction, session)
-            if sector is None:
-                await interaction.response.send_message(sector_required_message(), ephemeral=True)
+            system = await get_active_system(interaction, session)
+            if system is None:
+                await interaction.response.send_message(system_required_message(), ephemeral=True)
                 return
 
             user = await session.get(User, str(interaction.user.id))
@@ -839,9 +839,9 @@ class MarketCog(commands.Cog):
         parsed_name, parsed_serial = _parse_card_input(card_name)
 
         async with async_session() as session:
-            sector = await get_active_sector(interaction, session)
-            if sector is None:
-                await interaction.response.send_message(sector_required_message(), ephemeral=True)
+            system = await get_active_system(interaction, session)
+            if system is None:
+                await interaction.response.send_message(system_required_message(), ephemeral=True)
                 return
 
             user = await session.get(User, str(interaction.user.id))

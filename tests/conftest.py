@@ -43,13 +43,13 @@ async def db_session():
 
 
 @pytest_asyncio.fixture
-async def sample_system(db_session):
-    """A persisted System row (rolled back after test)."""
-    from db.models import System
+async def sample_sector(db_session):
+    """A persisted Sector row (rolled back after test)."""
+    from db.models import Sector
 
-    sys = System(
+    sys = Sector(
         guild_id="111111111",
-        name="Test System",
+        name="Test Sector",
         owner_discord_id="999999999",
     )
     db_session.add(sys)
@@ -59,14 +59,14 @@ async def sample_system(db_session):
 
 
 @pytest_asyncio.fixture
-async def sample_sector(db_session, sample_system):
-    """A persisted Sector row linked to sample_system (rolled back after test)."""
-    from db.models import Sector
+async def sample_system(db_session, sample_sector):
+    """A persisted System row linked to sample_sector (rolled back after test)."""
+    from db.models import System
 
-    sec = Sector(
+    sec = System(
         channel_id="222222222",
-        system_id=sample_system.guild_id,
-        name="Test Sector",
+        sector_id=sample_sector.guild_id,
+        name="Test System",
     )
     db_session.add(sec)
     await db_session.flush()

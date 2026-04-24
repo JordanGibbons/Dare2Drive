@@ -8,7 +8,7 @@
 
 ## Context
 
-Dare2Drive today is a Discord bot + FastAPI game where players open packs of car parts, build a 7-slot car, and race. The system is well-architected (async SQLAlchemy, 10 migrations, observability already wired up via Prometheus/Loki/Tempo/Grafana, no live users yet).
+Dare2Drive today is a Discord bot + FastAPI game where players open packs of car parts, build a 7-slot car, and race. The sector is well-architected (async SQLAlchemy, 10 migrations, observability already wired up via Prometheus/Loki/Tempo/Grafana, no live users yet).
 
 Two problems with the current premise:
 
@@ -20,11 +20,11 @@ This plan pivots the game to a **salvage-pulp spaceship universe** (outer-rim sc
 The intended outcome is a multi-server Discord game where:
 
 - Players collect cards (parts + crew), build ships, and field them in events
-- The bot runs persistent background systems (training timers, passive yield, multi-hour expeditions with choice points) that give players things to come back to
+- The bot runs persistent background sectors (training timers, passive yield, multi-hour expeditions with choice points) that give players things to come back to
 - A revolving job board and scheduled channel events drive server-wide engagement
 - Scheduled villain takeovers create memorable moments with shared debuffs if the server loses
-- Players can claim **control of sectors**, earning tribute from other players' activity there; control can be contested by villains (PvE) or by other players (PvP), laying foundations for later guild/alliance play
-- Every installed server is a system in one shared universe — your fleet follows you anywhere
+- Players can claim **control of systems**, earning tribute from other players' activity there; control can be contested by villains (PvE) or by other players (PvP), laying foundations for later guild/alliance play
+- Every installed server is a sector in one shared universe — your fleet follows you anywhere
 - Eventually: fleet-vs-fleet PvP (channel-native first, real-time Discord activity later) with artist-drawn tiered ships and crew portraits
 
 The revamp is decomposed into six phases. Each phase is independently shippable and has its own spec + implementation plan written in a separate session when executed.
@@ -45,14 +45,14 @@ These apply to every phase and should not be re-litigated in phase specs.
 ### Architecture
 
 - **Multi-tenant universe.** One D2D backend serves many Discord servers.
-  - **Server (Discord guild) = "System"** (a collection of sectors, e.g., a star system or constellation).
-  - **Channel = "Sector"** (specific game-enabled channels within a system).
-  - **Universe = federation** of all D2D-enabled systems.
-- **Player state is universe-wide.** Cards, crew, ship builds, and credits live on the player profile and follow them to any server. No per-server save file. Leaderboards and ongoing storylines can still be sector/system/universe scoped.
-- **Travel is implicit.** Players are "active" in whichever sector (channel) they're typing in. No `/travel` command in Phase 0–3. Explicit fleet deployment may be added in Phase 4+ as a PvP mechanic.
-- **Admin opt-in.** Server owners explicitly register which channels are sectors. The bot does not auto-enable itself in every channel it can see.
+  - **Server (Discord guild) = "Sector"** (a collection of systems, e.g., a star sector or constellation).
+  - **Channel = "System"** (specific game-enabled channels within a sector).
+  - **Universe = federation** of all D2D-enabled sectors.
+- **Player state is universe-wide.** Cards, crew, ship builds, and credits live on the player profile and follow them to any server. No per-server save file. Leaderboards and ongoing storylines can still be system/sector/universe scoped.
+- **Travel is implicit.** Players are "active" in whichever system (channel) they're typing in. No `/travel` command in Phase 0–3. Explicit fleet deployment may be added in Phase 4+ as a PvP mechanic.
+- **Admin opt-in.** Server owners explicitly register which channels are systems. The bot does not auto-enable itself in every channel it can see.
 - **Scheduler is load-bearing.** A durable, restart-safe scheduler is the backbone of Phases 2+. Invest in it properly in Phase 2.
-- **Observability from day one.** All new systems emit traces (OpenTelemetry), metrics (`dare2drive_*` Prometheus), and structured logs. Existing infra handles the rest.
+- **Observability from day one.** All new sectors emit traces (OpenTelemetry), metrics (`dare2drive_*` Prometheus), and structured logs. Existing infra handles the rest.
 
 ---
 
@@ -70,14 +70,14 @@ Entry criteria and scope boundary are specified per phase below. Do not violate 
 
 ---
 
-## Phase 0 — Foundation: Theme Pivot + Multi-Tenant Sector Model
+## Phase 0 — Foundation: Theme Pivot + Multi-Tenant System Model
 
 **Status:** Not started. No live users, so rename + restructure can land together.
 
 ### Goal
 
 - Every model, enum, copy string, card JSON, and tutorial step reads as ships/salvage-pulp.
-- The codebase supports multi-tenant operation: servers (systems) register, channels (sectors) are explicitly enabled, and player state is server-agnostic.
+- The codebase supports multi-tenant operation: servers (sectors) register, channels (systems) are explicitly enabled, and player state is server-agnostic.
 - Existing game loop (pack → build → race) works unchanged mechanically, just in the new vocabulary.
 
 ### Key renames (starting proposal — lock final list in Phase 0 spec)
@@ -102,19 +102,19 @@ Entry criteria and scope boundary are specified per phase below. Do not violate 
 
 ### New entities
 
-- **`System`** (one row per Discord guild using the bot). `guild_id`, `name`, `registered_at`, `owner_discord_id`, optional `flavor_text`.
-- **`Sector`** (one row per enabled channel). `channel_id`, `system_id`, `name`, `enabled_at`, config JSONB.
-- **Player-active-sector tracking** — no persistent column needed; derived from message context per command.
+- **`Sector`** (one row per Discord guild using the bot). `guild_id`, `name`, `registered_at`, `owner_discord_id`, optional `flavor_text`.
+- **`System`** (one row per enabled channel). `channel_id`, `sector_id`, `name`, `enabled_at`, config JSONB.
+- **Player-active-system tracking** — no persistent column needed; derived from message context per command.
 
 ### Files likely touched
 
 - `db/models.py` — rename models and enums
-- `db/migrations/versions/` — new migration for renames + System/Sector tables
+- `db/migrations/versions/` — new migration for renames + Sector/System tables
 - `data/cards/*.json` — rewrite copy, keep stat structure
 - `data/loot_tables.json` — rewrite pack display names/flavor
 - `bot/cogs/*.py` — every cog needs copy updates; race cog becomes encounter cog
 - `bot/cogs/tutorial.py` — rewrite tutorial script
-- `bot/cogs/admin.py` — add `/sector enable`, `/sector disable`, `/system info` commands
+- `bot/cogs/admin.py` — add `/system enable`, `/system disable`, `/sector info` commands
 - `engine/race_engine.py` — rename to `encounter_engine.py`, internal rename only
 - `engine/environment.py` — track conditions become space conditions (nebula, asteroid field, solar flare, etc.)
 - `engine/stat_resolver.py` — no behavior change; slot name updates only
@@ -129,14 +129,14 @@ Entry criteria and scope boundary are specified per phase below. Do not violate 
 
 ### Scope boundary (OUT of Phase 0)
 
-- No crew system (Phase 1)
+- No crew sector (Phase 1)
 - No timers/scheduler (Phase 2)
 - No job board or events (Phase 3)
 - No new art — existing card art stays as placeholder
 
 ### Deliverable
 
-Existing game loop functional in the new ship vocabulary. Server owners can register sectors. Player state is not tied to any single server.
+Existing game loop functional in the new ship vocabulary. Server owners can register systems. Player state is not tied to any single server.
 
 ### Verification
 
@@ -148,7 +148,7 @@ Existing game loop functional in the new ship vocabulary. Server owners can regi
 
 ---
 
-## Phase 1 — Crew System
+## Phase 1 — Crew Sector
 
 **Status:** Blocked on Phase 0.
 
@@ -281,56 +281,56 @@ Players start timers, assign crew to stations, launch expeditions. Bot pings the
 
 ---
 
-## Phase 3 — Job Board + Channel Events + Villain Takeovers + Sector Control
+## Phase 3 — Job Board + Channel Events + Villain Takeovers + System Control
 
 **Status:** Blocked on Phase 2.
 
 ### Goal
 
-Bot drives server-wide engagement. A rotating job board, scheduled events that appear in sector channels, rare villain takeovers with real consequences, and a persistent **sector control** layer that rewards long-term investment in specific sectors.
+Bot drives server-wide engagement. A rotating job board, scheduled events that appear in system channels, rare villain takeovers with real consequences, and a persistent **system control** layer that rewards long-term investment in specific systems.
 
 ### Mechanics
 
-- **Job board** (`/jobs`): rotating pool of contracts. Each job is a parameterized expedition or encounter template with rewards (credits, dossier leads, XP, rare parts, unique crew). Jobs expire. Some jobs are sector-local, some system-wide, some universe-wide.
-- **Channel events:** bot posts a timed event to an enabled sector channel (e.g., "Pirate convoy spotted — 2 hr window"). Multiple players participate. Results aggregate for shared rewards.
-- **Villain takeovers:** rare scheduled events. A named villain seizes one or more sectors (can span multiple systems for universe-level takeovers). Players across affected servers rally fleets. Resolution window is ~24–72 hours.
-  - If villain wins: sector/system debuff applied (e.g., credit yields -20%, encounter stats -5%) for a duration.
-  - If villain seizes a player-controlled sector and wins: the controller **loses control** on top of the debuff.
+- **Job board** (`/jobs`): rotating pool of contracts. Each job is a parameterized expedition or encounter template with rewards (credits, dossier leads, XP, rare parts, unique crew). Jobs expire. Some jobs are system-local, some sector-wide, some universe-wide.
+- **Channel events:** bot posts a timed event to an enabled system channel (e.g., "Pirate convoy spotted — 2 hr window"). Multiple players participate. Results aggregate for shared rewards.
+- **Villain takeovers:** rare scheduled events. A named villain seizes one or more systems (can span multiple sectors for universe-level takeovers). Players across affected servers rally fleets. Resolution window is ~24–72 hours.
+  - If villain wins: system/sector debuff applied (e.g., credit yields -20%, encounter stats -5%) for a duration.
+  - If villain seizes a player-controlled system and wins: the controller **loses control** on top of the debuff.
   - If players win: shared reward, possible unique crew drop, defeated villain added to rotation for future callbacks.
-- **Sector control:** one player can hold control of a sector at a time. Control is fiction-flavored as "kingpin / harbormaster / warden" — the controller's banner appears in the channel.
+- **System control:** one player can hold control of a system at a time. Control is fiction-flavored as "kingpin / harbormaster / warden" — the controller's banner appears in the channel.
   - **Claim:** completing a special Control Contract (from the job board) while no current controller exists grants control. Contracts are harder than normal jobs and have a cooldown after any control change.
-  - **Benefits** (starting list — tune in spec): small % tribute on credit rewards earned by other players in the sector, priority access to rare sector-local jobs, cosmetic banner/flair, bonus share of villain-defeat rewards in controlled sectors.
-  - **Defense in Phase 3:** PvE only. Villain takeovers are the primary contest. Also: if the controller goes inactive for a threshold duration (e.g., 14 days no encounters in that sector), control lapses and the sector becomes claimable again.
+  - **Benefits** (starting list — tune in spec): small % tribute on credit rewards earned by other players in the system, priority access to rare system-local jobs, cosmetic banner/flair, bonus share of villain-defeat rewards in controlled systems.
+  - **Defense in Phase 3:** PvE only. Villain takeovers are the primary contest. Also: if the controller goes inactive for a threshold duration (e.g., 14 days no encounters in that system), control lapses and the system becomes claimable again.
   - **Defense in Phase 4:** player-vs-player challenges open the control up to PvP contestation (see Phase 4).
-  - **Multi-sector:** a player may hold control of multiple sectors simultaneously — more holdings mean more tribute but also more defense burden.
+  - **Multi-system:** a player may hold control of multiple systems simultaneously — more holdings mean more tribute but also more defense burden.
 
 ### New entities
 
-- **`Job`** — `id`, `title`, `scope` (sector/system/universe), `expedition_template_id` or `encounter_template_id`, `reward` JSONB, `expires_at`, `sector_id` nullable, `system_id` nullable.
+- **`Job`** — `id`, `title`, `scope` (system/sector/universe), `expedition_template_id` or `encounter_template_id`, `reward` JSONB, `expires_at`, `system_id` nullable, `sector_id` nullable.
 - **`JobAcceptance`** — player takes a job; links to a scheduled expedition/encounter.
-- **`ChannelEvent`** — timed event posted to a sector. `sector_id`, `spawned_at`, `expires_at`, `event_type`, `payload`, aggregated `participant_results`.
-- **`VillainEvent`** — `id`, `villain_id`, `scope` (sector/system/universe), `affected_sector_ids`, `started_at`, `ends_at`, `resolution` enum, `collective_progress` (damage vs. villain HP).
+- **`ChannelEvent`** — timed event posted to a system. `system_id`, `spawned_at`, `expires_at`, `event_type`, `payload`, aggregated `participant_results`.
+- **`VillainEvent`** — `id`, `villain_id`, `scope` (system/sector/universe), `affected_system_ids`, `started_at`, `ends_at`, `resolution` enum, `collective_progress` (damage vs. villain HP).
 - **`Villain`** — catalog of recurring villains. `id`, `name`, `tier`, `archetype`, `portrait_key`, `debuff_template` JSONB.
-- **`ActiveDebuff`** — `sector_id` or `system_id`, `debuff_template_id`, `applied_at`, `expires_at`.
-- **`SectorControl`** — `sector_id` (unique), `controller_user_id`, `claimed_at`, `last_active_at`, `tribute_rate`, `lapses_at` (nullable — inactivity-based expiry).
-- **`ControlHistory`** — audit log of control changes. `sector_id`, `previous_controller_id`, `new_controller_id` (nullable = lapsed/villain-stripped), `changed_at`, `reason` enum (claimed/lapsed/villain/challenge).
+- **`ActiveDebuff`** — `system_id` or `sector_id`, `debuff_template_id`, `applied_at`, `expires_at`.
+- **`SectorControl`** — `system_id` (unique), `controller_user_id`, `claimed_at`, `last_active_at`, `tribute_rate`, `lapses_at` (nullable — inactivity-based expiry).
+- **`ControlHistory`** — audit log of control changes. `system_id`, `previous_controller_id`, `new_controller_id` (nullable = lapsed/villain-stripped), `changed_at`, `reason` enum (claimed/lapsed/villain/challenge).
 
 ### Files likely touched
 
 - `bot/cogs/jobs.py` — `/jobs list`, `/jobs accept`, `/jobs status`
 - `bot/cogs/events.py` — channel event command handlers
 - `bot/cogs/villains.py` — villain status, participation
-- `bot/cogs/control.py` — `/sector info`, `/sector claim`, `/sector tribute` (view)
-- `engine/sector_control.py` — claim validation, tribute calculation, lapse check
+- `bot/cogs/control.py` — `/system info`, `/system claim`, `/system tribute` (view)
+- `engine/system_control.py` — claim validation, tribute calculation, lapse check
 - `scheduler/jobs/control_lapse_checker.py` — periodic job that expires inactive control
 - `scheduler/jobs/job_rotator.py` — rotates job board hourly/daily
-- `scheduler/jobs/event_spawner.py` — spawns channel events per sector config
+- `scheduler/jobs/event_spawner.py` — spawns channel events per system config
 - `scheduler/jobs/villain_scheduler.py` — triggers villain takeovers
 - `engine/villain_engine.py` — aggregate player damage, determine resolution
-- `engine/stat_resolver.py` — apply `ActiveDebuff` modifiers when player is in a debuffed sector/system
+- `engine/stat_resolver.py` — apply `ActiveDebuff` modifiers when player is in a debuffed system/sector
 - `data/villains/` — villain catalog
 - `data/jobs/templates.json` — job template pool
-- `bot/cogs/admin.py` — extend `/sector` config for event frequency, villain opt-out
+- `bot/cogs/admin.py` — extend `/system` config for event frequency, villain opt-out
 
 ### Reuse pointers
 
@@ -341,22 +341,22 @@ Bot drives server-wide engagement. A rotating job board, scheduled events that a
 ### Scope boundary (OUT of Phase 3)
 
 - PvP between players (Phase 4) — jobs and events here are PvE
-- **PvP control challenges** (Phase 4) — Phase 3 sector control is PvE only; villains and inactivity are the sole threats
+- **PvP control challenges** (Phase 4) — Phase 3 system control is PvE only; villains and inactivity are the sole threats
 - Guild/alliance mechanics (future) — Phase 3 models control as single-player only; the schema should not preclude future group ownership but no group logic is built
 - Real-time battle experience (Phase 5)
 
 ### Deliverable
 
-Players see a living job board. Sectors feel alive with scheduled events. Villain takeovers are memorable server-wide moments that change gameplay for a bounded time. Sectors have named kingpins whose banners appear in channel, creating identity and long-term stakes.
+Players see a living job board. Systems feel alive with scheduled events. Villain takeovers are memorable server-wide moments that change gameplay for a bounded time. Systems have named kingpins whose banners appear in channel, creating identity and long-term stakes.
 
 ### Verification
 
 - Job board rotation: jobs expire on time, new ones appear, counts are correct
 - Channel event lifecycle: spawn → participate → resolve → rewards paid
 - Villain takeover: simulate both win and loss, confirm debuff applied + expired correctly
-- Villain strips player control when seizing a controlled sector and winning
+- Villain strips player control when seizing a controlled system and winning
 - Cross-server: a universe-scale villain affects multiple test servers simultaneously
-- Sector claim: completing a Control Contract on an uncontrolled sector grants control; tribute flows correctly on subsequent other-player credit rewards
+- System claim: completing a Control Contract on an uncontrolled system grants control; tribute flows correctly on subsequent other-player credit rewards
 - Lapse: simulate controller inactivity past threshold → control lapses, history row written
 
 ---
@@ -382,7 +382,7 @@ Player-vs-player fleet competition that lives entirely in Discord using channel-
 - Ranked ladder with seasonal reset
 - Spectator embed in Discord (updates round by round)
 - Optional: explicit `/deploy` mechanic for fleet positioning if the team wants richer strategy
-- **Sector control challenges (PvP):** a non-controller can formally challenge a controller for a sector. Challenge has a response window (e.g., 48 hr) — if the controller accepts, a scheduled fleet match resolves control. If the controller declines or ignores past the window, control transfers by default (prevents turtling). Cooldowns prevent a controller from being challenge-spammed. This extends Phase 3's `SectorControl` — no new column, reuses `ControlHistory` with `reason = challenge`.
+- **System control challenges (PvP):** a non-controller can formally challenge a controller for a system. Challenge has a response window (e.g., 48 hr) — if the controller accepts, a scheduled fleet match resolves control. If the controller declines or ignores past the window, control transfers by default (prevents turtling). Cooldowns prevent a controller from being challenge-spammed. This extends Phase 3's `SectorControl` — no new column, reuses `ControlHistory` with `reason = challenge`.
 
 ### New entities
 
@@ -390,13 +390,13 @@ Player-vs-player fleet competition that lives entirely in Discord using channel-
 - **`PvPMatch`** — match record with round-by-round log
 - **`Tournament`** — bracket structure, rounds, prizes
 - **`RankedSeason`** — season metadata, MMR tracking per player
-- **`SectorChallenge`** — `sector_id`, `challenger_user_id`, `defender_user_id`, `opened_at`, `responds_by`, `scheduled_match_id` nullable, `resolution` enum (pending / accepted / auto-forfeit / resolved)
+- **`SectorChallenge`** — `system_id`, `challenger_user_id`, `defender_user_id`, `opened_at`, `responds_by`, `scheduled_match_id` nullable, `resolution` enum (pending / accepted / auto-forfeit / resolved)
 
 ### Files likely touched
 
 - `engine/fleet_engine.py` — new multi-ship combat resolver
 - `bot/cogs/pvp.py` — `/challenge`, `/fleet`, `/tournament`, `/ladder`
-- `bot/cogs/control.py` — extend from Phase 3 with `/sector challenge`, `/sector defend`
+- `bot/cogs/control.py` — extend from Phase 3 with `/system challenge`, `/system defend`
 - `scheduler/jobs/tournament_runner.py` — bracket progression
 - `scheduler/jobs/challenge_expiry.py` — auto-forfeit unresponsive defenders
 - Every existing cog touching ships gets a small extension for fleet concepts
@@ -415,7 +415,7 @@ Player-vs-player fleet competition that lives entirely in Discord using channel-
 
 ### Deliverable
 
-Ranked PvP ladder, seasonal rewards, tournaments with real stakes. Player-vs-player sector challenges give controlled sectors political life. Competitive endgame lives entirely inside Discord.
+Ranked PvP ladder, seasonal rewards, tournaments with real stakes. Player-vs-player system challenges give controlled systems political life. Competitive endgame lives entirely inside Discord.
 
 ### Verification
 
@@ -423,8 +423,8 @@ Ranked PvP ladder, seasonal rewards, tournaments with real stakes. Player-vs-pla
 - MMR correctness across a simulated season
 - Tournament bracket edge cases: odd player counts, dropouts, byes
 - Spectator update rate doesn't spam channels
-- Sector challenge flow: open → accept → match → winner takes control (recorded in `ControlHistory`)
-- Sector challenge auto-forfeit: unresponsive defender loses control at window expiry
+- System challenge flow: open → accept → match → winner takes control (recorded in `ControlHistory`)
+- System challenge auto-forfeit: unresponsive defender loses control at window expiry
 - Challenge cooldowns prevent spam; challenge-initiated control changes do not bypass villain strip rules
 
 ---
@@ -508,7 +508,7 @@ Every user-facing notification path must:
 
 Every new command and background job adds:
 
-- Trace span with `user_id`, `sector_id`, `system_id`, relevant entity IDs
+- Trace span with `user_id`, `system_id`, `sector_id`, relevant entity IDs
 - Metric counter for invocation and result
 - Structured log entry with correlation IDs
 
@@ -535,7 +535,7 @@ Each is resolved when the corresponding phase is brainstormed. None need answers
 
 ## Universe-wide bigger-picture notes
 
-- **Future ideas the user deferred:** guild/faction system, alliances, expanded player-to-player trading beyond the existing market. All additive; can slot into Phases 3–5 when surfaced.
-- **Guilds/alliances will hang off sector control.** The `SectorControl` schema is deliberately single-user for now but should be extensible to group ownership in a later phase: a guild could hold a sector collectively, split tribute by contribution, and defend as a group in challenges. When guilds land, the natural shape is adding a `controller_guild_id` column (nullable, mutually exclusive with `controller_user_id`) plus a `GuildMembership` and `Guild` table, rather than re-modeling.
+- **Future ideas the user deferred:** guild/faction sector, alliances, expanded player-to-player trading beyond the existing market. All additive; can slot into Phases 3–5 when surfaced.
+- **Guilds/alliances will hang off system control.** The `SectorControl` schema is deliberately single-user for now but should be extensible to group ownership in a later phase: a guild could hold a system collectively, split tribute by contribution, and defend as a group in challenges. When guilds land, the natural shape is adding a `controller_guild_id` column (nullable, mutually exclusive with `controller_user_id`) plus a `GuildMembership` and `Guild` table, rather than re-modeling.
 - **Artist freedom is the creative constraint we optimized for.** Every phase preserves it.
 - **The scheduler, crew, and multi-tenancy are the three foundations.** Phases 0–2 exist to make Phases 3+ possible. Don't rush them.

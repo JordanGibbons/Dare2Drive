@@ -21,11 +21,11 @@ depends_on: Union[str, Sequence[str], None] = None
 def upgrade() -> None:
     # ── Tables with no FKs first ──────────────────────────────────────────────
     op.create_table(
-        "systems",
+        "sectors",
         sa.Column("guild_id", sa.String(length=20), nullable=False),
         sa.Column("name", sa.String(length=100), nullable=False),
         sa.Column("flavor_text", sa.String(length=500), nullable=True),
-        sa.Column("sector_cap", sa.Integer(), server_default="1", nullable=False),
+        sa.Column("system_cap", sa.Integer(), server_default="1", nullable=False),
         sa.Column("owner_discord_id", sa.String(length=20), nullable=False),
         sa.Column(
             "registered_at",
@@ -136,9 +136,9 @@ def upgrade() -> None:
 
     # ── Tables with FKs to the above ──────────────────────────────────────────
     op.create_table(
-        "sectors",
+        "systems",
         sa.Column("channel_id", sa.String(length=20), nullable=False),
-        sa.Column("system_id", sa.String(length=20), nullable=False),
+        sa.Column("sector_id", sa.String(length=20), nullable=False),
         sa.Column("name", sa.String(length=100), nullable=False),
         sa.Column("flavor_text", sa.String(length=500), nullable=True),
         sa.Column(
@@ -153,7 +153,7 @@ def upgrade() -> None:
             server_default=sa.text("now()"),
             nullable=False,
         ),
-        sa.ForeignKeyConstraint(["system_id"], ["systems.guild_id"]),
+        sa.ForeignKeyConstraint(["sector_id"], ["sectors.guild_id"]),
         sa.PrimaryKeyConstraint("channel_id"),
     )
 
@@ -293,14 +293,14 @@ def upgrade() -> None:
             server_default="sprint",
             nullable=False,
         ),
-        sa.Column("sector_id", sa.String(length=20), nullable=True),
+        sa.Column("system_id", sa.String(length=20), nullable=True),
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),
             server_default=sa.text("now()"),
             nullable=False,
         ),
-        sa.ForeignKeyConstraint(["sector_id"], ["sectors.channel_id"]),
+        sa.ForeignKeyConstraint(["system_id"], ["systems.channel_id"]),
         sa.PrimaryKeyConstraint("id"),
     )
 
@@ -339,11 +339,11 @@ def downgrade() -> None:
     op.drop_table("user_cards")
     op.drop_table("ship_titles")
     op.drop_table("builds")
-    op.drop_table("sectors")
+    op.drop_table("systems")
     op.drop_table("ship_releases")
     op.drop_table("cards")
     op.drop_table("users")
-    op.drop_table("systems")
+    op.drop_table("sectors")
     # Drop enum types created above.
     sa.Enum(name="cardslot").drop(op.get_bind(), checkfirst=True)
     sa.Enum(name="raceformat").drop(op.get_bind(), checkfirst=True)

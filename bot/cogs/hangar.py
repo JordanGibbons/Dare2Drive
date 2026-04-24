@@ -11,7 +11,7 @@ from discord.ext import commands
 from sqlalchemy import select, update
 
 from api.metrics import currency_spent, users_registered
-from bot.sector_gating import get_active_sector
+from bot.system_gating import get_active_system
 from config.logging import get_logger
 from config.metrics import trace_exemplar
 from config.tracing import traced_command
@@ -307,11 +307,11 @@ class HangarCog(commands.Cog):
                 )
                 return
 
-            sector = await get_active_sector(interaction, session)
+            system = await get_active_system(interaction, session)
 
-        sector_label = sector.name if sector else "the outer rim"
+        system_label = system.name if system else "the outer rim"
         opening_line = (
-            f"You've drifted into **{sector_label}**. "
+            f"You've drifted into **{system_label}**. "
             "Sketchy Dave runs the strip here — he'll show you the ropes."
         )
 

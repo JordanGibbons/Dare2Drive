@@ -17,20 +17,20 @@ from config.logging import get_logger, setup_logging
 from config.metrics import trace_exemplar
 from config.settings import settings
 from config.tracing import init_tracing
-from db.models import System
+from db.models import Sector
 from db.session import async_session, engine
 
 setup_logging()
 log = get_logger(__name__)
 
 
-async def register_system_for_guild(guild, session) -> System:
-    """Insert a System row for this guild if not already present. Idempotent."""
-    existing = await session.execute(select(System).where(System.guild_id == str(guild.id)))
+async def register_sector_for_guild(guild, session) -> Sector:
+    """Insert a Sector row for this guild if not already present. Idempotent."""
+    existing = await session.execute(select(Sector).where(Sector.guild_id == str(guild.id)))
     sys = existing.scalar_one_or_none()
     if sys is not None:
         return sys
-    sys = System(
+    sys = Sector(
         guild_id=str(guild.id),
         name=guild.name,
         owner_discord_id=str(guild.owner_id) if guild.owner_id else "0",
@@ -41,10 +41,10 @@ async def register_system_for_guild(guild, session) -> System:
     return sys
 
 
-async def reconcile_systems_with_guilds(guilds, session) -> None:
-    """Ensure every current guild has a System row. Call on bot startup."""
+async def reconcile_sectors_with_guilds(guilds, session) -> None:
+    """Ensure every current guild has a Sector row. Call on bot startup."""
     for guild in guilds:
-        await register_system_for_guild(guild, session)
+        await register_sector_for_guild(guild, session)
 
 
 init_tracing("Dare2Drive")
@@ -154,18 +154,18 @@ class Dare2DriveBot(commands.Bot):
             log.info("Synced commands globally")
 
     async def on_guild_join(self, guild: discord.Guild) -> None:
-        """Auto-register a System row when the bot joins a new guild."""
+        """Auto-register a Sector row when the bot joins a new guild."""
         async with async_session() as session:
             async with session.begin():
-                await register_system_for_guild(guild, session)
-        log.info("registered_system: guild_id=%s guild_name=%s", guild.id, guild.name)
+                await register_sector_for_guild(guild, session)
+        log.info("registered_sector: guild_id=%s guild_name=%s", guild.id, guild.name)
 
     async def on_ready(self) -> None:
         log.info("Bot online as %s (ID: %s)", self.user, self.user.id if self.user else "?")
-        # Reconcile systems with current guilds.
+        # Reconcile sectors with current guilds.
         async with async_session() as session:
             async with session.begin():
-                await reconcile_systems_with_guilds(list(self.guilds), session)
+                await reconcile_sectors_with_guilds(list(self.guilds), session)
 
 
 async def main() -> None:

@@ -80,27 +80,27 @@ class Rarity(str, enum.Enum):
 # ──────────── Multi-tenant Models ────────────
 
 
-class System(Base):
-    __tablename__ = "systems"
+class Sector(Base):
+    __tablename__ = "sectors"
 
     guild_id: Mapped[str] = mapped_column(String(20), primary_key=True)
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     flavor_text: Mapped[str | None] = mapped_column(String(500), nullable=True)
-    sector_cap: Mapped[int] = mapped_column(Integer, default=1, nullable=False, server_default="1")
+    system_cap: Mapped[int] = mapped_column(Integer, default=1, nullable=False, server_default="1")
     owner_discord_id: Mapped[str] = mapped_column(String(20), nullable=False)
     registered_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
-    sectors: Mapped[list[Sector]] = relationship(back_populates="system", lazy="selectin")
+    systems: Mapped[list[System]] = relationship(back_populates="sector", lazy="selectin")
 
 
-class Sector(Base):
-    __tablename__ = "sectors"
+class System(Base):
+    __tablename__ = "systems"
 
     channel_id: Mapped[str] = mapped_column(String(20), primary_key=True)
-    system_id: Mapped[str] = mapped_column(
-        String(20), ForeignKey("systems.guild_id"), nullable=False
+    sector_id: Mapped[str] = mapped_column(
+        String(20), ForeignKey("sectors.guild_id"), nullable=False
     )
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     flavor_text: Mapped[str | None] = mapped_column(String(500), nullable=True)
@@ -109,7 +109,7 @@ class Sector(Base):
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
-    system: Mapped[System] = relationship(back_populates="sectors")
+    sector: Mapped[Sector] = relationship(back_populates="systems")
 
 
 # ──────────── Player Models ────────────
@@ -239,8 +239,8 @@ class Race(Base):
         nullable=False,
         server_default="sprint",
     )
-    sector_id: Mapped[str | None] = mapped_column(
-        String(20), ForeignKey("sectors.channel_id"), nullable=True
+    system_id: Mapped[str | None] = mapped_column(
+        String(20), ForeignKey("systems.channel_id"), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False

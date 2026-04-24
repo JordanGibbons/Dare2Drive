@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from api.metrics import currency_spent, daily_claimed, packs_opened
-from bot.sector_gating import get_active_sector, sector_required_message
+from bot.system_gating import get_active_system, system_required_message
 from config.logging import get_logger
 from config.metrics import trace_exemplar
 from config.settings import settings
@@ -166,9 +166,9 @@ class CardsCog(commands.Cog):
         from datetime import datetime, timedelta, timezone
 
         async with async_session() as session:
-            sector = await get_active_sector(interaction, session)
-            if sector is None:
-                await interaction.response.send_message(sector_required_message(), ephemeral=True)
+            system = await get_active_system(interaction, session)
+            if system is None:
+                await interaction.response.send_message(system_required_message(), ephemeral=True)
                 return
 
         # Rarity weights for daily parts: common is most likely, ghost is ultra rare
@@ -270,9 +270,9 @@ class CardsCog(commands.Cog):
     @traced_command
     async def pack(self, interaction: discord.Interaction, pack_type: str) -> None:
         async with async_session() as session:
-            sector = await get_active_sector(interaction, session)
-            if sector is None:
-                await interaction.response.send_message(sector_required_message(), ephemeral=True)
+            system = await get_active_system(interaction, session)
+            if system is None:
+                await interaction.response.send_message(system_required_message(), ephemeral=True)
                 return
 
         cost_map = {
@@ -320,7 +320,7 @@ class CardsCog(commands.Cog):
     @app_commands.command(name="inventory", description="View your card collection")
     @traced_command
     async def inventory(self, interaction: discord.Interaction) -> None:
-        # Universe-wide — no sector gating
+        # Universe-wide — no system gating
         async with async_session() as session:
             user = await session.get(User, str(interaction.user.id))
             if not user:
@@ -375,7 +375,7 @@ class CardsCog(commands.Cog):
     @app_commands.describe(card_name="Name of the card to inspect (e.g. Card Name #3)")
     @traced_command
     async def inspect(self, interaction: discord.Interaction, card_name: str) -> None:
-        # Universe-wide — no sector gating
+        # Universe-wide — no system gating
         from engine.card_mint import apply_stat_modifiers
 
         parsed_name, parsed_serial = _parse_card_input(card_name)

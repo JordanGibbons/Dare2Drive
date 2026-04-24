@@ -1,4 +1,4 @@
-"""Central registry + helper for sector gating of gameplay commands."""
+"""Central registry + helper for system gating of gameplay commands."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import discord
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from db.models import Sector
+from db.models import System
 
 # Commands that work anywhere (DMs, any channel, registered or not).
 UNIVERSE_WIDE_COMMANDS: frozenset[str] = frozenset(
@@ -23,14 +23,14 @@ UNIVERSE_WIDE_COMMANDS: frozenset[str] = frozenset(
         "admin_reset_player",
         "admin_set_tutorial_step",
         "admin_give_creds",
-        # sector/system admin commands
-        "sector",
+        # system/sector admin commands
         "system",
+        "sector",
     }
 )
 
-# Commands that require an enabled sector to run.
-SECTOR_GATED_COMMANDS: frozenset[str] = frozenset(
+# Commands that require an enabled system to run.
+SYSTEM_GATED_COMMANDS: frozenset[str] = frozenset(
     {
         "race",
         "challenge",
@@ -49,23 +49,23 @@ SECTOR_GATED_COMMANDS: frozenset[str] = frozenset(
 )
 
 
-def requires_sector(command_name: str) -> bool:
-    """Return True if a command requires an enabled sector to run."""
-    return command_name in SECTOR_GATED_COMMANDS
+def requires_system(command_name: str) -> bool:
+    """Return True if a command requires an enabled system to run."""
+    return command_name in SYSTEM_GATED_COMMANDS
 
 
-async def get_active_sector(
+async def get_active_system(
     interaction: discord.Interaction, session: AsyncSession
-) -> Sector | None:
-    """Return the Sector for this interaction's channel, or None if unregistered/DM."""
+) -> System | None:
+    """Return the System for this interaction's channel, or None if unregistered/DM."""
     if interaction.guild_id is None:
         return None
     result = await session.execute(
-        select(Sector).where(Sector.channel_id == str(interaction.channel_id))
+        select(System).where(System.channel_id == str(interaction.channel_id))
     )
     return result.scalar_one_or_none()
 
 
-def sector_required_message() -> str:
+def system_required_message() -> str:
     """User-facing message when a gameplay command runs in an unregistered channel."""
-    return "Game not enabled here. Ask a server admin to `/sector enable` this channel."
+    return "Game not enabled here. Ask a server admin to `/system enable` this channel."
