@@ -13,7 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from sqlalchemy import select
 
 from config.logging import get_logger, setup_logging
-from db.models import Card
+from db.models import Card, ShipRelease
 from db.session import async_session
 
 setup_logging()
@@ -77,9 +77,21 @@ async def seed_cards() -> None:
     log.info("Seeded %d cards total", total)
 
 
+async def seed_initial_release() -> None:
+    """Ensure at least one active ShipRelease exists so /build mint works."""
+    async with async_session() as session:
+        result = await session.execute(select(ShipRelease).where(ShipRelease.ended_at.is_(None)))
+        if result.scalar_one_or_none():
+            return
+        session.add(ShipRelease(name="Genesis", description="Initial ship title release."))
+        await session.commit()
+        log.info("Seeded initial ShipRelease: Genesis")
+
+
 async def main() -> None:
     log.info("Seeding cards...")
     await seed_cards()
+    await seed_initial_release()
     log.info("Done.")
 
 
