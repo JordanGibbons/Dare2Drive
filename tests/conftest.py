@@ -2,32 +2,99 @@
 
 from __future__ import annotations
 
+import os
 import uuid
 
 import pytest
+import pytest_asyncio
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+
+# ---------------------------------------------------------------------------
+# Async DB session fixture (for Tasks 16-18 and future DB-backed tests).
+# Uses localhost so tests run from the host machine can reach the docker DB.
+# ---------------------------------------------------------------------------
+
+_TEST_DATABASE_URL = os.environ.get(
+    "TEST_DATABASE_URL",
+    "postgresql+asyncpg://dare2drive:dare2drive@localhost:5432/dare2drive",
+)
+
+
+@pytest_asyncio.fixture
+async def db_session():
+    """Async DB session with per-test rollback isolation.
+
+    Opens a real connection to the dev database (via Docker) and wraps
+    every test in a transaction that is rolled back at teardown so that
+    tests never leak rows.
+
+    A fresh engine is created per-fixture invocation to avoid event-loop
+    conflicts across tests when using asyncpg connection pools.
+    """
+    engine = create_async_engine(_TEST_DATABASE_URL, echo=False, pool_size=1, max_overflow=0)
+    session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    async with session_factory() as session:
+        trans = await session.begin()
+        try:
+            yield session
+        finally:
+            await trans.rollback()
+    await engine.dispose()
+
+
+@pytest_asyncio.fixture
+async def sample_sector(db_session):
+    """A persisted Sector row (rolled back after test)."""
+    from db.models import Sector
+
+    sys = Sector(
+        guild_id="111111111",
+        name="Test Sector",
+        owner_discord_id="999999999",
+    )
+    db_session.add(sys)
+    await db_session.flush()
+    await db_session.refresh(sys)
+    return sys
+
+
+@pytest_asyncio.fixture
+async def sample_system(db_session, sample_sector):
+    """A persisted System row linked to sample_sector (rolled back after test)."""
+    from db.models import System
+
+    sec = System(
+        channel_id="222222222",
+        sector_id=sample_sector.guild_id,
+        name="Test System",
+    )
+    db_session.add(sec)
+    await db_session.flush()
+    await db_session.refresh(sec)
+    return sec
 
 
 @pytest.fixture
-def sample_engine_card():
-    """Return a sample engine card data dict."""
+def sample_reactor_card():
+    """Return a sample reactor card data dict."""
     return {
         "id": str(uuid.uuid4()),
-        "name": "Ironforge V8",
-        "slot": "engine",
+        "name": "Ironforge Reactor",
+        "slot": "reactor",
         "rarity": "rare",
         "stats": {
-            "primary": {"power": 65, "acceleration": 55, "torque": 68, "max_engine_temp": 78},
+            "primary": {"power": 65, "acceleration": 55, "torque": 68, "max_reactor_temp": 78},
             "secondary": {"weight": -22, "durability": 65, "fuel_efficiency": 38},
         },
     }
 
 
 @pytest.fixture
-def sample_transmission_card():
+def sample_drive_card():
     return {
         "id": str(uuid.uuid4()),
-        "name": "Quickdraw 6-Speed",
-        "slot": "transmission",
+        "name": "Quickdraw Drive",
+        "slot": "drive",
         "rarity": "rare",
         "stats": {
             "primary": {
@@ -41,11 +108,11 @@ def sample_transmission_card():
 
 
 @pytest.fixture
-def sample_tires_card():
+def sample_thrusters_card():
     return {
         "id": str(uuid.uuid4()),
-        "name": "Driftcore Slicks",
-        "slot": "tires",
+        "name": "Driftcore Thrusters",
+        "slot": "thrusters",
         "rarity": "rare",
         "stats": {
             "primary": {"grip": 62, "handling": 65, "launch_acceleration": 55},
@@ -55,11 +122,11 @@ def sample_tires_card():
 
 
 @pytest.fixture
-def sample_suspension_card():
+def sample_stabilizers_card():
     return {
         "id": str(uuid.uuid4()),
-        "name": "Viperstance Adjustables",
-        "slot": "suspension",
+        "name": "Viperstance Stabilizers",
+        "slot": "stabilizers",
         "rarity": "rare",
         "stats": {
             "primary": {"handling": 60, "stability": 62, "ride_height_modifier": -10},
@@ -69,11 +136,11 @@ def sample_suspension_card():
 
 
 @pytest.fixture
-def sample_chassis_card():
+def sample_hull_card():
     return {
         "id": str(uuid.uuid4()),
-        "name": "Phantom Coupe",
-        "slot": "chassis",
+        "name": "Phantom Hull",
+        "slot": "hull",
         "rarity": "rare",
         "stats": {
             "primary": {"drag": -5, "weight": -8, "durability": 65, "style": 65},
@@ -83,11 +150,11 @@ def sample_chassis_card():
 
 
 @pytest.fixture
-def sample_turbo_card():
+def sample_overdrive_card():
     return {
         "id": str(uuid.uuid4()),
-        "name": "Blastcore Turbo",
-        "slot": "turbo",
+        "name": "Blastcore Overdrive",
+        "slot": "overdrive",
         "rarity": "rare",
         "stats": {
             "primary": {
@@ -101,11 +168,11 @@ def sample_turbo_card():
 
 
 @pytest.fixture
-def sample_brakes_card():
+def sample_retros_card():
     return {
         "id": str(uuid.uuid4()),
-        "name": "Scorchstop Ceramics",
-        "slot": "brakes",
+        "name": "Scorchstop Retros",
+        "slot": "retros",
         "rarity": "rare",
         "stats": {
             "primary": {"brake_force": 65, "corner_entry_speed": 60, "stability_under_decel": 62},
@@ -116,32 +183,32 @@ def sample_brakes_card():
 
 @pytest.fixture
 def full_build(
-    sample_engine_card,
-    sample_transmission_card,
-    sample_tires_card,
-    sample_suspension_card,
-    sample_chassis_card,
-    sample_turbo_card,
-    sample_brakes_card,
+    sample_reactor_card,
+    sample_drive_card,
+    sample_thrusters_card,
+    sample_stabilizers_card,
+    sample_hull_card,
+    sample_overdrive_card,
+    sample_retros_card,
 ):
     """Return a complete build with all 7 slots filled."""
     cards = {
-        sample_engine_card["id"]: sample_engine_card,
-        sample_transmission_card["id"]: sample_transmission_card,
-        sample_tires_card["id"]: sample_tires_card,
-        sample_suspension_card["id"]: sample_suspension_card,
-        sample_chassis_card["id"]: sample_chassis_card,
-        sample_turbo_card["id"]: sample_turbo_card,
-        sample_brakes_card["id"]: sample_brakes_card,
+        sample_reactor_card["id"]: sample_reactor_card,
+        sample_drive_card["id"]: sample_drive_card,
+        sample_thrusters_card["id"]: sample_thrusters_card,
+        sample_stabilizers_card["id"]: sample_stabilizers_card,
+        sample_hull_card["id"]: sample_hull_card,
+        sample_overdrive_card["id"]: sample_overdrive_card,
+        sample_retros_card["id"]: sample_retros_card,
     }
     slots = {
-        "engine": sample_engine_card["id"],
-        "transmission": sample_transmission_card["id"],
-        "tires": sample_tires_card["id"],
-        "suspension": sample_suspension_card["id"],
-        "chassis": sample_chassis_card["id"],
-        "turbo": sample_turbo_card["id"],
-        "brakes": sample_brakes_card["id"],
+        "reactor": sample_reactor_card["id"],
+        "drive": sample_drive_card["id"],
+        "thrusters": sample_thrusters_card["id"],
+        "stabilizers": sample_stabilizers_card["id"],
+        "hull": sample_hull_card["id"],
+        "overdrive": sample_overdrive_card["id"],
+        "retros": sample_retros_card["id"],
     }
     return {"user_id": "123456789", "slots": slots, "cards": cards}
 
@@ -152,13 +219,13 @@ def empty_build():
     return {
         "user_id": "987654321",
         "slots": {
-            "engine": None,
-            "transmission": None,
-            "tires": None,
-            "suspension": None,
-            "chassis": None,
-            "turbo": None,
-            "brakes": None,
+            "reactor": None,
+            "drive": None,
+            "thrusters": None,
+            "stabilizers": None,
+            "hull": None,
+            "overdrive": None,
+            "retros": None,
         },
         "cards": {},
     }

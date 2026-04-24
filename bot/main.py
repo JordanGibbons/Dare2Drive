@@ -10,16 +10,42 @@ from discord.ext import commands
 from opentelemetry import trace
 from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
 from prometheus_client import start_http_server
+from sqlalchemy import select
 
 from api.metrics import bot_command_errors, bot_commands_invoked
 from config.logging import get_logger, setup_logging
 from config.metrics import trace_exemplar
 from config.settings import settings
 from config.tracing import init_tracing
+from db.models import Sector
 from db.session import async_session, engine
 
 setup_logging()
 log = get_logger(__name__)
+
+
+async def register_sector_for_guild(guild, session) -> Sector:
+    """Insert a Sector row for this guild if not already present. Idempotent."""
+    existing = await session.execute(select(Sector).where(Sector.guild_id == str(guild.id)))
+    sys = existing.scalar_one_or_none()
+    if sys is not None:
+        return sys
+    sys = Sector(
+        guild_id=str(guild.id),
+        name=guild.name,
+        owner_discord_id=str(guild.owner_id) if guild.owner_id else "0",
+    )
+    session.add(sys)
+    await session.flush()
+    await session.refresh(sys)
+    return sys
+
+
+async def reconcile_sectors_with_guilds(guilds, session) -> None:
+    """Ensure every current guild has a Sector row. Call on bot startup."""
+    for guild in guilds:
+        await register_sector_for_guild(guild, session)
+
 
 init_tracing("Dare2Drive")
 SQLAlchemyInstrumentor().instrument(engine=engine.sync_engine)
@@ -102,7 +128,7 @@ class Dare2DriveBot(commands.Bot):
         cog_modules = [
             "bot.cogs.tutorial",
             "bot.cogs.cards",
-            "bot.cogs.garage",
+            "bot.cogs.hangar",
             "bot.cogs.race",
             "bot.cogs.market",
             "bot.cogs.admin",
@@ -127,8 +153,19 @@ class Dare2DriveBot(commands.Bot):
             await self.tree.sync()
             log.info("Synced commands globally")
 
+    async def on_guild_join(self, guild: discord.Guild) -> None:
+        """Auto-register a Sector row when the bot joins a new guild."""
+        async with async_session() as session:
+            async with session.begin():
+                await register_sector_for_guild(guild, session)
+        log.info("registered_sector: guild_id=%s guild_name=%s", guild.id, guild.name)
+
     async def on_ready(self) -> None:
         log.info("Bot online as %s (ID: %s)", self.user, self.user.id if self.user else "?")
+        # Reconcile sectors with current guilds.
+        async with async_session() as session:
+            async with session.begin():
+                await reconcile_sectors_with_guilds(list(self.guilds), session)
 
 
 async def main() -> None:

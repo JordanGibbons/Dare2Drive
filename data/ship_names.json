@@ -1,0 +1,39 @@
+{
+  "_comment": "Word pools for RNG ship name generation. Each entry is [adjectives, nouns]. Format+hull combos are checked first; fallback pools used when no specific match exists.",
+  "sprint_hauler": [
+    ["Iron", "Thunder", "Hammer", "Steel", "Titan", "Gravjaw", "Fury", "Wrath"],
+    ["Fist", "Brute", "Cannon", "Crusher", "Hauler", "Slab", "Beast", "Barge"]
+  ],
+  "sprint_skirmisher": [
+    ["Rocket", "Blitz", "Surge", "Volt", "Flash", "Nitro", "Apex", "Zero"],
+    ["Shot", "Burst", "Streak", "Bolt", "Arrow", "Launch", "Dart", "Strike"]
+  ],
+  "sprint_scout": [
+    ["Pocket", "Feather", "Wasp", "Snap", "Blitz", "Quick", "Zip", "Sting"],
+    ["Runner", "Hornet", "Spark", "Flash", "Bullet", "Needle", "Mote", "Sliver"]
+  ],
+  "endurance_hauler": [
+    ["Heavy", "Iron", "Chrome", "Steady", "Stone", "Solid", "Gravel", "Brute"],
+    ["Baron", "Stalwart", "Outrider", "Plodder", "Scrap-Runner", "Endure", "King", "Hauler"]
+  ],
+  "endurance_skirmisher": [
+    ["Apex", "Carbon", "Razor", "Precise", "Clean", "Sharp", "Laser", "Scrap"],
+    ["Hawk", "Edge", "Vector", "Blade", "Jackal", "Mongoose", "MK-VII", "Outrider"]
+  ],
+  "endurance_scout": [
+    ["Nimble", "Tight", "Swift", "Agile", "Light", "Clean", "Precise", "Quick"],
+    ["Weave", "Arc", "Thread", "Needle", "Clip", "Flicker", "Dart", "Mote"]
+  ],
+  "gauntlet_hauler": [
+    ["Scarred", "Battered", "Rusted", "Grinding", "Heavy", "Brutal", "Salvaged", "Rough"],
+    ["Slab", "Anchor", "Wreck", "Grinder", "Bear", "Beast", "Wall", "Plow"]
+  ],
+  "gauntlet_skirmisher": [
+    ["Ghost", "Phantom", "Wraith", "Shadow", "Specter", "Blackstar", "Silk", "Smoke"],
+    ["Runner", "Stalker", "Drifter", "Shade", "Trace", "Whisper", "Haunt", "Glide"]
+  ],
+  "gauntlet_scout": [
+    ["Nimble", "Quick", "Agile", "Lean", "Swift", "Sharp", "Keen", "Wiry"],
+    ["Scout", "Fox", "Jackal", "Weasel", "Ferret", "Lynx", "Sliver", "Dart"]
+  ]
+}

@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     # Discord
     DISCORD_TOKEN: str = ""
     DISCORD_GUILD_ID: str = ""
+    BOT_OWNER_DISCORD_ID: str = ""  # for bot-owner-only admin commands
 
     # Database — Railway injects this in production
     DATABASE_URL: str = "postgresql+asyncpg://dare2drive:dare2drive@db:5432/dare2drive"

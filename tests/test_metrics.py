@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import pytest
-from prometheus_client import REGISTRY, Counter, Histogram
+from prometheus_client import REGISTRY, Counter, Gauge, Histogram
 
 
 class TestMetricsExist:
@@ -34,10 +34,10 @@ class TestMetricsExist:
 
         assert isinstance(currency_spent, Counter)
 
-    def test_users_registered_is_counter(self):
+    def test_users_registered_is_gauge(self):
         from api.metrics import users_registered
 
-        assert isinstance(users_registered, Counter)
+        assert isinstance(users_registered, Gauge)
 
     def test_parts_destroyed_is_counter(self):
         from api.metrics import parts_destroyed
@@ -79,14 +79,14 @@ class TestMetricLabels:
     def test_packs_opened_labels(self):
         from api.metrics import packs_opened
 
-        packs_opened.labels(pack_type="junkyard_pack").inc(0)
-        packs_opened.labels(pack_type="performance_pack").inc(0)
+        packs_opened.labels(pack_type="salvage_crate").inc(0)
+        packs_opened.labels(pack_type="gear_crate").inc(0)
         packs_opened.labels(pack_type="legend_crate").inc(0)
 
     def test_currency_spent_labels(self):
         from api.metrics import currency_spent
 
-        currency_spent.labels(reason="junkyard_pack").inc(0)
+        currency_spent.labels(reason="salvage_crate").inc(0)
         currency_spent.labels(reason="new_build").inc(0)
 
     def test_parts_destroyed_labels(self):
@@ -113,7 +113,7 @@ class TestMetricsRegistered:
             "dare2drive_packs_opened",
             "dare2drive_daily_claimed",
             "dare2drive_currency_spent",
-            "dare2drive_users_registered",
+            "dare2drive_users_registered_total",
             "dare2drive_parts_destroyed",
             "dare2drive_bot_commands",
             "dare2drive_bot_command_errors",

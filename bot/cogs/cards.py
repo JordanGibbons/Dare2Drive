@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from api.metrics import currency_spent, daily_claimed, packs_opened
+from bot.system_gating import get_active_system, system_required_message
 from config.logging import get_logger
 from config.metrics import trace_exemplar
 from config.settings import settings
@@ -164,6 +165,12 @@ class CardsCog(commands.Cog):
     async def daily(self, interaction: discord.Interaction) -> None:
         from datetime import datetime, timedelta, timezone
 
+        async with async_session() as session:
+            system = await get_active_system(interaction, session)
+            if system is None:
+                await interaction.response.send_message(system_required_message(), ephemeral=True)
+                return
+
         # Rarity weights for daily parts: common is most likely, ghost is ultra rare
         DAILY_RARITY_WEIGHTS = {
             "common": 50,
@@ -174,13 +181,13 @@ class CardsCog(commands.Cog):
             "ghost": 0.5,
         }
         DAILY_SLOTS = [
-            "engine",
-            "transmission",
-            "tires",
-            "chassis",
-            "brakes",
-            "suspension",
-            "turbo",
+            "reactor",
+            "drive",
+            "thrusters",
+            "hull",
+            "retros",
+            "stabilizers",
+            "overdrive",
         ]
 
         async with async_session() as session:
@@ -252,19 +259,25 @@ class CardsCog(commands.Cog):
         await interaction.response.send_message(embed=embed)
 
     @app_commands.command(name="pack", description="Open a card pack")
-    @app_commands.describe(pack_type="Pack type: junkyard_pack, performance_pack, or legend_crate")
+    @app_commands.describe(pack_type="Pack type: salvage_crate, gear_crate, or legend_crate")
     @app_commands.choices(
         pack_type=[
-            app_commands.Choice(name="Junkyard Pack (100 Creds)", value="junkyard_pack"),
-            app_commands.Choice(name="Performance Pack (350 Creds)", value="performance_pack"),
+            app_commands.Choice(name="Salvage Crate (100 Creds)", value="salvage_crate"),
+            app_commands.Choice(name="Gear Crate (350 Creds)", value="gear_crate"),
             app_commands.Choice(name="Legend Crate (1200 Creds)", value="legend_crate"),
         ]
     )
     @traced_command
     async def pack(self, interaction: discord.Interaction, pack_type: str) -> None:
+        async with async_session() as session:
+            system = await get_active_system(interaction, session)
+            if system is None:
+                await interaction.response.send_message(system_required_message(), ephemeral=True)
+                return
+
         cost_map = {
-            "junkyard_pack": settings.JUNKYARD_PACK_COST,
-            "performance_pack": settings.PERFORMANCE_PACK_COST,
+            "salvage_crate": settings.JUNKYARD_PACK_COST,
+            "gear_crate": settings.PERFORMANCE_PACK_COST,
             "legend_crate": settings.LEGEND_CRATE_COST,
         }
         cost = cost_map.get(pack_type)
@@ -307,6 +320,7 @@ class CardsCog(commands.Cog):
     @app_commands.command(name="inventory", description="View your card collection")
     @traced_command
     async def inventory(self, interaction: discord.Interaction) -> None:
+        # Universe-wide — no system gating
         async with async_session() as session:
             user = await session.get(User, str(interaction.user.id))
             if not user:
@@ -361,6 +375,7 @@ class CardsCog(commands.Cog):
     @app_commands.describe(card_name="Name of the card to inspect (e.g. Card Name #3)")
     @traced_command
     async def inspect(self, interaction: discord.Interaction, card_name: str) -> None:
+        # Universe-wide — no system gating
         from engine.card_mint import apply_stat_modifiers
 
         parsed_name, parsed_serial = _parse_card_input(card_name)
@@ -468,9 +483,9 @@ class CardsCog(commands.Cog):
         return await _card_copy_autocomplete(interaction, current)
 
     @app_commands.command(
-        name="request_inspect", description="Ask to peek inside another player's garage"
+        name="request_inspect", description="Ask to peek inside another player's hangar"
     )
-    @app_commands.describe(target="The player whose garage you want to see")
+    @app_commands.describe(target="The player whose hangar you want to see")
     @traced_command
     async def request_inspect(
         self,
@@ -484,7 +499,7 @@ class CardsCog(commands.Cog):
             return
 
         if target.bot:
-            await interaction.response.send_message("Bots don't have garages.", ephemeral=True)
+            await interaction.response.send_message("Bots don't have hangars.", ephemeral=True)
             return
 
         async with async_session() as session:
@@ -495,16 +510,16 @@ class CardsCog(commands.Cog):
                 )
                 return
 
-        view = _GarageRequestView(
+        view = _HangarRequestView(
             requester_id=interaction.user.id,
             target_id=target.id,
             target_name=target.display_name,
         )
         embed = discord.Embed(
-            title="🔍 Garage Access Request",
+            title="🔍 Hangar Access Request",
             description=(
-                f"{interaction.user.mention} is knocking on your garage door.\n"
-                f"They want to take a look at what you're working with.\n\n"
+                f"{interaction.user.mention} is knocking on your hangar door.\n"
+                f"They want to take a look at what you're running.\n\n"
                 f"{target.mention}, let them in?"
             ),
             color=0xF59E0B,
@@ -780,7 +795,7 @@ class _InventoryDetailView(discord.ui.View):
 def _build_inventory_embed(
     target_name: str, requester_id: int, user_cards: list, flavor: str
 ) -> discord.Embed:
-    """Build the garage inventory list embed."""
+    """Build the hangar inventory list embed."""
     lines = []
     for uc in user_cards:
         card = uc.card
@@ -788,13 +803,13 @@ def _build_inventory_embed(
         foil = " ✨" if uc.is_foil else ""
         lines.append(f"{emoji} **{card.name}** #{uc.serial_number} [{card.slot.value}]{foil}")
 
-    description = f"*{flavor}*\n\n<@{requester_id}>, here's what's in the garage:\n\n"
+    description = f"*{flavor}*\n\n<@{requester_id}>, here's what's in the hangar:\n\n"
     description += "\n".join(lines[:30])
     if len(lines) > 30:
         description += f"\n\n*...and {len(lines) - 30} more parts.*"
 
     embed = discord.Embed(
-        title=f"🔍 {target_name}'s Garage",
+        title=f"🔍 {target_name}'s Hangar",
         description=description,
         color=0x3B82F6,
     )
@@ -812,7 +827,7 @@ def _build_card_detail_embed(card: Card, uc: UserCard, target_name: str) -> disc
     emoji = RARITY_EMOJI.get(card.rarity.value, "")
     embed = discord.Embed(
         title=f"{emoji} {card.name} #{uc.serial_number}",
-        description=f"From **{target_name}**'s garage",
+        description=f"From **{target_name}**'s hangar",
         color=color,
     )
     embed.add_field(name="Slot", value=card.slot.value.title(), inline=True)
@@ -864,8 +879,8 @@ def _build_card_detail_embed(card: Card, uc: UserCard, target_name: str) -> disc
     return embed
 
 
-class _GarageBrowseView(discord.ui.View):
-    """Interactive garage browser — select dropdown to inspect individual cards, back button to return."""  # noqa: E501
+class _HangarBrowseView(discord.ui.View):
+    """Interactive hangar browser — select dropdown to inspect individual cards, back button to return."""  # noqa: E501
 
     def __init__(
         self,
@@ -932,10 +947,10 @@ class _GarageBrowseView(discord.ui.View):
         embed = _build_card_detail_embed(card, uc, self.target_name)
 
         # Swap to detail view: remove select, show Back button
-        back_view = _GarageDetailView(self)
+        back_view = _HangarDetailView(self)
         await interaction.response.edit_message(embed=embed, view=back_view)
 
-    @discord.ui.button(label="Close Garage", style=discord.ButtonStyle.secondary, emoji="🚪", row=1)
+    @discord.ui.button(label="Close Hangar", style=discord.ButtonStyle.secondary, emoji="🚪", row=1)
     async def close(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         if interaction.user.id != self.requester_id:
             await interaction.response.send_message("This isn't your peek.", ephemeral=True)
@@ -943,23 +958,21 @@ class _GarageBrowseView(discord.ui.View):
         for item in self.children:
             item.disabled = True
         embed = discord.Embed(
-            title=f"🔍 {self.target_name}'s Garage",
-            description="*You step out and the door shuts behind you.*",
+            title=f"🔍 {self.target_name}'s Hangar",
+            description="*You step out and the door seals behind you.*",
             color=0x9CA3AF,
         )
         await interaction.response.edit_message(embed=embed, view=None)
         self.stop()
 
     async def on_timeout(self) -> None:
-        # Can't easily edit on timeout without storing the message reference,
-        # but the components will stop responding
         self.stop()
 
 
-class _GarageDetailView(discord.ui.View):
+class _HangarDetailView(discord.ui.View):
     """Detail view for a single card — Back button returns to the inventory list."""
 
-    def __init__(self, browse_view: _GarageBrowseView) -> None:
+    def __init__(self, browse_view: _HangarBrowseView) -> None:
         super().__init__(timeout=300)
         self.browse_view = browse_view
 
@@ -976,34 +989,34 @@ class _GarageDetailView(discord.ui.View):
         )
         await interaction.response.edit_message(embed=embed, view=self.browse_view)
 
-    @discord.ui.button(label="Close Garage", style=discord.ButtonStyle.secondary, emoji="🚪")
+    @discord.ui.button(label="Close Hangar", style=discord.ButtonStyle.secondary, emoji="🚪")
     async def close(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         if interaction.user.id != self.browse_view.requester_id:
             await interaction.response.send_message("This isn't your peek.", ephemeral=True)
             return
         embed = discord.Embed(
-            title=f"🔍 {self.browse_view.target_name}'s Garage",
-            description="*You step out and the door shuts behind you.*",
+            title=f"🔍 {self.browse_view.target_name}'s Hangar",
+            description="*You step out and the door seals behind you.*",
             color=0x9CA3AF,
         )
         await interaction.response.edit_message(embed=embed, view=None)
         self.stop()
 
 
-class _GarageRequestView(discord.ui.View):
-    """Approve / deny another player peeking at your full garage."""
+class _HangarRequestView(discord.ui.View):
+    """Approve / deny another player peeking at your full hangar."""
 
     DENY_LINES = [
-        'The garage door stays shut. You hear a muffled "go away" from inside.',
-        "A padlock clicks. That's a no.",
-        "You hear power tools rev up. Probably best to leave.",
-        "A sign flips to CLOSED. Real subtle.",
-        '"Come back with a warrant." The slot in the door slams shut.',
+        'The hangar bay stays locked. You hear a muffled "go away" from inside.',
+        "A blast door slides shut. That's a no.",
+        "You hear a reactor spin up. Probably best to leave.",
+        "A sign flips to DOCKED. Real subtle.",
+        '"Come back with a manifest." The comm channel cuts out.',
     ]
 
     APPROVE_LINES = [
-        'The garage door creaks open. "Make it quick."',
-        "You knock twice. The door swings open and you're waved in.",
+        'The hangar bay grinds open. "Make it quick."',
+        "You knock twice. The door cycles open and you're waved in.",
         '"Don\'t touch anything." They step aside and let you look.',
         'The lights flicker on. "Alright, feast your eyes."',
         'A grease-stained hand pulls you inside. "Check this out."',
@@ -1018,7 +1031,7 @@ class _GarageRequestView(discord.ui.View):
     @discord.ui.button(label="Let them in", style=discord.ButtonStyle.success)
     async def approve(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         if interaction.user.id != self.target_id:
-            await interaction.response.send_message("This isn't your garage.", ephemeral=True)
+            await interaction.response.send_message("This isn't your hangar.", ephemeral=True)
             return
 
         # Disable the accept/deny buttons
@@ -1040,8 +1053,8 @@ class _GarageRequestView(discord.ui.View):
 
         if not user_cards:
             embed = discord.Embed(
-                title=f"🔍 {self.target_name}'s Garage",
-                description=f"*{flavor}*\n\n<@{self.requester_id}>, the garage is... empty. Awkward.",  # noqa: E501
+                title=f"🔍 {self.target_name}'s Hangar",
+                description=f"*{flavor}*\n\n<@{self.requester_id}>, the hangar is... empty. Awkward.",  # noqa: E501
                 color=0x9CA3AF,
             )
             await interaction.followup.send(embed=embed)
@@ -1049,7 +1062,7 @@ class _GarageRequestView(discord.ui.View):
             return
 
         embed = _build_inventory_embed(self.target_name, self.requester_id, user_cards, flavor)
-        browse_view = _GarageBrowseView(
+        browse_view = _HangarBrowseView(
             requester_id=self.requester_id,
             target_name=self.target_name,
             user_cards=user_cards,
@@ -1061,12 +1074,12 @@ class _GarageRequestView(discord.ui.View):
     @discord.ui.button(label="Keep it locked", style=discord.ButtonStyle.danger)
     async def deny(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         if interaction.user.id != self.target_id:
-            await interaction.response.send_message("This isn't your garage.", ephemeral=True)
+            await interaction.response.send_message("This isn't your hangar.", ephemeral=True)
             return
 
         flavor = random.choice(self.DENY_LINES)
         embed = discord.Embed(
-            title="🔒 Garage Locked",
+            title="🔒 Hangar Locked",
             description=f"*{flavor}*\n\nSorry <@{self.requester_id}>, no dice.",
             color=0xEF4444,
         )

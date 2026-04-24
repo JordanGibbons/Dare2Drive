@@ -35,8 +35,8 @@ class TestRollEnvironment:
 
 class TestGetEnvironmentByName:
     def test_known_environment(self):
-        env = get_environment_by_name("wet_track")
-        assert env.name == "wet_track"
+        env = get_environment_by_name("nebula")
+        assert env.name == "nebula"
         assert env.stat_weights["grip"] == 2.0
 
     def test_unknown_environment_raises(self):
@@ -86,24 +86,24 @@ class TestApplyEnvironmentWeights:
 class TestEnvironmentStatWeights:
     """Validate specific environment configs match the design spec."""
 
-    def test_wet_track_weights(self):
-        env = get_environment_by_name("wet_track")
+    def test_nebula_weights(self):
+        env = get_environment_by_name("nebula")
         assert env.stat_weights["grip"] == 2.0
         assert env.stat_weights["weather_performance"] == 1.8
         assert env.stat_weights["handling"] == 1.3
         assert env.stat_weights["power"] == 0.8
 
-    def test_drag_strip_weights(self):
-        env = get_environment_by_name("drag_strip")
+    def test_solar_flare_weights(self):
+        env = get_environment_by_name("solar_flare")
         assert env.stat_weights["power"] == 2.0
         assert env.stat_weights["top_speed"] == 1.5
         assert env.stat_weights["handling"] == 0.3
 
-    def test_night_race_variance(self):
-        env = get_environment_by_name("night_race")
+    def test_clear_space_variance(self):
+        env = get_environment_by_name("clear_space")
         assert env.variance_multiplier == 1.5
 
-    def test_off_road_weights(self):
-        env = get_environment_by_name("off_road")
+    def test_debris_field_weights(self):
+        env = get_environment_by_name("debris_field")
         assert env.stat_weights["stability"] == 2.0
         assert env.stat_weights["top_speed"] == 0.5

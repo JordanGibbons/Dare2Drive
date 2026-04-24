@@ -13,17 +13,17 @@ log = get_logger(__name__)
 
 _TUTORIAL_DATA_PATH = Path(__file__).resolve().parent.parent / "data" / "tutorial.json"
 
-_body_type_stats_cache: dict[str, dict[str, float]] | None = None
+_hull_class_stats_cache: dict[str, dict[str, float]] | None = None
 
 
-def _get_body_type_stats() -> dict[str, dict[str, float]]:
-    """Load body type base stats from tutorial data (cached)."""
-    global _body_type_stats_cache
-    if _body_type_stats_cache is None:
+def _get_hull_class_stats() -> dict[str, dict[str, float]]:
+    """Load hull class base stats from tutorial data (cached)."""
+    global _hull_class_stats_cache
+    if _hull_class_stats_cache is None:
         with open(_TUTORIAL_DATA_PATH, "r", encoding="utf-8") as f:
             data = json.load(f)
-        _body_type_stats_cache = data["body_type_base_stats"]
-    return _body_type_stats_cache
+        _hull_class_stats_cache = data["hull_class_base_stats"]
+    return _hull_class_stats_cache
 
 
 @dataclass
@@ -62,7 +62,7 @@ def _get_stat(stats: dict[str, Any], section: str, key: str, default: float = 0.
 def aggregate_build(
     slots: dict[str, str | None],
     cards: dict[str, dict[str, Any]],
-    body_type: str | None = None,
+    hull_class: str | None = None,
 ) -> BuildStats:
     """
     Combine all 7 equipped card stats into composite BuildStats.
@@ -71,14 +71,14 @@ def aggregate_build(
     ----------
     slots : dict mapping slot name → card_id (or None if empty)
     cards : dict mapping card_id → full card data dict (must include 'stats' key)
-    body_type : optional body type string ("muscle", "sport", "compact")
-                adds base stats from the chassis before card contributions
+    hull_class : optional hull class string ("hauler", "skirmisher", "scout")
+                adds base stats from the hull before card contributions
     """
     bs = BuildStats()
 
-    # Apply body type base stats
-    if body_type:
-        base = _get_body_type_stats().get(body_type, {})
+    # Apply hull class base stats
+    if hull_class:
+        base = _get_hull_class_stats().get(hull_class, {})
         bs.effective_power = base.get("power", 0.0)
         bs.effective_acceleration = base.get("acceleration", 0.0)
         bs.effective_top_speed = base.get("top_speed", 0.0)
@@ -91,80 +91,80 @@ def aggregate_build(
 
     # ── Extract raw stats from each slot ──
 
-    # Engine
-    engine_data = cards.get(slots.get("engine") or "", {})
-    engine_stats = engine_data.get("stats", {})
-    raw_power = _get_stat(engine_stats, "primary", "power")
-    raw_accel = _get_stat(engine_stats, "primary", "acceleration")
-    raw_torque = _get_stat(engine_stats, "primary", "torque")
-    bs.engine_max_temp = _get_stat(engine_stats, "primary", "max_engine_temp")
-    engine_weight = _get_stat(engine_stats, "secondary", "weight")
-    engine_durability = _get_stat(engine_stats, "secondary", "durability")
-    _get_stat(engine_stats, "secondary", "fuel_efficiency")
-    bs.slot_durabilities["engine"] = engine_durability
+    # Reactor
+    reactor_data = cards.get(slots.get("reactor") or "", {})
+    reactor_stats = reactor_data.get("stats", {})
+    raw_power = _get_stat(reactor_stats, "primary", "power")
+    raw_accel = _get_stat(reactor_stats, "primary", "acceleration")
+    raw_torque = _get_stat(reactor_stats, "primary", "torque")
+    bs.engine_max_temp = _get_stat(reactor_stats, "primary", "max_reactor_temp")
+    reactor_weight = _get_stat(reactor_stats, "secondary", "weight")
+    reactor_durability = _get_stat(reactor_stats, "secondary", "durability")
+    _get_stat(reactor_stats, "secondary", "fuel_efficiency")
+    bs.slot_durabilities["reactor"] = reactor_durability
 
-    # Transmission
-    trans_data = cards.get(slots.get("transmission") or "", {})
-    trans_stats = trans_data.get("stats", {})
-    accel_scaling = _get_stat(trans_stats, "primary", "acceleration_scaling")
-    top_speed_ceiling = _get_stat(trans_stats, "primary", "top_speed_ceiling")
-    shift_efficiency = _get_stat(trans_stats, "primary", "shift_efficiency")
-    trans_durability = _get_stat(trans_stats, "secondary", "durability")
-    torque_transfer = _get_stat(trans_stats, "secondary", "torque_transfer_pct")
-    bs.slot_durabilities["transmission"] = trans_durability
+    # Drive
+    drive_data = cards.get(slots.get("drive") or "", {})
+    drive_stats = drive_data.get("stats", {})
+    accel_scaling = _get_stat(drive_stats, "primary", "acceleration_scaling")
+    top_speed_ceiling = _get_stat(drive_stats, "primary", "top_speed_ceiling")
+    shift_efficiency = _get_stat(drive_stats, "primary", "shift_efficiency")
+    drive_durability = _get_stat(drive_stats, "secondary", "durability")
+    torque_transfer = _get_stat(drive_stats, "secondary", "torque_transfer_pct")
+    bs.slot_durabilities["drive"] = drive_durability
 
-    # Tires
-    tires_data = cards.get(slots.get("tires") or "", {})
-    tires_stats = tires_data.get("stats", {})
-    tire_grip = _get_stat(tires_stats, "primary", "grip")
-    tire_handling = _get_stat(tires_stats, "primary", "handling")
-    tire_launch = _get_stat(tires_stats, "primary", "launch_acceleration")
-    tire_durability = _get_stat(tires_stats, "secondary", "durability")
-    tire_weather = _get_stat(tires_stats, "secondary", "weather_performance")
-    tire_drag = _get_stat(tires_stats, "secondary", "drag")
-    bs.slot_durabilities["tires"] = tire_durability
+    # Thrusters
+    thrusters_data = cards.get(slots.get("thrusters") or "", {})
+    thrusters_stats = thrusters_data.get("stats", {})
+    tire_grip = _get_stat(thrusters_stats, "primary", "grip")
+    tire_handling = _get_stat(thrusters_stats, "primary", "handling")
+    tire_launch = _get_stat(thrusters_stats, "primary", "launch_acceleration")
+    thruster_durability = _get_stat(thrusters_stats, "secondary", "durability")
+    tire_weather = _get_stat(thrusters_stats, "secondary", "weather_performance")
+    tire_drag = _get_stat(thrusters_stats, "secondary", "drag")
+    bs.slot_durabilities["thrusters"] = thruster_durability
 
-    # Suspension
-    susp_data = cards.get(slots.get("suspension") or "", {})
-    susp_stats = susp_data.get("stats", {})
-    susp_handling = _get_stat(susp_stats, "primary", "handling")
-    susp_stability = _get_stat(susp_stats, "primary", "stability")
-    _get_stat(susp_stats, "primary", "ride_height_modifier")
-    weight_balance = _get_stat(susp_stats, "secondary", "weight_balance_bonus")
-    brake_eff_scaling = _get_stat(susp_stats, "secondary", "brake_efficiency_scaling")
-    bs.slot_durabilities["suspension"] = susp_stability  # suspension uses stability as proxy
+    # Stabilizers
+    stab_data = cards.get(slots.get("stabilizers") or "", {})
+    stab_stats = stab_data.get("stats", {})
+    susp_handling = _get_stat(stab_stats, "primary", "handling")
+    susp_stability = _get_stat(stab_stats, "primary", "stability")
+    _get_stat(stab_stats, "primary", "ride_height_modifier")
+    weight_balance = _get_stat(stab_stats, "secondary", "weight_balance_bonus")
+    brake_eff_scaling = _get_stat(stab_stats, "secondary", "brake_efficiency_scaling")
+    bs.slot_durabilities["stabilizers"] = susp_stability  # stabilizers uses stability as proxy
 
-    # Chassis
-    chassis_data = cards.get(slots.get("chassis") or "", {})
-    chassis_stats = chassis_data.get("stats", {})
-    chassis_drag = _get_stat(chassis_stats, "primary", "drag")
-    chassis_weight = _get_stat(chassis_stats, "primary", "weight")
-    chassis_durability = _get_stat(chassis_stats, "primary", "durability")
-    _get_stat(chassis_stats, "primary", "style")
-    handling_cap_mod = _get_stat(chassis_stats, "secondary", "handling_cap_modifier")
-    top_speed_mult = _get_stat(chassis_stats, "secondary", "top_speed_multiplier", default=1.0)
-    bs.slot_durabilities["chassis"] = chassis_durability
+    # Hull
+    hull_data = cards.get(slots.get("hull") or "", {})
+    hull_stats = hull_data.get("stats", {})
+    chassis_drag = _get_stat(hull_stats, "primary", "drag")
+    chassis_weight = _get_stat(hull_stats, "primary", "weight")
+    chassis_durability = _get_stat(hull_stats, "primary", "durability")
+    _get_stat(hull_stats, "primary", "style")
+    handling_cap_mod = _get_stat(hull_stats, "secondary", "handling_cap_modifier")
+    top_speed_mult = _get_stat(hull_stats, "secondary", "top_speed_multiplier", default=1.0)
+    bs.slot_durabilities["hull"] = chassis_durability
 
-    # Turbo
-    turbo_data = cards.get(slots.get("turbo") or "", {})
-    turbo_stats = turbo_data.get("stats", {})
-    power_boost_pct = _get_stat(turbo_stats, "primary", "power_boost_pct")
-    accel_boost_pct = _get_stat(turbo_stats, "primary", "acceleration_boost_pct")
-    engine_temp_inc = _get_stat(turbo_stats, "primary", "engine_temp_increase")
-    turbo_durability = _get_stat(turbo_stats, "secondary", "durability")
-    torque_spike = _get_stat(turbo_stats, "secondary", "torque_spike_modifier")
-    bs.slot_durabilities["turbo"] = turbo_durability
+    # Overdrive
+    overdrive_data = cards.get(slots.get("overdrive") or "", {})
+    overdrive_stats = overdrive_data.get("stats", {})
+    power_boost_pct = _get_stat(overdrive_stats, "primary", "power_boost_pct")
+    accel_boost_pct = _get_stat(overdrive_stats, "primary", "acceleration_boost_pct")
+    engine_temp_inc = _get_stat(overdrive_stats, "primary", "engine_temp_increase")
+    overdrive_durability = _get_stat(overdrive_stats, "secondary", "durability")
+    torque_spike = _get_stat(overdrive_stats, "secondary", "torque_spike_modifier")
+    bs.slot_durabilities["overdrive"] = overdrive_durability
     bs.turbo_engine_temp_increase = engine_temp_inc
 
-    # Brakes
-    brakes_data = cards.get(slots.get("brakes") or "", {})
-    brakes_stats = brakes_data.get("stats", {})
-    brake_force = _get_stat(brakes_stats, "primary", "brake_force")
-    corner_entry = _get_stat(brakes_stats, "primary", "corner_entry_speed")
-    stability_decel = _get_stat(brakes_stats, "primary", "stability_under_decel")
-    brakes_handling = _get_stat(brakes_stats, "secondary", "handling_bonus")
-    brakes_durability = _get_stat(brakes_stats, "secondary", "durability")
-    bs.slot_durabilities["brakes"] = brakes_durability
+    # Retros
+    retros_data = cards.get(slots.get("retros") or "", {})
+    retros_stats = retros_data.get("stats", {})
+    brake_force = _get_stat(retros_stats, "primary", "brake_force")
+    corner_entry = _get_stat(retros_stats, "primary", "corner_entry_speed")
+    stability_decel = _get_stat(retros_stats, "primary", "stability_under_decel")
+    brakes_handling = _get_stat(retros_stats, "secondary", "handling_bonus")
+    retros_durability = _get_stat(retros_stats, "secondary", "durability")
+    bs.slot_durabilities["retros"] = retros_durability
 
     # ── Composite stat computations (added to body type base) ──
 
@@ -181,9 +181,9 @@ def aggregate_build(
         + shift_efficiency * 0.2
     )
 
-    # Top speed: ceiling from transmission × chassis multiplier - drag penalties
+    # Top speed: ceiling from drive × hull multiplier - drag penalties
     base_top_speed = top_speed_ceiling + raw_power * 0.3
-    total_drag = max(chassis_drag + tire_drag + engine_weight + chassis_weight, -50)
+    total_drag = max(chassis_drag + tire_drag + reactor_weight + chassis_weight, -50)
     bs.effective_top_speed += base_top_speed * top_speed_mult - total_drag * 0.3
 
     # Handling: tires + suspension + brakes bonus + chassis cap modifier

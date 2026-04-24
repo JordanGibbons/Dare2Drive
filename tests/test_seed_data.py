@@ -11,41 +11,41 @@ DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 CARDS_DIR = DATA_DIR / "cards"
 
 SLOT_FILES = {
-    "engines.json": "engine",
-    "transmissions.json": "transmission",
-    "tires.json": "tires",
-    "suspension.json": "suspension",
-    "chassis.json": "chassis",
-    "turbos.json": "turbo",
-    "brakes.json": "brakes",
+    "reactors.json": "reactor",
+    "drives.json": "drive",
+    "thrusters.json": "thrusters",
+    "stabilizers.json": "stabilizers",
+    "hulls.json": "hull",
+    "overdrives.json": "overdrive",
+    "retros.json": "retros",
 }
 
 EXPECTED_STAT_SCHEMAS = {
-    "engine": {
-        "primary": {"power", "acceleration", "torque", "max_engine_temp"},
+    "reactor": {
+        "primary": {"power", "acceleration", "torque", "max_reactor_temp"},
         "secondary": {"weight", "durability", "fuel_efficiency"},
     },
-    "transmission": {
+    "drive": {
         "primary": {"acceleration_scaling", "top_speed_ceiling", "shift_efficiency"},
         "secondary": {"durability", "torque_transfer_pct"},
     },
-    "tires": {
+    "thrusters": {
         "primary": {"grip", "handling", "launch_acceleration"},
         "secondary": {"durability", "weather_performance", "drag"},
     },
-    "suspension": {
+    "stabilizers": {
         "primary": {"handling", "stability", "ride_height_modifier"},
         "secondary": {"weight_balance_bonus", "brake_efficiency_scaling"},
     },
-    "chassis": {
+    "hull": {
         "primary": {"drag", "weight", "durability", "style"},
         "secondary": {"handling_cap_modifier", "top_speed_multiplier"},
     },
-    "turbo": {
+    "overdrive": {
         "primary": {"power_boost_pct", "acceleration_boost_pct", "engine_temp_increase"},
         "secondary": {"durability", "torque_spike_modifier"},
     },
-    "brakes": {
+    "retros": {
         "primary": {"brake_force", "corner_entry_speed", "stability_under_decel"},
         "secondary": {"handling_bonus", "durability"},
     },
@@ -150,7 +150,7 @@ class TestEnvironmentData:
         with open(path) as f:
             envs = json.load(f)
         assert isinstance(envs, list)
-        assert len(envs) == 6
+        assert len(envs) == 7
 
     def test_all_environments_have_required_fields(self):
         with open(DATA_DIR / "environments.json") as f:
@@ -167,12 +167,13 @@ class TestEnvironmentData:
             envs = json.load(f)
         names = {e["name"] for e in envs}
         expected = {
-            "wet_track",
-            "night_race",
-            "mountain_pass",
-            "drag_strip",
-            "city_circuit",
-            "off_road",
+            "nebula",
+            "clear_space",
+            "asteroid_field",
+            "solar_flare",
+            "ion_storm",
+            "debris_field",
+            "gravity_well",
         }
         assert names == expected
 
@@ -183,8 +184,8 @@ class TestLootTables:
         assert path.exists()
         with open(path) as f:
             tables = json.load(f)
-        assert "junkyard_pack" in tables
-        assert "performance_pack" in tables
+        assert "salvage_crate" in tables
+        assert "gear_crate" in tables
         assert "legend_crate" in tables
 
     def test_loot_table_weights_sum_to_100(self):

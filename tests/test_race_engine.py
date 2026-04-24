@@ -162,7 +162,7 @@ class TestGenerateNarrative:
             failures=[],
             dnf=True,
             score_multiplier=0.0,
-            wrecked_parts=[WreckPart(card_id="x", slot="engine", card_name="Ironforge V8")],
+            wrecked_parts=[WreckPart(card_id="x", slot="reactor", card_name="Ironforge Reactor")],
         )
         narrative = _generate_narrative(
             user_id="u1",
@@ -173,7 +173,7 @@ class TestGenerateNarrative:
             environment=self._env(),
             distance_pct=0.4,
         )
-        assert "Lost: Ironforge V8" in narrative
+        assert "Lost: Ironforge Reactor" in narrative
 
     def test_dnf_no_wrecked_parts(self):
         dur = DurabilityResult(failures=[], dnf=True, score_multiplier=0.0, wrecked_parts=[])
@@ -191,7 +191,7 @@ class TestGenerateNarrative:
     def test_clean_first_place(self):
         narrative = _generate_narrative(
             user_id="u1",
-            equipped_cards={"engine": {"name": "Ironforge V8"}},
+            equipped_cards={"reactor": {"name": "Ironforge Reactor"}},
             durability_result=self._clean_dur(),
             score=300.0,
             position=1,
@@ -230,7 +230,7 @@ class TestGenerateNarrative:
         dur = DurabilityResult(
             failures=[
                 FailureEvent(
-                    slot="tires",
+                    slot="thrusters",
                     severity=FailureSeverity.MINOR,
                     narrative_fragment="Tires slipped.",
                 )

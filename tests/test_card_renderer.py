@@ -14,8 +14,8 @@ from scripts.generate_card_image import RARITY_PALETTE, _apply_ghost_shimmer, re
 class TestRenderCard:
     def test_renders_common_card(self):
         card = {
-            "name": "Test Engine",
-            "slot": "engine",
+            "name": "Test Reactor",
+            "slot": "reactor",
             "rarity": "common",
             "stats": {
                 "primary": {"power": 50, "acceleration": 40},
@@ -29,8 +29,8 @@ class TestRenderCard:
 
     def test_renders_ghost_card_with_shimmer(self):
         card = {
-            "name": "Ghost Engine",
-            "slot": "engine",
+            "name": "Ghost Reactor",
+            "slot": "reactor",
             "rarity": "ghost",
             "stats": {
                 "primary": {"power": 98},
@@ -44,8 +44,8 @@ class TestRenderCard:
 
     def test_renders_legendary_with_print_number(self):
         card = {
-            "name": "Legendary Engine",
-            "slot": "engine",
+            "name": "Legendary Reactor",
+            "slot": "reactor",
             "rarity": "legendary",
             "stats": {
                 "primary": {"power": 94},
@@ -59,7 +59,7 @@ class TestRenderCard:
     def test_renders_with_nonexistent_art_path(self):
         card = {
             "name": "Art Test",
-            "slot": "tires",
+            "slot": "thrusters",
             "rarity": "rare",
             "stats": {"primary": {"grip": 50}, "secondary": {}},
         }
@@ -70,7 +70,7 @@ class TestRenderCard:
     def test_all_rarities_renderable(self, rarity):
         card = {
             "name": f"Test {rarity}",
-            "slot": "engine",
+            "slot": "reactor",
             "rarity": rarity,
             "stats": {"primary": {"power": 50}, "secondary": {"durability": 50}},
         }

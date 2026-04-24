@@ -1,7 +1,7 @@
 [
   {
-    "name": "Scrapheap Frame",
-    "slot": "chassis",
+    "name": "Scrapheap Hull",
+    "slot": "hull",
     "rarity": "common",
     "stats": {
       "primary": {
@@ -15,11 +15,11 @@
         "top_speed_multiplier": 0.9
       }
     },
-    "compatible_body_types": null
+    "compatible_hull_classes": null
   },
   {
-    "name": "Tinbox Unibody",
-    "slot": "chassis",
+    "name": "Tinbox Hull",
+    "slot": "hull",
     "rarity": "common",
     "stats": {
       "primary": {
@@ -33,11 +33,11 @@
         "top_speed_multiplier": 0.92
       }
     },
-    "compatible_body_types": null
+    "compatible_hull_classes": null
   },
   {
-    "name": "Steelvein Monocoque",
-    "slot": "chassis",
+    "name": "Steelvein Hull",
+    "slot": "hull",
     "rarity": "uncommon",
     "stats": {
       "primary": {
@@ -51,11 +51,11 @@
         "top_speed_multiplier": 0.98
       }
     },
-    "compatible_body_types": null
+    "compatible_hull_classes": null
   },
   {
-    "name": "Phantom Coupe",
-    "slot": "chassis",
+    "name": "Phantom Hull",
+    "slot": "hull",
     "rarity": "rare",
     "stats": {
       "primary": {
@@ -69,11 +69,11 @@
         "top_speed_multiplier": 1.05
       }
     },
-    "compatible_body_types": null
+    "compatible_hull_classes": null
   },
   {
-    "name": "Obsidian Widebody",
-    "slot": "chassis",
+    "name": "Obsidian Widebody Hull",
+    "slot": "hull",
     "rarity": "epic",
     "stats": {
       "primary": {
@@ -87,11 +87,11 @@
         "top_speed_multiplier": 1.12
       }
     },
-    "compatible_body_types": null
+    "compatible_hull_classes": null
   },
   {
-    "name": "Eclipse Carbon Shell",
-    "slot": "chassis",
+    "name": "Eclipse Carbon Hull",
+    "slot": "hull",
     "rarity": "legendary",
     "stats": {
       "primary": {
@@ -106,6 +106,6 @@
       }
     },
     "print_max": 500,
-    "compatible_body_types": null
+    "compatible_hull_classes": null
   }
 ]

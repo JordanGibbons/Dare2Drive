@@ -11,6 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.metrics import currency_spent
+from bot.system_gating import get_active_system, system_required_message
 from config.logging import get_logger
 from config.metrics import trace_exemplar
 from config.tracing import traced_command
@@ -21,13 +22,13 @@ log = get_logger(__name__)
 
 # NPC shop — fixed price per slot for common parts
 NPC_SHOP_PRICES: dict[str, int] = {
-    "engine": 150,
-    "transmission": 120,
-    "tires": 100,
-    "chassis": 130,
-    "brakes": 100,
-    "suspension": 110,
-    "turbo": 200,
+    "reactor": 150,
+    "drive": 120,
+    "thrusters": 100,
+    "hull": 130,
+    "retros": 100,
+    "stabilizers": 110,
+    "overdrive": 200,
 }
 
 # Salvage payout by rarity
@@ -360,6 +361,11 @@ class MarketCog(commands.Cog):
     @traced_command
     async def market(self, interaction: discord.Interaction) -> None:
         async with async_session() as session:
+            system = await get_active_system(interaction, session)
+            if system is None:
+                await interaction.response.send_message(system_required_message(), ephemeral=True)
+                return
+
             result = await session.execute(
                 select(MarketListing)
                 .where(MarketListing.sold_at is None)
@@ -370,7 +376,7 @@ class MarketCog(commands.Cog):
 
             if not listings:
                 await interaction.response.send_message(
-                    "The market is empty! Use `/list` to sell a card.", ephemeral=True
+                    "The market is empty! Use `/list` to sell a part.", ephemeral=True
                 )
                 return
 
@@ -391,7 +397,7 @@ class MarketCog(commands.Cog):
 
         if not listing_data:
             await interaction.response.send_message(
-                "The market is empty! Use `/list` to sell a card.", ephemeral=True
+                "The market is empty! Use `/list` to sell a part.", ephemeral=True
             )
             return
 
@@ -399,9 +405,9 @@ class MarketCog(commands.Cog):
         view = _MarketBrowseView(listing_data=listing_data, viewer_id=interaction.user.id)
         await interaction.response.send_message(embed=embed, view=view)
 
-    @app_commands.command(name="list", description="List a card for sale on the market")
+    @app_commands.command(name="list", description="List a part for sale on the market")
     @app_commands.describe(
-        card_name="Name of the card to sell (e.g. Card Name #3)", price="Asking price in Creds"
+        card_name="Name of the part to sell (e.g. Card Name #3)", price="Asking price in Creds"
     )
     @traced_command
     async def list_card(self, interaction: discord.Interaction, card_name: str, price: int) -> None:
@@ -414,6 +420,11 @@ class MarketCog(commands.Cog):
         parsed_name, parsed_serial = _parse_card_input(card_name)
 
         async with async_session() as session:
+            system = await get_active_system(interaction, session)
+            if system is None:
+                await interaction.response.send_message(system_required_message(), ephemeral=True)
+                return
+
             user = await session.get(User, str(interaction.user.id))
             if not user:
                 await interaction.response.send_message("Use `/start` first!", ephemeral=True)
@@ -521,11 +532,16 @@ class MarketCog(commands.Cog):
 
         return await _card_copy_autocomplete(interaction, current)
 
-    @app_commands.command(name="buy", description="Buy a card from the market")
-    @app_commands.describe(card_name="Name of the card to buy")
+    @app_commands.command(name="buy", description="Buy a part from the market")
+    @app_commands.describe(card_name="Name of the part to buy")
     @traced_command
     async def buy(self, interaction: discord.Interaction, card_name: str) -> None:
         async with async_session() as session:
+            system = await get_active_system(interaction, session)
+            if system is None:
+                await interaction.response.send_message(system_required_message(), ephemeral=True)
+                return
+
             user = await session.get(User, str(interaction.user.id))
             if not user:
                 await interaction.response.send_message("Use `/start` first!", ephemeral=True)
@@ -552,7 +568,7 @@ class MarketCog(commands.Cog):
             listing = listing_result.scalar_one_or_none()
             if not listing:
                 await interaction.response.send_message(
-                    "No listings found for that card.", ephemeral=True
+                    "No listings found for that part.", ephemeral=True
                 )
                 return
 
@@ -573,7 +589,7 @@ class MarketCog(commands.Cog):
             uc = await session.get(UserCard, listing.user_card_id)
             if not uc:
                 await interaction.response.send_message(
-                    "That card copy no longer exists (wrecked?).", ephemeral=True
+                    "That part no longer exists (salvaged?).", ephemeral=True
                 )
                 return
 
@@ -721,6 +737,11 @@ class MarketCog(commands.Cog):
     @traced_command
     async def shop(self, interaction: discord.Interaction) -> None:
         async with async_session() as session:
+            system = await get_active_system(interaction, session)
+            if system is None:
+                await interaction.response.send_message(system_required_message(), ephemeral=True)
+                return
+
             user = await session.get(User, str(interaction.user.id))
             if not user:
                 await interaction.response.send_message("Use `/start` first!", ephemeral=True)
@@ -749,7 +770,7 @@ class MarketCog(commands.Cog):
         embed = discord.Embed(
             title="🏪 Parts Shop",
             description=(
-                "Basic parts, always in stock. Use `/shop_buy slot:Engine` to purchase.\n\n"
+                "Basic parts, always in stock. Use `/shop_buy slot:Reactor` to purchase.\n\n"
                 + "\n".join(lines)
                 + f"\n\n💰 Your balance: **{user.currency} Creds**"
             ),
@@ -770,6 +791,11 @@ class MarketCog(commands.Cog):
         price = NPC_SHOP_PRICES.get(slot, 100)
 
         async with async_session() as session:
+            system = await get_active_system(interaction, session)
+            if system is None:
+                await interaction.response.send_message(system_required_message(), ephemeral=True)
+                return
+
             user = await session.get(User, str(interaction.user.id))
             if not user:
                 await interaction.response.send_message("Use `/start` first!", ephemeral=True)
@@ -804,8 +830,8 @@ class MarketCog(commands.Cog):
             f"🛒 Bought **{card.name}** #{uc.serial_number} for **{price} Creds**!"
         )
 
-    @app_commands.command(name="salvage", description="Scrap a card for Creds")
-    @app_commands.describe(card_name="Card to salvage (e.g. Card Name #3)")
+    @app_commands.command(name="salvage", description="Scrap a part for Creds")
+    @app_commands.describe(card_name="Part to salvage (e.g. Card Name #3)")
     @traced_command
     async def salvage(self, interaction: discord.Interaction, card_name: str) -> None:
         from bot.cogs.cards import _parse_card_input
@@ -813,6 +839,11 @@ class MarketCog(commands.Cog):
         parsed_name, parsed_serial = _parse_card_input(card_name)
 
         async with async_session() as session:
+            system = await get_active_system(interaction, session)
+            if system is None:
+                await interaction.response.send_message(system_required_message(), ephemeral=True)
+                return
+
             user = await session.get(User, str(interaction.user.id))
             if not user:
                 await interaction.response.send_message("Use `/start` first!", ephemeral=True)
@@ -856,7 +887,7 @@ class MarketCog(commands.Cog):
                 copies = list(uc_result.scalars().all())
                 if not copies:
                     await interaction.response.send_message(
-                        "You don't own that card.", ephemeral=True
+                        "You don't own that part.", ephemeral=True
                     )
                     return
 

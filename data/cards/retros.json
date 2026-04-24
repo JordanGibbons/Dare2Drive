@@ -1,7 +1,7 @@
 [
   {
-    "name": "Drum Stoppers",
-    "slot": "brakes",
+    "name": "Drum Retros",
+    "slot": "retros",
     "rarity": "common",
     "stats": {
       "primary": {
@@ -14,11 +14,11 @@
         "durability": 35
       }
     },
-    "compatible_body_types": null
+    "compatible_hull_classes": null
   },
   {
-    "name": "Bargain Pads",
-    "slot": "brakes",
+    "name": "Bargain Retros",
+    "slot": "retros",
     "rarity": "common",
     "stats": {
       "primary": {
@@ -31,11 +31,11 @@
         "durability": 40
       }
     },
-    "compatible_body_types": null
+    "compatible_hull_classes": null
   },
   {
-    "name": "Ironclamp Discs",
-    "slot": "brakes",
+    "name": "Ironclamp Retros",
+    "slot": "retros",
     "rarity": "uncommon",
     "stats": {
       "primary": {
@@ -48,11 +48,11 @@
         "durability": 55
       }
     },
-    "compatible_body_types": null
+    "compatible_hull_classes": null
   },
   {
-    "name": "Scorchstop Ceramics",
-    "slot": "brakes",
+    "name": "Scorchstop Retros",
+    "slot": "retros",
     "rarity": "rare",
     "stats": {
       "primary": {
@@ -65,11 +65,11 @@
         "durability": 68
       }
     },
-    "compatible_body_types": null
+    "compatible_hull_classes": null
   },
   {
-    "name": "Titangrip Carbon Brakes",
-    "slot": "brakes",
+    "name": "Titangrip Carbon Retros",
+    "slot": "retros",
     "rarity": "epic",
     "stats": {
       "primary": {
@@ -82,11 +82,11 @@
         "durability": 82
       }
     },
-    "compatible_body_types": null
+    "compatible_hull_classes": null
   },
   {
-    "name": "Voidlock Stoppers",
-    "slot": "brakes",
+    "name": "Voidlock Retros",
+    "slot": "retros",
     "rarity": "legendary",
     "stats": {
       "primary": {
@@ -100,6 +100,6 @@
       }
     },
     "print_max": 500,
-    "compatible_body_types": null
+    "compatible_hull_classes": null
   }
 ]

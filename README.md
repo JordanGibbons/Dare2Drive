@@ -1,8 +1,14 @@
 # Dare2Drive
 
-A Discord trading-card game where players collect car-part cards, assemble them
-into a build, and race against other players. Built with **discord.py**,
-**FastAPI**, **SQLAlchemy (async)**, **PostgreSQL**, and **Redis**.
+A Discord trading-card game where players scavenge ship-part cards, assemble
+them into a build, and race their ships through the sector. Built with
+**discord.py**, **FastAPI**, **SQLAlchemy (async)**, **PostgreSQL**, and
+**Redis**.
+
+Each Discord server becomes a **Sector**, and any channel inside it can be
+promoted to a playable **System** (star system) by a server admin — gameplay
+commands only work in enabled systems, while inventory and card state remain
+universe-wide.
 
 ---
 
@@ -54,25 +60,29 @@ dare2drive/
 │       └── users.py
 ├── bot/                  # Discord bot
 │   ├── main.py
+│   ├── system_gating.py  # System enforcement + command registry
 │   └── cogs/
-│       ├── cards.py      # /daily, /pack, /inventory, /inspect
-│       ├── garage.py     # /start, /garage, /equip, /profile
-│       ├── market.py     # /market, /list, /buy, /trade
-│       └── race.py       # /race, /challenge, /leaderboard, /wrecks
+│       ├── admin.py      # /system_*, /sector_*, /admin_*
+│       ├── cards.py      # /daily, /pack, /inventory, /inspect, /salvage
+│       ├── hangar.py     # /start, /hangar, /equip, /build, /ship, /profile
+│       ├── market.py     # /market, /list, /buy, /trade, /shop
+│       ├── race.py       # /race, /multirace, /leaderboard, /wrecks
+│       └── tutorial.py   # onboarding dialogue + step tracking
 ├── config/
 │   ├── logging.py        # Unified logger
 │   └── settings.py       # Pydantic BaseSettings
 ├── data/
 │   ├── cards/            # Card definitions (JSON per slot)
-│   │   ├── brakes.json
-│   │   ├── chassis.json
-│   │   ├── engines.json
-│   │   ├── suspension.json
-│   │   ├── tires.json
-│   │   ├── transmissions.json
-│   │   └── turbos.json
+│   │   ├── drives.json
+│   │   ├── hulls.json
+│   │   ├── overdrives.json
+│   │   ├── reactors.json
+│   │   ├── retros.json
+│   │   ├── stabilizers.json
+│   │   └── thrusters.json
 │   ├── environments.json
-│   └── loot_tables.json
+│   ├── loot_tables.json
+│   └── tutorial.json
 ├── db/
 │   ├── models.py         # SQLAlchemy ORM models
 │   ├── session.py        # Async engine + session factory
@@ -86,25 +96,39 @@ dare2drive/
 │   ├── Dockerfile.prod
 │   └── entrypoint.sh
 ├── engine/
+│   ├── card_mint.py      # Card rolling + serial number assignment
+│   ├── class_engine.py   # Race-format classification from stats
 │   ├── durability.py     # Part failure + wreck resolution
-│   ├── environment.py    # Track conditions
+│   ├── environment.py    # Space / environmental conditions
 │   ├── race_engine.py    # Main race orchestrator
+│   ├── ship_namer.py     # Ship Title name generation
 │   └── stat_resolver.py  # Build stat aggregation
 ├── scripts/
+│   ├── audit_pivot.py    # Guardrail against car-era vocab leaks
+│   ├── dev.py            # `d2d` developer CLI
 │   ├── generate_card_image.py
 │   └── seed_cards.py
 ├── tests/
 │   ├── conftest.py
+│   ├── test_admin.py
 │   ├── test_api.py
+│   ├── test_audit_pivot.py
+│   ├── test_card_mint.py
 │   ├── test_card_renderer.py
+│   ├── test_class_engine.py
 │   ├── test_durability.py
 │   ├── test_environment.py
 │   ├── test_logging.py
+│   ├── test_metrics.py
 │   ├── test_models.py
+│   ├── test_pack_reveal_view.py
 │   ├── test_race_engine.py
+│   ├── test_system_gating.py
 │   ├── test_seed_data.py
 │   ├── test_settings.py
-│   └── test_stat_resolver.py
+│   ├── test_ship_namer.py
+│   ├── test_stat_resolver.py
+│   └── test_systems_sectors.py
 ├── .env.example
 ├── .github/workflows/ci.yml
 ├── .gitignore
@@ -121,24 +145,68 @@ dare2drive/
 
 ### Discord Slash Commands
 
+Gameplay commands only respond in channels enabled as **systems** by a server
+admin. System/sector admin commands work anywhere in the guild.
+
+#### Onboarding & inventory
+
 | Command | Description |
 |---------|-------------|
-| `/start` | Create your profile and choose a body type |
-| `/daily` | Claim daily credits + chance at a free card |
-| `/pack <type>` | Open a card pack (`junkyard_pack`, `performance_pack`, `legend_crate`) |
+| `/start` | Create your profile and pick a hull class |
+| `/skip_tutorial` | Skip the tutorial and jump straight into racing |
+| `/daily` | Claim 100 Creds + one part for every slot (24h cooldown) |
+| `/pack <type>` | Open a crate (`salvage_crate`, `gear_crate`, `legend_crate`) |
 | `/inventory` | Browse your card collection (paginated) |
 | `/inspect <card>` | View full stats for a card |
-| `/garage` | View your current build |
-| `/equip <card>` | Equip a card to your build |
+| `/request_inspect <user>` | Ask to peek inside another player's hangar |
+| `/salvage <card>` | Scrap a part for Creds |
+
+#### Ship building
+
+| Command | Description |
+|---------|-------------|
+| `/hangar` | View your current build |
+| `/equip <slot> <card>` | Equip a card to a build slot |
+| `/autoequip <mode>` | Auto-equip your best or worst parts into every slot |
+| `/build preview` | Preview your build's race format and stats |
+| `/build mint` | Mint a Ship Title for your completed build |
+| `/build disassemble` | Scrap your Ship Title and unlock the build |
+| `/build new` | Open a new build slot (500 Creds) |
+| `/build list` | List all your builds |
+| `/ship rename <name>` | Set a custom name for your Ship Title |
+| `/peek <user>` | View another player's hangar (public) |
 | `/profile` | View your profile stats |
-| `/race` | Race against a random opponent |
-| `/challenge <user>` | Challenge another player to a race |
+
+#### Racing
+
+| Command | Description |
+|---------|-------------|
+| `/race <user>` | Challenge another player to a race |
+| `/multirace` | Host a multi-player race event (2-min signup, max 3) |
 | `/leaderboard` | View the top racers |
 | `/wrecks` | View your wreck history |
+
+#### Marketplace
+
+| Command | Description |
+|---------|-------------|
 | `/market` | Browse market listings |
-| `/list <card> <price>` | List a card for sale |
-| `/buy <listing>` | Purchase a market listing |
-| `/trade <user> <card>` | Offer a card trade |
+| `/list <card> <price>` | List a part for sale |
+| `/buy <listing>` | Buy a part from the market |
+| `/trade <user> <card>` | Initiate a card trade with another player |
+| `/shop` | Browse the NPC parts shop (common parts always in stock) |
+| `/shop_buy <part>` | Buy a common part from the NPC shop |
+
+#### Server admin — systems & sectors
+
+| Command                     | Description                                          |
+| --------------------------- | ---------------------------------------------------- |
+| `/system_enable`            | Enable the current channel as a playable system      |
+| `/system_disable`           | Disable the current channel                          |
+| `/system_rename <name>`     | Rename the current system                            |
+| `/sector_info`              | Show this server's sector status and active systems  |
+| `/sector_set_flavor <text>` | (Owner) set flavor text for this sector              |
+| `/admin_set_system_cap <n>` | (Bot owner) override the system cap for a guild      |
 
 ---
 
@@ -198,7 +266,7 @@ secrets.
 ## Generating Card Images
 
 ```bash
-python -m scripts.generate_card_image --card-name "V8 Rumbler" --output cards_out/
+python -m scripts.generate_card_image --card-name "Rustbucket Reactor" --output cards_out/
 ```
 
 Produces a 400×560 RGBA PNG with rarity-styled background, stat bars, and
@@ -261,18 +329,18 @@ docker compose -f docker-compose.prod.yml up --build
 ### Race Flow
 
 1. Both players' builds are aggregated into composite stats
-2. A random environment (track condition) is rolled
+2. A random space condition is rolled from `data/environments.json`
 3. Environment weights modify stat importance
 4. Durability checks run — parts can fail (minor/major/DNF)
 5. Random variance (±5%) adds unpredictability
 6. Final scores are computed, DNFs are sorted last
-7. Winner gets XP + credits, wreck results applied to losers
+7. Winner gets XP + Creds, wreck results applied to losers
 
 ### Durability & Wrecks
 
 - Each part has a durability stat (0–100)
 - Lower durability = higher failure chance
-- Turbo parts increase engine temperature → higher overheat risk
+- Overdrive parts push the reactor harder → higher overheat risk
 - On failure: **minor** (score penalty), **major** (bigger penalty), **DNF** (race over)
 - Wrecks can destroy 1–3 parts, weighted toward the failed slot
 - **Ghost** cards are immune to wrecks
@@ -280,10 +348,10 @@ docker compose -f docker-compose.prod.yml up --build
 
 ### Economy
 
-- `/daily` gives 50–150 credits + 20% chance at a common card
-- Pack prices: Junkyard (100), Performance (300), Legend Crate (800)
+- `/daily` gives 100 Creds + one rolled part for every slot (24h cooldown)
+- Crate prices: Salvage Crate (100), Gear Crate (350), Legend Crate (1200)
 - Market allows player-to-player trading with price setting
-- Race wins award XP and credits
+- Race wins award XP and Creds
 
 ---
 

@@ -61,11 +61,11 @@ class TestShouldPartSurviveWreck:
 class TestCheckDurability:
     def test_high_durability_no_failures(self):
         """Parts with durability 100 should never fail."""
-        slot_durabilities = {"engine": 100, "tires": 100, "brakes": 100}
+        slot_durabilities = {"reactor": 100, "thrusters": 100, "retros": 100}
         equipped = {
-            "engine": {"id": "e1", "name": "Test Engine", "rarity": "common"},
-            "tires": {"id": "t1", "name": "Test Tires", "rarity": "common"},
-            "brakes": {"id": "b1", "name": "Test Brakes", "rarity": "common"},
+            "reactor": {"id": "e1", "name": "Test Reactor", "rarity": "common"},
+            "thrusters": {"id": "t1", "name": "Test Thrusters", "rarity": "common"},
+            "retros": {"id": "b1", "name": "Test Retros", "rarity": "common"},
         }
         # The roll is random(0,100) and durability is 100, so roll can never exceed it
         # Actually uniform(0,100) can equal 100 in theory, but practically never
@@ -75,16 +75,16 @@ class TestCheckDurability:
 
     def test_zero_durability_always_fails(self):
         """Parts with durability 0 should not be checked (skipped)."""
-        slot_durabilities = {"engine": 0}
-        equipped = {"engine": {"id": "e1", "name": "Test", "rarity": "common"}}
+        slot_durabilities = {"reactor": 0}
+        equipped = {"reactor": {"id": "e1", "name": "Test", "rarity": "common"}}
         result = check_durability(slot_durabilities, equipped)
         assert len(result.failures) == 0
 
     @patch("engine.durability.random.uniform", return_value=90.0)
     def test_low_durability_causes_failure(self, mock_uniform):
         """A roll of 90 against durability 30 → excess 60 → DNF."""
-        slot_durabilities = {"engine": 30}
-        equipped = {"engine": {"id": "e1", "name": "Bad Engine", "rarity": "common"}}
+        slot_durabilities = {"reactor": 30}
+        equipped = {"reactor": {"id": "e1", "name": "Bad Reactor", "rarity": "common"}}
         result = check_durability(slot_durabilities, equipped)
         assert len(result.failures) == 1
         assert result.failures[0].severity == FailureSeverity.DNF
@@ -94,8 +94,8 @@ class TestCheckDurability:
     @patch("engine.durability.random.uniform", return_value=55.0)
     def test_minor_failure(self, mock_uniform):
         """Roll 55 against durability 50 → excess 5 → minor."""
-        slot_durabilities = {"engine": 50}
-        equipped = {"engine": {"id": "e1", "name": "Test Engine", "rarity": "common"}}
+        slot_durabilities = {"reactor": 50}
+        equipped = {"reactor": {"id": "e1", "name": "Test Reactor", "rarity": "common"}}
         result = check_durability(slot_durabilities, equipped)
         assert len(result.failures) == 1
         assert result.failures[0].severity == FailureSeverity.MINOR
@@ -105,8 +105,8 @@ class TestCheckDurability:
     @patch("engine.durability.random.uniform", return_value=75.0)
     def test_major_failure(self, mock_uniform):
         """Roll 75 against durability 50 → excess 25 → major."""
-        slot_durabilities = {"engine": 50}
-        equipped = {"engine": {"id": "e1", "name": "Test Engine", "rarity": "common"}}
+        slot_durabilities = {"reactor": 50}
+        equipped = {"reactor": {"id": "e1", "name": "Test Reactor", "rarity": "common"}}
         result = check_durability(slot_durabilities, equipped)
         assert len(result.failures) == 1
         assert result.failures[0].severity == FailureSeverity.MAJOR
@@ -114,8 +114,8 @@ class TestCheckDurability:
 
     def test_wreck_parts_only_on_dnf(self):
         """Wrecked parts should only be populated when DNF occurs."""
-        slot_durabilities = {"engine": 100}
-        equipped = {"engine": {"id": "e1", "name": "Test", "rarity": "common"}}
+        slot_durabilities = {"reactor": 100}
+        equipped = {"reactor": {"id": "e1", "name": "Test", "rarity": "common"}}
         random.seed(1)
         result = check_durability(slot_durabilities, equipped)
         assert result.wrecked_parts == []
@@ -123,20 +123,20 @@ class TestCheckDurability:
     @patch("engine.durability.random.uniform", return_value=99.0)
     @patch("engine.durability._resolve_wreck")
     def test_dnf_triggers_wreck(self, mock_wreck, mock_uniform):
-        mock_wreck.return_value = [WreckPart(card_id="e1", slot="engine", card_name="Bad Engine")]
-        slot_durabilities = {"engine": 30}
-        equipped = {"engine": {"id": "e1", "name": "Bad Engine", "rarity": "common"}}
+        mock_wreck.return_value = [WreckPart(card_id="e1", slot="reactor", card_name="Bad Reactor")]
+        slot_durabilities = {"reactor": 30}
+        equipped = {"reactor": {"id": "e1", "name": "Bad Reactor", "rarity": "common"}}
         result = check_durability(slot_durabilities, equipped)
         assert result.dnf is True
         assert len(result.wrecked_parts) == 1
-        assert result.wrecked_parts[0].card_name == "Bad Engine"
+        assert result.wrecked_parts[0].card_name == "Bad Reactor"
 
-    def test_turbo_overheat_check(self):
-        """Turbo should have extra failure chance when overheating."""
+    def test_overdrive_overheat_check(self):
+        """Overdrive should have extra failure chance when overheating."""
         # Use a seed that makes initial roll pass but overheat roll fail
-        slot_durabilities = {"turbo": 80}
+        slot_durabilities = {"overdrive": 80}
         equipped = {
-            "turbo": {"id": "t1", "name": "Hot Turbo", "rarity": "common"},
+            "overdrive": {"id": "t1", "name": "Hot Overdrive", "rarity": "common"},
         }
         # engine_temp_increase > engine_max_temp * 0.8
         random.seed(0)
@@ -152,6 +152,6 @@ class TestCheckDurability:
 
 class TestWreckPart:
     def test_to_dict(self):
-        wp = WreckPart(card_id="abc", slot="engine", card_name="Test")
+        wp = WreckPart(card_id="abc", slot="reactor", card_name="Test")
         d = wp.to_dict()
-        assert d == {"card_id": "abc", "slot": "engine", "card_name": "Test"}
+        assert d == {"card_id": "abc", "slot": "reactor", "card_name": "Test"}

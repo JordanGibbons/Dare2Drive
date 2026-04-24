@@ -1,6 +1,7 @@
 {
-  "junkyard_pack": {
-    "display_name": "Junkyard Pack",
+  "salvage_crate": {
+    "display_name": "Salvage Crate",
+    "flavor": "A grimy crate of scavenged ship parts. Most of it's scrap. Some of it's not.",
     "size": 3,
     "weights": {
       "common": 60,
@@ -11,8 +12,9 @@
       "ghost": 0.01
     }
   },
-  "performance_pack": {
-    "display_name": "Performance Pack",
+  "gear_crate": {
+    "display_name": "Gear Crate",
+    "flavor": "Sealed gear-grade parts, straight from a sector quartermaster's cache.",
     "size": 3,
     "weights": {
       "common": 15,
@@ -25,6 +27,7 @@
   },
   "legend_crate": {
     "display_name": "Legend Crate",
+    "flavor": "Sector legends only. Pray for ghosts.",
     "size": 3,
     "weights": {
       "common": 0,

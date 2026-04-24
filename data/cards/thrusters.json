@@ -1,7 +1,7 @@
 [
   {
-    "name": "Bald Eagles",
-    "slot": "tires",
+    "name": "Bald Thrusters",
+    "slot": "thrusters",
     "rarity": "common",
     "stats": {
       "primary": {
@@ -15,11 +15,11 @@
         "drag": 12
       }
     },
-    "compatible_body_types": null
+    "compatible_hull_classes": null
   },
   {
-    "name": "Pavement Pawns",
-    "slot": "tires",
+    "name": "Scrapyard Vector-Jets",
+    "slot": "thrusters",
     "rarity": "common",
     "stats": {
       "primary": {
@@ -33,11 +33,11 @@
         "drag": 10
       }
     },
-    "compatible_body_types": null
+    "compatible_hull_classes": null
   },
   {
-    "name": "Stormrunner All-Seasons",
-    "slot": "tires",
+    "name": "Stormrunner Pulse Thrusters",
+    "slot": "thrusters",
     "rarity": "uncommon",
     "stats": {
       "primary": {
@@ -51,11 +51,11 @@
         "drag": 8
       }
     },
-    "compatible_body_types": null
+    "compatible_hull_classes": null
   },
   {
-    "name": "Driftcore Slicks",
-    "slot": "tires",
+    "name": "Driftcore Thrusters",
+    "slot": "thrusters",
     "rarity": "rare",
     "stats": {
       "primary": {
@@ -69,11 +69,11 @@
         "drag": 5
       }
     },
-    "compatible_body_types": null
+    "compatible_hull_classes": null
   },
   {
-    "name": "Venomgrip Semi-Slicks",
-    "slot": "tires",
+    "name": "Venomgrip Plasma Thrusters",
+    "slot": "thrusters",
     "rarity": "epic",
     "stats": {
       "primary": {
@@ -87,11 +87,11 @@
         "drag": 4
       }
     },
-    "compatible_body_types": null
+    "compatible_hull_classes": null
   },
   {
-    "name": "Spectre Contact Pros",
-    "slot": "tires",
+    "name": "Spectre Contact Thrusters",
+    "slot": "thrusters",
     "rarity": "legendary",
     "stats": {
       "primary": {
@@ -106,6 +106,6 @@
       }
     },
     "print_max": 500,
-    "compatible_body_types": null
+    "compatible_hull_classes": null
   }
 ]

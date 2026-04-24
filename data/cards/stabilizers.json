@@ -1,7 +1,7 @@
 [
   {
-    "name": "Springboard Basics",
-    "slot": "suspension",
+    "name": "Springboard Stabilizers",
+    "slot": "stabilizers",
     "rarity": "common",
     "stats": {
       "primary": {
@@ -14,11 +14,11 @@
         "brake_efficiency_scaling": 2
       }
     },
-    "compatible_body_types": null
+    "compatible_hull_classes": null
   },
   {
-    "name": "Bounceback Struts",
-    "slot": "suspension",
+    "name": "Bounceback Stabilizers",
+    "slot": "stabilizers",
     "rarity": "common",
     "stats": {
       "primary": {
@@ -31,11 +31,11 @@
         "brake_efficiency_scaling": 3
       }
     },
-    "compatible_body_types": null
+    "compatible_hull_classes": null
   },
   {
-    "name": "Ironride Coilovers",
-    "slot": "suspension",
+    "name": "Ironride Stabilizers",
+    "slot": "stabilizers",
     "rarity": "uncommon",
     "stats": {
       "primary": {
@@ -48,11 +48,11 @@
         "brake_efficiency_scaling": 6
       }
     },
-    "compatible_body_types": null
+    "compatible_hull_classes": null
   },
   {
-    "name": "Viperstance Adjustables",
-    "slot": "suspension",
+    "name": "Viperstance Adjustable Stabilizers",
+    "slot": "stabilizers",
     "rarity": "rare",
     "stats": {
       "primary": {
@@ -65,11 +65,11 @@
         "brake_efficiency_scaling": 10
       }
     },
-    "compatible_body_types": null
+    "compatible_hull_classes": null
   },
   {
-    "name": "Graviton Active Dampers",
-    "slot": "suspension",
+    "name": "Graviton Active Stabilizers",
+    "slot": "stabilizers",
     "rarity": "epic",
     "stats": {
       "primary": {
@@ -82,11 +82,11 @@
         "brake_efficiency_scaling": 15
       }
     },
-    "compatible_body_types": null
+    "compatible_hull_classes": null
   },
   {
-    "name": "Wraith Adaptive Air",
-    "slot": "suspension",
+    "name": "Wraith Adaptive Stabilizers",
+    "slot": "stabilizers",
     "rarity": "legendary",
     "stats": {
       "primary": {
@@ -100,6 +100,6 @@
       }
     },
     "print_max": 500,
-    "compatible_body_types": null
+    "compatible_hull_classes": null
   }
 ]

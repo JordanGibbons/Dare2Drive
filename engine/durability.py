@@ -75,8 +75,8 @@ def check_durability(
     ----------
     slot_durabilities : dict mapping slot → durability value (0-100)
     equipped_cards : dict mapping slot → card data dict (needs id, name, rarity, stats)
-    turbo_temp_increase : turbo engine_temp_increase stat
-    engine_max_temp : engine max_engine_temp stat
+    turbo_temp_increase : overdrive engine_temp_increase stat
+    engine_max_temp : reactor max_engine_temp stat
     """
     result = DurabilityResult()
     worst_multiplier = 1.0
@@ -88,13 +88,17 @@ def check_durability(
 
         roll = random.uniform(0, 100)
 
-        # Special turbo overheat check
-        if slot == "turbo" and turbo_temp_increase > engine_max_temp * 0.8 and engine_max_temp > 0:
+        # Special overdrive overheat check
+        if (
+            slot == "overdrive"
+            and turbo_temp_increase > engine_max_temp * 0.8
+            and engine_max_temp > 0
+        ):
             # Additional failure chance — re-roll with penalty
             overheat_penalty = (turbo_temp_increase - engine_max_temp * 0.8) * 2
             roll = max(roll, random.uniform(0, 100) + overheat_penalty)
             log.debug(
-                "Turbo overheat penalty applied: temp_inc=%.1f, max_temp=%.1f, adj_roll=%.1f",
+                "Overdrive overheat penalty applied: temp_inc=%.1f, max_temp=%.1f, adj_roll=%.1f",
                 turbo_temp_increase,
                 engine_max_temp,
                 roll,
