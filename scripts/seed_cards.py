@@ -22,13 +22,13 @@ log = get_logger(__name__)
 CARDS_DIR = Path(__file__).resolve().parent.parent / "data" / "cards"
 
 SLOT_FILE_MAP = {
-    "engines.json": "engine",
-    "transmissions.json": "transmission",
-    "tires.json": "tires",
-    "suspension.json": "suspension",
-    "chassis.json": "chassis",
-    "turbos.json": "turbo",
-    "brakes.json": "brakes",
+    "reactors.json": "reactor",
+    "drives.json": "drive",
+    "thrusters.json": "thrusters",
+    "stabilizers.json": "stabilizers",
+    "hulls.json": "hull",
+    "overdrives.json": "overdrive",
+    "retros.json": "retros",
 }
 
 
