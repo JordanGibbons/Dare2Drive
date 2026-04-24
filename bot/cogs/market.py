@@ -652,6 +652,11 @@ class MarketCog(commands.Cog):
             return
 
         async with async_session() as session:
+            system = await get_active_system(interaction, session)
+            if system is None:
+                await interaction.response.send_message(system_required_message(), ephemeral=True)
+                return
+
             # Validate both cards exist
             your_result = await session.execute(select(Card).where(Card.name == your_card))
             your_card_obj = your_result.scalar_one_or_none()

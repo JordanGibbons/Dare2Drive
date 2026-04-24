@@ -21,7 +21,11 @@ from .conftest import make_interaction
 
 @pytest.mark.asyncio
 async def test_new_player_can_reach_a_minted_ship_title(fresh_player) -> None:
-    """/inventory → /equip ×7 → /build mint on a fresh account."""
+    """/inventory → /equip ×7 → /build mint on a fresh account.
+
+    Build management (equip, mint) is universe-wide per the phase-0 policy:
+    a player can manage their ship from any channel. No active_system needed.
+    """
     user_id, starters = fresh_player
     uid_int = int(user_id)
 

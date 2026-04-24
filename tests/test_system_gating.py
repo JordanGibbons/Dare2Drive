@@ -49,14 +49,40 @@ def test_command_registries_are_disjoint():
 
 
 def test_known_universe_wide_commands_listed():
-    """Profile, inventory, help, etc. are universe-wide."""
-    for cmd in {"profile", "inventory", "help", "start", "skip_tutorial"}:
+    """Profile, inventory, build management, etc. are universe-wide —
+    a player can manage their builds from any channel the bot is in."""
+    for cmd in {
+        "profile",
+        "inventory",
+        "help",
+        "start",
+        "skip_tutorial",
+        "hangar",
+        "equip",
+        "autoequip",
+        "preview",
+        "mint",
+    }:
         assert cmd in UNIVERSE_WIDE_COMMANDS
 
 
 def test_known_system_gated_commands_listed():
-    """Race, pack, equip, etc. require an enabled system."""
-    for cmd in {"race", "pack", "equip", "autoequip", "preview", "mint"}:
+    """Competition and economy commands require an enabled system."""
+    for cmd in {
+        "race",
+        "multirace",
+        "leaderboard",
+        "wrecks",
+        "pack",
+        "daily",
+        "market",
+        "list",
+        "buy",
+        "trade",
+        "shop",
+        "shop_buy",
+        "salvage",
+    }:
         assert cmd in SYSTEM_GATED_COMMANDS
 
 

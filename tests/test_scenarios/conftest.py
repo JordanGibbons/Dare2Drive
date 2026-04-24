@@ -237,7 +237,9 @@ async def equipped_player(fresh_player):
 
 @pytest_asyncio.fixture
 async def minted_player(equipped_player):
-    """equipped_player with a minted ShipTitle. Drives the real /build mint handler."""
+    """equipped_player with a minted ShipTitle. Drives the real /build mint
+    handler. /build mint is universe-wide (build management isn't sector-gated),
+    so no active_system dependency is needed here."""
     user_id, starters = equipped_player
     from bot.cogs.hangar import HangarCog
 

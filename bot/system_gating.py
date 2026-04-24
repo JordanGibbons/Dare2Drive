@@ -9,8 +9,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from db.models import System
 
 # Commands that work anywhere (DMs, any channel, registered or not).
+#
+# Ship/build ownership is universe-wide: a player can inspect their cards and
+# manage their builds from any channel the bot is in. Competitive and economic
+# activity is sector-scoped — see SYSTEM_GATED_COMMANDS below.
 UNIVERSE_WIDE_COMMANDS: frozenset[str] = frozenset(
     {
+        # Account + read-only
         "profile",
         "inventory",
         "inspect",
@@ -19,32 +24,47 @@ UNIVERSE_WIDE_COMMANDS: frozenset[str] = frozenset(
         "skip_tutorial",
         "garage",  # legacy alias retained during transition
         "hangar",
-        # admin
+        "peek",
+        "request_inspect",
+        # Build / ship management (personal, not sector-bound)
+        "equip",
+        "autoequip",
+        "preview",
+        "mint",
+        # Admin
         "admin_reset_player",
         "admin_set_tutorial_step",
         "admin_give_creds",
-        # system/sector admin commands
+        # System/sector admin commands
         "system",
         "sector",
     }
 )
 
 # Commands that require an enabled system to run.
+#
+# Policy: ship/build ownership is universe-wide (a player can view and manage
+# their builds anywhere the bot is enabled). Gameplay activity — racing,
+# economy, sector-scoped state — requires an active system in the channel.
+# Future phases may attach ship location to a specific system; that change
+# would make ship movement/arrival commands gated as well.
 SYSTEM_GATED_COMMANDS: frozenset[str] = frozenset(
     {
+        # Racing & competition
         "race",
-        "challenge",
-        "pack",
-        "daily",
-        "equip",
-        "autoequip",
-        "preview",
-        "mint",
+        "multirace",
         "leaderboard",
         "wrecks",
+        # Economy — pack/daily rewards and marketplace activity
+        "pack",
+        "daily",
         "market",
         "list",
         "buy",
+        "trade",
+        "shop",
+        "shop_buy",
+        "salvage",
     }
 )
 
