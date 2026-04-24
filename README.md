@@ -5,9 +5,10 @@ them into a build, and race their ships through the sector. Built with
 **discord.py**, **FastAPI**, **SQLAlchemy (async)**, **PostgreSQL**, and
 **Redis**.
 
-Each Discord server becomes a **System**, and any channel inside it can be
-promoted to a playable **Sector** by a server admin — gameplay commands only
-work in enabled sectors, while inventory and card state remain universe-wide.
+Each Discord server becomes a **Sector**, and any channel inside it can be
+promoted to a playable **System** (star system) by a server admin — gameplay
+commands only work in enabled systems, while inventory and card state remain
+universe-wide.
 
 ---
 
@@ -59,9 +60,9 @@ dare2drive/
 │       └── users.py
 ├── bot/                  # Discord bot
 │   ├── main.py
-│   ├── sector_gating.py  # Sector enforcement + command registry
+│   ├── system_gating.py  # System enforcement + command registry
 │   └── cogs/
-│       ├── admin.py      # /sector_*, /system_*, /admin_*
+│       ├── admin.py      # /system_*, /sector_*, /admin_*
 │       ├── cards.py      # /daily, /pack, /inventory, /inspect, /salvage
 │       ├── hangar.py     # /start, /hangar, /equip, /build, /ship, /profile
 │       ├── market.py     # /market, /list, /buy, /trade, /shop
@@ -98,7 +99,7 @@ dare2drive/
 │   ├── card_mint.py      # Card rolling + serial number assignment
 │   ├── class_engine.py   # Race-format classification from stats
 │   ├── durability.py     # Part failure + wreck resolution
-│   ├── environment.py    # Sector / space conditions
+│   ├── environment.py    # Space / environmental conditions
 │   ├── race_engine.py    # Main race orchestrator
 │   ├── ship_namer.py     # Ship Title name generation
 │   └── stat_resolver.py  # Build stat aggregation
@@ -122,7 +123,7 @@ dare2drive/
 │   ├── test_models.py
 │   ├── test_pack_reveal_view.py
 │   ├── test_race_engine.py
-│   ├── test_sector_gating.py
+│   ├── test_system_gating.py
 │   ├── test_seed_data.py
 │   ├── test_settings.py
 │   ├── test_ship_namer.py
@@ -144,8 +145,8 @@ dare2drive/
 
 ### Discord Slash Commands
 
-Gameplay commands only respond in channels enabled as **sectors** by a server
-admin. Sector/system admin commands work anywhere in the guild.
+Gameplay commands only respond in channels enabled as **systems** by a server
+admin. System/sector admin commands work anywhere in the guild.
 
 #### Onboarding & inventory
 
@@ -196,16 +197,16 @@ admin. Sector/system admin commands work anywhere in the guild.
 | `/shop` | Browse the NPC parts shop (common parts always in stock) |
 | `/shop_buy <part>` | Buy a common part from the NPC shop |
 
-#### Server admin — sectors & systems
+#### Server admin — systems & sectors
 
 | Command                     | Description                                          |
 | --------------------------- | ---------------------------------------------------- |
-| `/sector_enable`            | Enable the current channel as a playable sector      |
-| `/sector_disable`           | Disable the current channel                          |
-| `/sector_rename <name>`     | Rename the current sector                            |
-| `/system_info`              | Show this server's system status and active sectors  |
-| `/system_set_flavor <text>` | (Owner) set flavor text for this system              |
-| `/admin_set_sector_cap <n>` | (Bot owner) override the sector cap for a guild      |
+| `/system_enable`            | Enable the current channel as a playable system      |
+| `/system_disable`           | Disable the current channel                          |
+| `/system_rename <name>`     | Rename the current system                            |
+| `/sector_info`              | Show this server's sector status and active systems  |
+| `/sector_set_flavor <text>` | (Owner) set flavor text for this sector              |
+| `/admin_set_system_cap <n>` | (Bot owner) override the system cap for a guild      |
 
 ---
 
