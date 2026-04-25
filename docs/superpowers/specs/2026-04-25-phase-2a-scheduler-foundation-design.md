@@ -240,7 +240,7 @@ The durable job ledger. Single source of truth for "what should fire when." Gene
 
 ```
 id              UUID         PRIMARY KEY
-user_id         varchar(20)  NOT NULL  FK users.id
+user_id         varchar(20)  NOT NULL  FK users.discord_id
 job_type        ENUM(timer_complete, accrual_tick)
 payload         JSONB        NOT NULL  -- handler-interpreted
 scheduled_for   timestamptz  NOT NULL
@@ -264,7 +264,7 @@ Polymorphic table for all finite-duration tasks.
 
 ```
 id                       UUID         PRIMARY KEY
-user_id                  varchar(20)  NOT NULL  FK users.id
+user_id                  varchar(20)  NOT NULL  FK users.discord_id
 timer_type               ENUM(training, research, ship_build)  NOT NULL
 recipe_id                varchar(64)  NOT NULL  -- key into the type's content JSON
 payload                  JSONB        NOT NULL DEFAULT '{}'
@@ -290,7 +290,7 @@ UNIQUE INDEX ux_timers_one_ship_build_active ON (user_id) WHERE timer_type='ship
 
 ```
 id                  UUID         PRIMARY KEY
-user_id             varchar(20)  NOT NULL  FK users.id
+user_id             varchar(20)  NOT NULL  FK users.discord_id
 station_type        ENUM(cargo_run, repair_bay, watch_tower)  NOT NULL
 crew_id             UUID         NOT NULL  FK crew_members.id
 assigned_at         timestamptz  NOT NULL DEFAULT now()
@@ -314,7 +314,7 @@ Doubles as the **idempotency record** for handler-fired sources.
 
 ```
 id            UUID         PRIMARY KEY
-user_id       varchar(20)  NOT NULL  FK users.id
+user_id       varchar(20)  NOT NULL  FK users.discord_id
 source_type   ENUM(timer_complete, accrual_tick, accrual_claim, timer_cancel_refund)  NOT NULL
 source_id     varchar(128) NOT NULL  -- see source_id conventions below
 delta         JSONB        NOT NULL  -- {"credits": 100, "xp": 50, "items": [...]}
