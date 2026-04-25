@@ -31,9 +31,9 @@ STEP_ALLOWED_COMMANDS: dict[TutorialStep, set[str]] = {
     TutorialStep.INSPECT: {"inventory", "inspect"},
     TutorialStep.EQUIP: {"inventory", "inspect", "equip", "autoequip"},
     TutorialStep.MINT: {"inventory", "inspect", "equip", "autoequip", "preview", "mint"},
-    TutorialStep.GARAGE: {"inventory", "inspect", "equip", "autoequip", "garage"},
-    TutorialStep.RACE: {"inventory", "inspect", "equip", "autoequip", "garage", "race"},
-    TutorialStep.PACK: {"inventory", "inspect", "equip", "autoequip", "garage"},
+    TutorialStep.GARAGE: {"inventory", "inspect", "equip", "autoequip", "hangar"},
+    TutorialStep.RACE: {"inventory", "inspect", "equip", "autoequip", "hangar", "race"},
+    TutorialStep.PACK: {"inventory", "inspect", "equip", "autoequip", "hangar"},
     TutorialStep.COMPLETE: set(),  # Empty means all commands allowed
 }
 
@@ -317,7 +317,7 @@ async def advance_tutorial(
                 title="🏗️ Check Your Build",
             )
 
-        elif step == TutorialStep.GARAGE and command_name == "garage":
+        elif step == TutorialStep.GARAGE and command_name == "hangar":
             user.tutorial_step = TutorialStep.RACE
             await session.commit()
             await send_dialogue(
