@@ -120,3 +120,47 @@ async def test_crew_command_lists_user_crew(hiring_user, db_session):
     flat = (embed.description or "") + " ".join(f.value for f in embed.fields)
     assert "Jax" in flat
     assert "Mira" in flat
+
+
+@pytest.mark.asyncio
+async def test_crew_inspect_command_shows_detail(hiring_user, db_session):
+    import discord
+    from discord.ext import commands
+
+    from bot.cogs.hiring import HiringCog
+    from db.models import CrewArchetype, CrewMember, Rarity
+
+    c = CrewMember(
+        user_id=hiring_user.discord_id,
+        first_name="Cas",
+        last_name="Harrow",
+        callsign="Crow",
+        archetype=CrewArchetype.NAVIGATOR,
+        rarity=Rarity.EPIC,
+        level=3,
+        xp=120,
+    )
+    db_session.add(c)
+    await db_session.flush()
+
+    bot = commands.Bot(command_prefix="!", intents=discord.Intents.default())
+    cog = HiringCog(bot)
+
+    interaction = MagicMock()
+    interaction.user = MagicMock()
+    interaction.user.id = hiring_user.discord_id
+    interaction.response = MagicMock()
+    interaction.response.send_message = AsyncMock()
+
+    with patch("bot.cogs.hiring.async_session") as sess_ctx:
+        sess_ctx.return_value.__aenter__.return_value = db_session
+        sess_ctx.return_value.__aexit__.return_value = None
+        await cog.crew_inspect.callback(cog, interaction, name='Cas "Crow" Harrow')
+
+    interaction.response.send_message.assert_called_once()
+    embed = interaction.response.send_message.call_args.kwargs["embed"]
+    flat = (embed.description or "") + " ".join(f.value for f in embed.fields)
+    assert "Navigator" in flat
+    assert "Epic" in flat
+    assert "L3" in flat or "Level 3" in flat
+    assert "120" in flat  # xp

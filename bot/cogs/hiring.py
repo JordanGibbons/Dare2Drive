@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import re
+
 import discord
 from discord import app_commands
 from discord.ext import commands
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.metrics import crew_recruited, currency_spent, dossier_purchased
 from bot.cogs.cards import _PackRevealView
@@ -74,6 +77,25 @@ async def _crew_name_autocomplete(
         if len(out) >= 25:
             break
     return out
+
+
+async def _lookup_crew_by_display(
+    session: AsyncSession, user_id: str, display_name: str
+) -> CrewMember | None:
+    """Parse 'First "Callsign" Last' and look up the crew member."""
+    m = re.match(r'^(.+?)\s+"(.+?)"\s+(.+)$', display_name.strip())
+    if not m:
+        return None
+    first, callsign, last = m.group(1), m.group(2), m.group(3)
+    result = await session.execute(
+        select(CrewMember).where(
+            CrewMember.user_id == user_id,
+            CrewMember.first_name == first,
+            CrewMember.last_name == last,
+            CrewMember.callsign == callsign,
+        )
+    )
+    return result.scalar_one_or_none()
 
 
 class HiringCog(commands.Cog):
@@ -231,6 +253,69 @@ class HiringCog(commands.Cog):
         )
         if len(members) > 25:
             embed.set_footer(text=f"Showing 25 of {len(members)}. Use filters to narrow.")
+        await interaction.response.send_message(embed=embed)
+
+    @app_commands.command(name="crew_inspect", description="Inspect a crew member.")
+    @app_commands.describe(name="Crew member name")
+    @app_commands.autocomplete(name=_crew_name_autocomplete)
+    @traced_command
+    async def crew_inspect(self, interaction: discord.Interaction, name: str) -> None:
+        """Universe-wide crew inspection — no system gating."""
+        from engine.crew_xp import xp_for_next
+
+        user_id = str(interaction.user.id)
+        async with async_session() as session:
+            member = await _lookup_crew_by_display(session, user_id, name)
+            if member is None:
+                await interaction.response.send_message(f"No crew named `{name}`.", ephemeral=True)
+                return
+
+            assigned_q = await session.execute(
+                select(CrewAssignment).where(CrewAssignment.crew_id == member.id)
+            )
+            assignment = assigned_q.scalar_one_or_none()
+
+            archetype = member.archetype.value
+            rarity = member.rarity.value
+            display = f'{member.first_name} "{member.callsign}" {member.last_name}'
+            level = member.level
+            xp = member.xp
+            acquired_at = member.acquired_at
+            is_assigned = assignment is not None
+
+        mapping = _get_archetype_mapping()[archetype]
+        arch_emoji = _ARCHETYPE_EMOJI[archetype]
+        rarity_emoji = _RARITY_EMOJI[rarity]
+
+        embed = discord.Embed(
+            title=f"{arch_emoji} {display}",
+            description=f"{rarity_emoji} **{rarity.title()}** {archetype.title()}",
+            color=0x3B82F6,
+        )
+        embed.add_field(name="Level", value=f"L{level}", inline=True)
+        if level >= 10:
+            embed.add_field(name="XP", value="MAX", inline=True)
+        else:
+            embed.add_field(
+                name="XP",
+                value=f"{xp} / {xp_for_next(level)}",
+                inline=True,
+            )
+
+        primary_display = mapping["primary"].replace("effective_", "").replace("_", " ")
+        secondary_display = mapping["secondary"].replace("effective_", "").replace("_", " ")
+        embed.add_field(
+            name="Boosts",
+            value=(f"**Primary:** {primary_display}\n**Secondary:** {secondary_display}"),
+            inline=False,
+        )
+        embed.add_field(
+            name="Assigned",
+            value=("Yes" if is_assigned else "In quarters"),
+            inline=True,
+        )
+        embed.set_footer(text=f"Acquired {acquired_at.strftime('%Y-%m-%d')}")
+
         await interaction.response.send_message(embed=embed)
 
     @app_commands.command(name="assign", description="Assign a crew member to your active build.")
