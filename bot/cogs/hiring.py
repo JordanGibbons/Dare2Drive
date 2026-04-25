@@ -10,14 +10,14 @@ from discord.ext import commands
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.metrics import crew_recruited, currency_spent, dossier_purchased
+from api.metrics import crew_assignment, crew_recruited, currency_spent, dossier_purchased
 from bot.cogs.cards import _PackRevealView
 from bot.reveal import CrewRevealEntry
 from bot.system_gating import get_active_system, system_required_message
 from config.logging import get_logger
 from config.metrics import trace_exemplar
 from config.tracing import traced_command
-from db.models import CrewAssignment, CrewMember, User
+from db.models import Build, CrewAssignment, CrewMember, User
 from db.session import async_session
 from engine.crew_recruit import InsufficientCreditsError, recruit_crew_from_dossier
 from engine.stat_resolver import _get_archetype_mapping
@@ -319,14 +319,112 @@ class HiringCog(commands.Cog):
         await interaction.response.send_message(embed=embed)
 
     @app_commands.command(name="assign", description="Assign a crew member to your active build.")
+    @app_commands.describe(crew="Crew member name")
+    @app_commands.autocomplete(crew=_crew_name_autocomplete)
     @traced_command
     async def assign(self, interaction: discord.Interaction, crew: str) -> None:
-        await interaction.response.send_message("Not implemented yet.", ephemeral=True)
+        user_id = str(interaction.user.id)
+        prior_name: str | None = None
+        async with async_session() as session:
+            system = await get_active_system(interaction, session)
+            if system is None:
+                await interaction.response.send_message(system_required_message(), ephemeral=True)
+                return
+
+            member = await _lookup_crew_by_display(session, user_id, crew)
+            if member is None:
+                await interaction.response.send_message(f"No crew named `{crew}`.", ephemeral=True)
+                return
+
+            build_q = await session.execute(
+                select(Build).where(Build.user_id == user_id, Build.is_active.is_(True)).limit(1)
+            )
+            build = build_q.scalar_one_or_none()
+            if build is None:
+                await interaction.response.send_message(
+                    "You don't have an active build. Use `/hangar` to create one.",
+                    ephemeral=True,
+                )
+                return
+
+            # Remove any existing assignment of THIS crew (covers re-assign across builds)
+            existing_q = await session.execute(
+                select(CrewAssignment).where(CrewAssignment.crew_id == member.id)
+            )
+            existing = existing_q.scalar_one_or_none()
+            if existing is not None:
+                await session.delete(existing)
+                await session.flush()
+
+            # Auto-unassign any prior same-archetype crew on THIS build
+            prior_q = await session.execute(
+                select(CrewAssignment).where(
+                    CrewAssignment.build_id == build.id,
+                    CrewAssignment.archetype == member.archetype,
+                )
+            )
+            prior = prior_q.scalar_one_or_none()
+            if prior is not None and prior.crew_id != member.id:
+                prior_member = await session.get(CrewMember, prior.crew_id)
+                if prior_member is not None:
+                    prior_name = (
+                        f'{prior_member.first_name} "{prior_member.callsign}" '
+                        f"{prior_member.last_name}"
+                    )
+                await session.delete(prior)
+                await session.flush()
+                crew_assignment.labels(action="auto_unassign").inc()
+
+            session.add(
+                CrewAssignment(
+                    crew_id=member.id,
+                    build_id=build.id,
+                    archetype=member.archetype,
+                )
+            )
+
+            display = f'{member.first_name} "{member.callsign}" {member.last_name}'
+            archetype_title = member.archetype.value.title()
+
+            await session.commit()
+
+        crew_assignment.labels(action="assign").inc()
+        msg = f"Assigned **{display}** as {archetype_title}."
+        if prior_name:
+            msg += f" (Replaced {prior_name}.)"
+        await interaction.response.send_message(msg)
 
     @app_commands.command(name="unassign", description="Remove a crew member from your build.")
+    @app_commands.describe(crew="Crew member name")
+    @app_commands.autocomplete(crew=_crew_name_autocomplete)
     @traced_command
     async def unassign(self, interaction: discord.Interaction, crew: str) -> None:
-        await interaction.response.send_message("Not implemented yet.", ephemeral=True)
+        user_id = str(interaction.user.id)
+        async with async_session() as session:
+            system = await get_active_system(interaction, session)
+            if system is None:
+                await interaction.response.send_message(system_required_message(), ephemeral=True)
+                return
+
+            member = await _lookup_crew_by_display(session, user_id, crew)
+            if member is None:
+                await interaction.response.send_message(f"No crew named `{crew}`.", ephemeral=True)
+                return
+
+            assignment_q = await session.execute(
+                select(CrewAssignment).where(CrewAssignment.crew_id == member.id)
+            )
+            assignment = assignment_q.scalar_one_or_none()
+            if assignment is None:
+                await interaction.response.send_message(f"`{crew}` isn't assigned.", ephemeral=True)
+                return
+
+            await session.delete(assignment)
+            display = f'{member.first_name} "{member.callsign}" {member.last_name}'
+            await session.commit()
+
+        crew_assignment.labels(action="unassign").inc()
+        await interaction.response.send_message(f"Unassigned **{display}** back to quarters.")
 
 
 async def setup(bot: commands.Bot) -> None:
