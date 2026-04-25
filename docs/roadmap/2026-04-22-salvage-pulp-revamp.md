@@ -215,32 +215,40 @@ Players hire crew. Crew assignment meaningfully changes encounter outcomes. Doss
 
 ---
 
-## Phase 2 — Background Progression (Scheduler + Timers + Accrual + Expeditions)
+## Phase 2 — Background Progression
+
+Phase 2 was originally scoped as a single shipping unit covering the scheduler, short timers, overnight accrual, and multi-hour expeditions. During Phase 2 brainstorming the work was split into two independently shippable sub-phases (2026-04-25):
+
+- **Phase 2a** ships the durable scheduler, short timers, and overnight accrual — all "fire-and-resolve" jobs that share the same infrastructure pattern.
+- **Phase 2b** ships expeditions on top of the Phase 2a scheduler. Expeditions add a mid-job interaction model (response windows, choice resolution, narrative state) that warrants its own spec.
+
+Splitting here lets the scheduler stress-test under simple, high-volume jobs before expedition complexity lands on top, and keeps each spec/plan to a sensible size. Phase 3 is blocked on Phase 2b.
+
+---
+
+## Phase 2a — Scheduler Foundation + Timers + Accrual
 
 **Status:** Blocked on Phase 1.
 
 ### Goal
 
-The bot heartbeat. Three time-scale engagement rhythms running in the background:
+The bot heartbeat, simple-job edition. Two background engagement rhythms:
 
 - **Timers** (15 min – 2 hr): crew training, research projects, ship builds
 - **Accrual** (overnight): crew assigned to stations generate credits/XP/resources passively
-- **Expeditions** (4 – 12 hr): narrative missions with mid-flight decision points
 
-The scheduler infrastructure built here is load-bearing for Phases 3+.
+The scheduler infrastructure built here is load-bearing for Phases 2b+.
 
 ### Mechanics
 
-- **Scheduler:** durable, restart-safe. Must survive bot restarts without missing ticks or duplicating fires. Recommended approach: Redis-backed durable queue (bot already uses Redis) with DB-persisted job records as source of truth.
+- **Scheduler:** durable, restart-safe. Must survive bot restarts without missing ticks or duplicating fires. Recommended approach: Redis-backed durable queue with DB-persisted job records as source of truth. (Redis is in `pyproject.toml` and `REDIS_URL` is configured, but no Python code touches it yet — Phase 2a introduces real Redis usage.)
 - **Timers:** finite-duration tasks tied to a user. Completion DMs the user (rate-limited, opt-outable).
 - **Accrual:** periodic yield computation (e.g., every N minutes) for crew assigned to stations. Collected on next login via `/claim`.
-- **Expeditions:** scheduled jobs with interior "events" that fire partway through. If the user responds to an event in the response window, their choice applies. If they don't, it auto-resolves.
 
 ### New entities
 
 - **`ScheduledJob`** — durable job record. `id`, `user_id`, `job_type` enum, `payload` JSONB, `scheduled_for`, `fired_at`, `resolved_at`, `state` enum.
 - **`Training`**, **`Research`**, **`BuildJob`** (or one polymorphic `Timer` table) — concrete timer types.
-- **`Expedition`** — `id`, `user_id`, `ship_id`, `assigned_crew_ids`, `started_at`, `duration`, `scheduled_events` JSONB, `state`, `outcome_summary`.
 - **`StationAssignment`** — `crew_id` → `station_type` for accrual.
 
 ### Files likely touched
@@ -249,20 +257,66 @@ The scheduler infrastructure built here is load-bearing for Phases 3+.
 - `scheduler/engine.py` — durable scheduler loop
 - `scheduler/jobs/` — per-job-type handlers
 - `bot/cogs/fleet.py` — `/fleet`, `/training`, `/research`, `/stations`, `/claim`
-- `bot/cogs/expeditions.py` — `/expedition start`, `/expedition status`, `/expedition respond`
-- `engine/expedition_engine.py` — event rolling, resolution, narrative output
-- `data/expeditions/` — expedition templates (routes, event tables, reward tables)
 - `db/migrations/versions/` — new migrations
 - `bot/notifications.py` — DM rate limiter + opt-out
 
 ### Reuse pointers
 
-- **Redis connection pooling** — existing `config/redis.py` (or equivalent) pattern
 - **OpenTelemetry spans** — wrap every scheduler fire with a span for trace correlation with Grafana
 - **Prometheus counters** — add `dare2drive_scheduler_jobs_total{job_type, result}` for observability
-- **Encounter engine** — expedition outcome rolls reuse `engine/stat_resolver.py` for stat-dependent event odds
 
-### Scope boundary (OUT of Phase 2)
+### Scope boundary (OUT of Phase 2a)
+
+- Expeditions (Phase 2b)
+- Job board (Phase 3)
+- Villain events (Phase 3)
+- PvP mechanics (Phase 4)
+
+### Deliverable
+
+Players start timers, assign crew to stations, claim accrued yield. Bot pings them when work completes (respectfully). Scheduler survives deploys.
+
+### Verification
+
+- Chaos test: kill bot mid-job → jobs resume correctly on restart
+- Load test: 1000 concurrent scheduled jobs
+- Rate-limit test: notification throttling respects user opt-out + per-hour cap
+- Idempotency test: simulated double-fire of the same job does not double-pay rewards
+
+---
+
+## Phase 2b — Expeditions
+
+**Status:** Blocked on Phase 2a.
+
+### Goal
+
+Multi-hour expeditions with mid-flight decision points, built on the Phase 2a scheduler. The first time the bot tells a story while you're away from the keyboard.
+
+### Mechanics
+
+- **Expeditions:** scheduled jobs with interior "events" that fire partway through. If the user responds to an event in the response window, their choice applies. If they don't, it auto-resolves.
+- Duration band: 4 – 12 hr per expedition.
+- Crew assignment matters — the assigned crew's archetypes and stats influence event odds and outcomes.
+
+### New entities
+
+- **`Expedition`** — `id`, `user_id`, `ship_id`, `assigned_crew_ids`, `started_at`, `duration`, `scheduled_events` JSONB, `state`, `outcome_summary`.
+
+### Files likely touched
+
+- `bot/cogs/expeditions.py` — `/expedition start`, `/expedition status`, `/expedition respond`
+- `engine/expedition_engine.py` — event rolling, resolution, narrative output
+- `data/expeditions/` — expedition templates (routes, event tables, reward tables)
+- `scheduler/jobs/expedition_event.py` — handler for mid-flight event fires
+- `db/migrations/versions/` — new migrations
+
+### Reuse pointers
+
+- **Phase 2a scheduler** — expedition starts, mid-flight events, and resolutions are all scheduled jobs
+- **Stat resolver** — expedition event outcome rolls reuse `engine/stat_resolver.py` for stat-dependent odds
+
+### Scope boundary (OUT of Phase 2b)
 
 - Job board (Phase 3) — expeditions here are user-initiated, not advertised on a board
 - Villain events (Phase 3)
@@ -270,20 +324,19 @@ The scheduler infrastructure built here is load-bearing for Phases 3+.
 
 ### Deliverable
 
-Players start timers, assign crew to stations, launch expeditions. Bot pings them when work completes (respectfully). Scheduler survives deploys.
+Players launch expeditions and get pinged for mid-flight decisions. Choices land within window or auto-resolve. Outcome narrative delivered on completion.
 
 ### Verification
 
-- Chaos test: kill bot mid-job → jobs resume correctly on restart
-- Load test: 1000 concurrent scheduled jobs
-- Rate-limit test: notification throttling respects user opt-out + per-hour cap
 - Integration: full expedition with interior event choice → outcome narrative delivered
+- Auto-resolution: unresponded events fall back to default branch deterministically
+- Chaos test: kill bot during an expedition → resumes correctly on restart, no duplicate event fires
 
 ---
 
 ## Phase 3 — Job Board + Channel Events + Villain Takeovers + System Control
 
-**Status:** Blocked on Phase 2.
+**Status:** Blocked on Phase 2b.
 
 ### Goal
 
@@ -526,7 +579,8 @@ Each is resolved when the corresponding phase is brainstormed. None need answers
 
 - **Phase 0:** Final slot rename list (is `tires → landing_gear` or `tires → thrusters`?). Encounter type rename list. Tutorial copy voice.
 - **Phase 1:** Crew archetype → stat-boost mapping table. Crew XP curve. Naming generator approach.
-- **Phase 2:** Scheduler technology choice (rq vs arq vs custom). Notification transport (DM vs thread mention vs both). Expedition event pool depth at launch.
+- **Phase 2a:** Scheduler technology choice (rq vs arq vs custom). Where the scheduler runs (in-bot, in-API, or its own worker process). Notification transport (DM vs thread mention vs both). Single polymorphic `Timer` table vs separate Training/Research/BuildJob.
+- **Phase 2b:** Expedition event pool depth at launch. Response-window length per event. Auto-resolution defaults (best/median/worst branch).
 - **Phase 3:** Villain catalog seed list. Job rotation cadence. Debuff magnitudes — need playtesting. Control tribute rate, inactivity lapse threshold, Control Contract difficulty tuning. Controller banner rendering in channel (embed style).
 - **Phase 4:** Ranked matchmaker choice (MMR, Elo, Glicko-2). Tournament formats supported. Challenge cooldown duration, response-window length, whether auto-forfeit counts toward challenger MMR.
 - **Phase 5:** Activity client framework. Art pipeline (manual commission vs. solicit vs. AI-assist starter art).
@@ -538,4 +592,4 @@ Each is resolved when the corresponding phase is brainstormed. None need answers
 - **Future ideas the user deferred:** guild/faction sector, alliances, expanded player-to-player trading beyond the existing market. All additive; can slot into Phases 3–5 when surfaced.
 - **Guilds/alliances will hang off system control.** The `SectorControl` schema is deliberately single-user for now but should be extensible to group ownership in a later phase: a guild could hold a system collectively, split tribute by contribution, and defend as a group in challenges. When guilds land, the natural shape is adding a `controller_guild_id` column (nullable, mutually exclusive with `controller_user_id`) plus a `GuildMembership` and `Guild` table, rather than re-modeling.
 - **Artist freedom is the creative constraint we optimized for.** Every phase preserves it.
-- **The scheduler, crew, and multi-tenancy are the three foundations.** Phases 0–2 exist to make Phases 3+ possible. Don't rush them.
+- **The scheduler, crew, and multi-tenancy are the three foundations.** Phases 0–2b exist to make Phases 3+ possible. Don't rush them.
