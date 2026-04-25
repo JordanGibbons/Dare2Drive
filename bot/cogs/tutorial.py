@@ -342,6 +342,7 @@ async def advance_tutorial(
             await view.wait_for_click()
 
             from bot.cogs.cards import _PackRevealView
+            from bot.reveal import PartRevealEntry
 
             starter_cards, pack_cards = await _grant_tutorial_completion(session, user)
             await session.commit()
@@ -355,12 +356,22 @@ async def advance_tutorial(
                     ],
                     title="🔧 Starter Parts",
                 )
-                # Starter cards are bare Card objects — wrap with a dummy serial 0
-                starter_minted = [
-                    (card, type("_UC", (), {"serial_number": 0})()) for card in starter_cards
+                # Starter cards are bare Card objects — synthesize a PartRevealEntry per card
+                # with a sentinel serial_number=0 (these are not minted into UserCard rows).
+                starter_entries = [
+                    PartRevealEntry(
+                        name=card.name,
+                        rarity=card.rarity.value,
+                        slot=card.slot.value,
+                        serial_number=0,
+                        print_max=card.print_max,
+                        primary_stats=card.stats.get("primary", {}),
+                        secondary_stats=card.stats.get("secondary", {}),
+                    )
+                    for card in starter_cards
                 ]
                 starter_view = _PackRevealView(
-                    minted=starter_minted,
+                    entries=starter_entries,
                     display_name="Starter Parts",
                     owner_id=interaction.user.id,
                 )
@@ -375,8 +386,20 @@ async def advance_tutorial(
             )
 
             # Show the pack cards in the scrollable reveal widget
+            pack_entries = [
+                PartRevealEntry(
+                    name=card.name,
+                    rarity=card.rarity.value,
+                    slot=card.slot.value,
+                    serial_number=uc.serial_number,
+                    print_max=card.print_max,
+                    primary_stats=card.stats.get("primary", {}),
+                    secondary_stats=card.stats.get("secondary", {}),
+                )
+                for card, uc in pack_cards
+            ]
             pack_view = _PackRevealView(
-                minted=pack_cards, display_name="Salvage Crate", owner_id=interaction.user.id
+                entries=pack_entries, display_name="Salvage Crate", owner_id=interaction.user.id
             )
             await interaction.followup.send(
                 embed=pack_view.build_embed(), view=pack_view, ephemeral=True
@@ -407,7 +430,8 @@ async def _grant_tutorial_completion(
     Grant all rewards a player gets from completing the tutorial.
 
     Returns (starter_cards, pack_minted) where pack_minted is a list of
-    (Card, UserCard) tuples — ready to pass directly to _PackRevealView.
+    (Card, UserCard) tuples. Callers wrap these in `PartRevealEntry`
+    adapters before passing to `_PackRevealView`.
     Caller must commit the session afterward.
     """
     from bot.cogs.cards import _grant_card, _roll_cards
