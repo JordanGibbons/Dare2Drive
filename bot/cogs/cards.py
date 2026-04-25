@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from api.metrics import currency_spent, daily_claimed, packs_opened
+from bot.reveal import PartRevealEntry, RevealEntry
 from bot.system_gating import get_active_system, system_required_message
 from config.logging import get_logger
 from config.metrics import trace_exemplar
@@ -312,8 +313,20 @@ class CardsCog(commands.Cog):
 
         tables = _load_loot_tables()
         display_name = tables[pack_type]["display_name"]
+        entries: list[RevealEntry] = [
+            PartRevealEntry(
+                name=card.name,
+                rarity=card.rarity.value,
+                slot=card.slot.value,
+                serial_number=uc.serial_number,
+                print_max=card.print_max,
+                primary_stats=card.stats.get("primary", {}),
+                secondary_stats=card.stats.get("secondary", {}),
+            )
+            for card, uc in minted
+        ]
         view = _PackRevealView(
-            minted=minted, display_name=display_name, owner_id=interaction.user.id
+            entries=entries, display_name=display_name, owner_id=interaction.user.id
         )
         await interaction.response.send_message(embed=view.build_embed(), view=view)
 
@@ -532,16 +545,16 @@ RARITY_ORDER_DESC = {"ghost": 0, "legendary": 1, "epic": 2, "rare": 3, "uncommon
 
 
 class _PackRevealView(discord.ui.View):
-    """Single-message pack reveal widget — scroll through cards one at a time."""
+    """Single-message pack reveal widget — scroll through entries one at a time."""
 
     def __init__(
         self,
-        minted: list[tuple],
+        entries: list[RevealEntry],
         display_name: str,
         owner_id: int,
     ) -> None:
         super().__init__(timeout=120)
-        self.minted = minted
+        self.entries = entries
         self.display_name = display_name
         self.owner_id = owner_id
         self.index = 0
@@ -549,39 +562,14 @@ class _PackRevealView(discord.ui.View):
 
     def _update_buttons(self) -> None:
         self.prev_card.disabled = self.index == 0
-        self.next_card.disabled = self.index == len(self.minted) - 1
+        self.next_card.disabled = self.index == len(self.entries) - 1
 
     def build_embed(self) -> discord.Embed:
-        card, uc = self.minted[self.index]
-        color = RARITY_COLORS.get(card.rarity.value, 0x9CA3AF)
-        emoji = RARITY_EMOJI.get(card.rarity.value, "")
-        embed = discord.Embed(
-            title=f"{emoji} {card.name} #{uc.serial_number}",
-            description=(
-                f"**Slot:** {card.slot.value.title()}\n**Rarity:** {card.rarity.value.title()}"
-            ),
-            color=color,
-        )
-        primary = card.stats.get("primary", {})
-        if primary:
-            embed.add_field(
-                name="Primary Stats",
-                value="\n".join(f"`{k}`: {v}" for k, v in primary.items()),
-                inline=True,
-            )
-        secondary = card.stats.get("secondary", {})
-        if secondary:
-            embed.add_field(
-                name="Secondary Stats",
-                value="\n".join(f"`{k}`: {v}" for k, v in secondary.items()),
-                inline=True,
-            )
-        if card.print_max:
-            footer = f"Limited Edition — {card.print_max} prints"
-        else:
-            footer = ""
-        card_counter = f"Card {self.index + 1} of {len(self.minted)} • {self.display_name}"
-        embed.set_footer(text=f"{footer}  {card_counter}".strip(" •"))
+        entry = self.entries[self.index]
+        embed = entry.build_embed()
+        existing_footer = embed.footer.text or ""
+        card_counter = f"Card {self.index + 1} of {len(self.entries)} • {self.display_name}"
+        embed.set_footer(text=f"{existing_footer}  {card_counter}".strip(" •"))
         return embed
 
     @discord.ui.button(label="◀ Prev", style=discord.ButtonStyle.secondary)
