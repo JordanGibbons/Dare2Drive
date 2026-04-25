@@ -204,6 +204,26 @@ class TestCrewRevealEntry:
         assert "handling" in flat.lower()
         assert "stability" in flat.lower()
 
+    async def test_crew_reveal_strips_effective_prefix(self):
+        """CrewRevealEntry accepts raw 'effective_*' stat names and renders them
+        in human-readable form (handling, not effective_handling)."""
+        from bot.reveal import CrewRevealEntry
+
+        entry = CrewRevealEntry(
+            name='Cas "Crow" Harrow',
+            rarity="legendary",
+            archetype="navigator",
+            level=5,
+            primary_stat="effective_weather_performance",  # raw form from archetypes.json
+            secondary_stat="effective_grip",
+        )
+        embed = entry.build_embed()
+        flat = (embed.description or "") + " ".join(f.value for f in embed.fields)
+        assert "weather performance" in flat.lower()
+        assert "grip" in flat.lower()
+        # Should NOT leak the 'effective_' prefix to the user
+        assert "effective_" not in flat
+
 
 class TestPackRevealViewWithCrew:
     async def test_single_crew_reveal_in_view(self):

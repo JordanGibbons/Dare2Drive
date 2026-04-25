@@ -20,6 +20,15 @@ from typing import Protocol, runtime_checkable
 
 import discord
 
+
+def _format_stat_name(raw: str) -> str:
+    """Strip 'effective_' prefix and convert underscores to spaces.
+
+    Idempotent: passing a pre-formatted string through is a no-op.
+    """
+    return raw.replace("effective_", "").replace("_", " ")
+
+
 RARITY_COLORS = {
     "common": 0x9CA3AF,
     "uncommon": 0x22C55E,
@@ -94,7 +103,12 @@ class PartRevealEntry:
 
 @dataclass
 class CrewRevealEntry:
-    """A crew dossier reveal entry — Phase 1 crew sector."""
+    """A crew dossier reveal entry — Phase 1 crew sector.
+
+    The primary_stat and secondary_stat fields accept either the raw
+    'effective_*' form (e.g., 'effective_handling') or pre-formatted form
+    (e.g., 'handling'). Both render correctly in the embed.
+    """
 
     name: str
     rarity: str
@@ -114,9 +128,11 @@ class CrewRevealEntry:
             color=color,
         )
         embed.add_field(name="Level", value=str(self.level), inline=True)
+        primary = _format_stat_name(self.primary_stat)
+        secondary = _format_stat_name(self.secondary_stat)
         embed.add_field(
             name="Boosts",
-            value=f"`{self.primary_stat}` / `{self.secondary_stat}`",
+            value=f"`{primary}` / `{secondary}`",
             inline=True,
         )
         return embed
