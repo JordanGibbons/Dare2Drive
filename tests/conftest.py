@@ -24,21 +24,26 @@ _TEST_DATABASE_URL = os.environ.get(
 async def db_session():
     """Async DB session with per-test rollback isolation.
 
-    Opens a real connection to the dev database (via Docker) and wraps
-    every test in a transaction that is rolled back at teardown so that
-    tests never leak rows.
-
-    A fresh engine is created per-fixture invocation to avoid event-loop
-    conflicts across tests when using asyncpg connection pools.
+    Uses a connection-level transaction with `join_transaction_mode="create_savepoint"`
+    so that production code calling `session.commit()` translates to a SAVEPOINT release
+    rather than finalizing the outer transaction. The outer transaction is rolled back
+    at teardown, undoing all writes regardless of inner commits.
     """
     engine = create_async_engine(_TEST_DATABASE_URL, echo=False, pool_size=1, max_overflow=0)
-    session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
-    async with session_factory() as session:
-        trans = await session.begin()
-        try:
-            yield session
-        finally:
-            await trans.rollback()
+    async with engine.connect() as conn:
+        trans = await conn.begin()
+        session_factory = async_sessionmaker(
+            bind=conn,
+            class_=AsyncSession,
+            expire_on_commit=False,
+            join_transaction_mode="create_savepoint",
+        )
+        async with session_factory() as session:
+            try:
+                yield session
+            finally:
+                if trans.is_active:
+                    await trans.rollback()
     await engine.dispose()
 
 
