@@ -284,11 +284,10 @@ class TestPlacement:
 
 
 class TestComputeRaceWithCrew:
-    def test_crew_in_build_dict_moves_score(self, full_build):
-        """A build with crew should have a higher base score due to stat boosts."""
+    def test_compute_race_consumes_build_crew_key(self, full_build):
+        """compute_race must read build['crew']: same build with vs. without crew
+        must produce different Placement scores."""
         from unittest.mock import MagicMock
-
-        from engine.stat_resolver import aggregate_build, apply_crew_boosts
 
         def _crew(arch, rarity, lvl=10):
             m = MagicMock()
@@ -297,25 +296,42 @@ class TestComputeRaceWithCrew:
             m.level = lvl
             return m
 
-        # Directly test that crew boosts the aggregated stats
-        slots = full_build["slots"]
-        cards = full_build["cards"]
-
-        build_stats_no_crew = aggregate_build(slots, cards)
-        crew = [_crew("pilot", "legendary", 10), _crew("engineer", "legendary", 10)]
-        build_stats_with_crew = apply_crew_boosts(aggregate_build(slots, cards), crew)
-
-        # Crew should boost multiple stats
-        assert build_stats_with_crew.effective_power > build_stats_no_crew.effective_power
-        assert build_stats_with_crew.effective_handling > build_stats_no_crew.effective_handling
-        assert (
-            build_stats_with_crew.effective_acceleration
-            > build_stats_no_crew.effective_acceleration
+        env = EnvironmentCondition(
+            name="clear",
+            display_name="Clear Track",
+            description="A clear track for crew testing.",
+            stat_weights={
+                "power": 1.0,
+                "handling": 1.0,
+                "top_speed": 1.0,
+                "grip": 1.0,
+                "braking": 1.0,
+                "durability": 1.0,
+                "acceleration": 1.0,
+                "stability": 1.0,
+                "weather_performance": 1.0,
+            },
+            variance_multiplier=0.0,
         )
 
-        # Empty crew list should not change stats
-        build_stats_empty_crew = apply_crew_boosts(aggregate_build(slots, cards), [])
-        assert build_stats_empty_crew.effective_power == build_stats_no_crew.effective_power
+        crew = [_crew("pilot", "legendary", 10), _crew("engineer", "legendary", 10)]
+
+        # Run 1: solo race with crew
+        random.seed(42)
+        r_with = compute_race([{**full_build, "crew": crew}], environment=env)
+
+        # Run 2: identical solo race without crew (same seed, same build, same env)
+        random.seed(42)
+        r_without = compute_race([{**full_build, "crew": []}], environment=env)
+
+        score_with = r_with.placements[0].score
+        score_without = r_without.placements[0].score
+
+        # If compute_race didn't consume build["crew"], these would be identical.
+        assert score_with > score_without, (
+            f"crewed score {score_with} should exceed uncrewed score {score_without}; "
+            "compute_race may not be reading build['crew']"
+        )
 
     def test_build_without_crew_key_still_works(self, full_build):
         """Backward compat: build dict without a 'crew' key computes normally."""
