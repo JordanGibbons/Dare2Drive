@@ -100,3 +100,22 @@ async def test_cascade_on_crew_delete(db_session, user_with_build, two_pilots):
 
     result = await db_session.execute(select(CrewAssignment).where(CrewAssignment.crew_id == c1.id))
     assert result.first() is None
+
+
+@pytest.mark.asyncio
+async def test_cascade_on_build_delete(db_session, user_with_build, two_pilots):
+    """Deleting a build cascades to its assignments."""
+    from sqlalchemy import select
+
+    _, build = user_with_build
+    c1, _ = two_pilots
+    db_session.add(CrewAssignment(crew_id=c1.id, build_id=build.id, archetype=CrewArchetype.PILOT))
+    await db_session.flush()
+
+    await db_session.delete(build)
+    await db_session.flush()
+
+    result = await db_session.execute(
+        select(CrewAssignment).where(CrewAssignment.build_id == build.id)
+    )
+    assert result.first() is None

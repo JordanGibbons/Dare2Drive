@@ -62,8 +62,8 @@ RARITY_EMOJI = {
     "ghost": "👻",
 }
 
-# Phase 1: duplicated to avoid circular import with bot.cogs.hiring.
-# Single-source-of-truth lives in bot/reveal.py for future consolidation.
+# Phase 1: duplicated from bot.cogs.hiring._ARCHETYPE_EMOJI to avoid a
+# circular import. Consolidate into bot/reveal.py if a third caller appears.
 _ARCHETYPE_EMOJI = {
     "pilot": "🧑‍✈️",
     "engineer": "🔧",

@@ -99,7 +99,9 @@ api_request_duration_seconds = Histogram(
 crew_recruited = Counter(
     "dare2drive_crew_recruited_total",
     "Total number of crew recruited.",
-    ["source", "archetype", "rarity"],  # source: dossier | daily_lead
+    ["source", "tier", "archetype", "rarity"],
+    # source: dossier | daily_lead
+    # tier: recruit_lead | dossier | elite_dossier | daily_lead (sentinel)
 )
 
 dossier_purchased = Counter(

@@ -156,7 +156,7 @@ class HiringCog(commands.Cog):
             await session.commit()
 
         dossier_purchased.labels(tier=tier).inc(exemplar=trace_exemplar())
-        crew_recruited.labels(source="dossier", archetype=archetype, rarity=rarity).inc(
+        crew_recruited.labels(source="dossier", tier=tier, archetype=archetype, rarity=rarity).inc(
             exemplar=trace_exemplar()
         )
         currency_spent.labels(reason=f"dossier_{tier}").inc(
@@ -223,9 +223,9 @@ class HiringCog(commands.Cog):
 
             await session.commit()
 
-        crew_recruited.labels(source="daily_lead", archetype=archetype, rarity=rarity).inc(
-            exemplar=trace_exemplar()
-        )
+        crew_recruited.labels(
+            source="daily_lead", tier="daily_lead", archetype=archetype, rarity=rarity
+        ).inc(exemplar=trace_exemplar())
 
         entry = CrewRevealEntry(
             name=crew_full_name,
@@ -388,6 +388,7 @@ class HiringCog(commands.Cog):
     async def assign(self, interaction: discord.Interaction, crew: str) -> None:
         user_id = str(interaction.user.id)
         prior_name: str | None = None
+        auto_unassigned = False
         async with async_session() as session:
             system = await get_active_system(interaction, session)
             if system is None:
@@ -427,7 +428,7 @@ class HiringCog(commands.Cog):
                 )
             )
             prior = prior_q.scalar_one_or_none()
-            if prior is not None and prior.crew_id != member.id:
+            if prior is not None:
                 prior_member = await session.get(CrewMember, prior.crew_id)
                 if prior_member is not None:
                     prior_name = (
@@ -436,7 +437,7 @@ class HiringCog(commands.Cog):
                     )
                 await session.delete(prior)
                 await session.flush()
-                crew_assignment.labels(action="auto_unassign").inc()
+                auto_unassigned = True
 
             session.add(
                 CrewAssignment(
@@ -451,6 +452,8 @@ class HiringCog(commands.Cog):
 
             await session.commit()
 
+        if auto_unassigned:
+            crew_assignment.labels(action="auto_unassign").inc()
         crew_assignment.labels(action="assign").inc()
         msg = f"Assigned **{display}** as {archetype_title}."
         if prior_name:

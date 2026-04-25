@@ -29,6 +29,8 @@ def upgrade() -> None:
     )
     crew_archetype.create(op.get_bind(), checkfirst=True)
 
+    # rarity enum was created by 0001_initial; reuse without recreating.
+    # create_type=False is load-bearing — do NOT flip it.
     rarity = postgresql.ENUM(*RARITY_VALUES, name="rarity", create_type=False)
 
     op.create_table(
