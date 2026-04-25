@@ -287,3 +287,43 @@ async def test_unassign_removes_crew_from_build(hiring_user, db_session):
     res = await db_session.execute(select(CrewAssignment))
     rows = list(res.scalars().all())
     assert len(rows) == 0
+
+
+@pytest.mark.asyncio
+async def test_hire_claims_todays_lead(hiring_user, db_session):
+    import discord
+    from discord.ext import commands
+
+    from bot.cogs.hiring import HiringCog
+    from db.models import CrewMember
+    from engine.crew_recruit import get_or_roll_today_lead
+
+    lead = await get_or_roll_today_lead(db_session, hiring_user)
+    await db_session.flush()
+
+    bot = commands.Bot(command_prefix="!", intents=discord.Intents.default())
+    cog = HiringCog(bot)
+    interaction = MagicMock()
+    interaction.user = MagicMock()
+    interaction.user.id = hiring_user.discord_id
+    interaction.response = MagicMock()
+    interaction.response.send_message = AsyncMock()
+
+    with patch("bot.cogs.hiring.async_session") as sess_ctx:
+        sess_ctx.return_value.__aenter__.return_value = db_session
+        sess_ctx.return_value.__aexit__.return_value = None
+        with patch(
+            "bot.cogs.hiring.get_active_system",
+            new=AsyncMock(return_value=MagicMock()),
+        ):
+            await cog.hire.callback(cog, interaction)
+
+    from sqlalchemy import select
+
+    res = await db_session.execute(
+        select(CrewMember).where(CrewMember.user_id == hiring_user.discord_id)
+    )
+    members = list(res.scalars().all())
+    assert len(members) == 1
+    assert members[0].first_name == lead.first_name
+    assert lead.claimed_at is not None

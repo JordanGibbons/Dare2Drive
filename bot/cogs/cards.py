@@ -25,6 +25,7 @@ from config.settings import settings
 from config.tracing import traced_command
 from db.models import Build, Card, CardSlot, Rarity, User, UserCard
 from db.session import async_session
+from engine.crew_recruit import get_or_roll_today_lead
 
 _SALVAGE_RATES_PATH = Path(__file__).resolve().parent.parent.parent / "data" / "salvage_rates.json"
 
@@ -59,6 +60,16 @@ RARITY_EMOJI = {
     "epic": "🟪",
     "legendary": "🟨",
     "ghost": "👻",
+}
+
+# Phase 1: duplicated to avoid circular import with bot.cogs.hiring.
+# Single-source-of-truth lives in bot/reveal.py for future consolidation.
+_ARCHETYPE_EMOJI_FROM_HIRING = {
+    "pilot": "🧑‍✈️",
+    "engineer": "🔧",
+    "gunner": "🔫",
+    "navigator": "🧭",
+    "medic": "🩹",
 }
 
 
@@ -237,6 +248,9 @@ class CardsCog(commands.Cog):
                     uc = await _grant_card(session, user.discord_id, card)
                     granted_parts.append((card, uc))
 
+            # Phase 1: roll/refresh today's daily lead
+            lead = await get_or_roll_today_lead(session, user)
+
             await session.commit()
 
         daily_claimed.inc(exemplar=trace_exemplar())
@@ -256,6 +270,21 @@ class CardsCog(commands.Cog):
                     f"{emoji} **{card.name}** #{uc.serial_number} [{card.slot.value}]"
                 )
             embed.add_field(name="Today's Parts", value="\n".join(part_lines), inline=False)
+
+        # Phase 1: surface today's lead in the daily embed
+        if lead is not None:
+            archetype_emoji = _ARCHETYPE_EMOJI_FROM_HIRING.get(lead.archetype.value, "")
+            claimed_note = " *(already claimed)*" if lead.claimed_at else ""
+            embed.add_field(
+                name="👤 Today's Lead",
+                value=(
+                    f"{archetype_emoji} "
+                    f'**{lead.first_name} "{lead.callsign}" {lead.last_name}** — '
+                    f"{lead.archetype.value.title()} [{lead.rarity.value.title()}]{claimed_note}\n"
+                    f"Run `/hire` to recruit them."
+                ),
+                inline=False,
+            )
 
         await interaction.response.send_message(embed=embed)
 
