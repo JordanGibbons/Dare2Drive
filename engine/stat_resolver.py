@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from api.metrics import crew_boost_apply
 from config.logging import get_logger
 
 log = get_logger(__name__)
@@ -278,4 +279,5 @@ def apply_crew_boosts(bs: BuildStats, crew: list[Any]) -> BuildStats:
         secondary_boost = (base / 2) * level_mult
         _bump(bs, primary_stat, primary_boost)
         _bump(bs, secondary_stat, secondary_boost)
+        crew_boost_apply.labels(archetype=arch, rarity=member.rarity.value).inc()
     return bs

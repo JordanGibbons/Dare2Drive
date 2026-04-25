@@ -11,7 +11,7 @@ from discord.ext import commands
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.metrics import parts_destroyed, races_completed, races_started
+from api.metrics import crew_level_up, parts_destroyed, races_completed, races_started
 from bot.cogs.tutorial import _load_tutorial_data, build_npc_race_data, is_tutorial_complete
 from bot.system_gating import get_active_system, system_required_message
 from config.logging import get_logger
@@ -239,8 +239,14 @@ def _award_xp_to_crew(
             continue
         xp_gain = 20 + (10 if position == 1 else 0)
         for member in crew:
+            pre_level = member.level
             leveled = award_xp(member, xp_gain)
             if leveled:
+                crew_level_up.labels(
+                    archetype=member.archetype.value,
+                    from_level=str(pre_level),
+                    to_level=str(member.level),
+                ).inc()
                 level_ups.setdefault(user_id, []).append((member, member.level))
     return level_ups
 
