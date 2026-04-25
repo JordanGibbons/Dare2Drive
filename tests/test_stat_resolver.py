@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import uuid
+from unittest.mock import MagicMock
 
-from engine.stat_resolver import _get_stat, aggregate_build
+import pytest
+
+from engine.stat_resolver import BuildStats, _get_stat, aggregate_build, apply_crew_boosts
 
 
 class TestGetStat:
@@ -229,3 +232,55 @@ class TestAggregateBuild:
         }
         bs = aggregate_build(slots, cards)
         assert bs.effective_handling <= 100 + (-20)  # cap is 100 + handling_cap_modifier
+
+
+def _crew(archetype_value: str, rarity_value: str, level: int = 1) -> MagicMock:
+    m = MagicMock()
+    m.archetype = MagicMock(value=archetype_value)
+    m.rarity = MagicMock(value=rarity_value)
+    m.level = level
+    return m
+
+
+class TestApplyCrewBoosts:
+    def test_empty_crew_is_identity(self):
+        bs = BuildStats(effective_handling=100.0)
+        out = apply_crew_boosts(bs, [])
+        assert out.effective_handling == 100.0
+
+    def test_common_pilot_l1_gives_2pct_handling(self):
+        bs = BuildStats(effective_handling=100.0, effective_stability=100.0)
+        apply_crew_boosts(bs, [_crew("pilot", "common", level=1)])
+        assert bs.effective_handling == pytest.approx(100.0 * 1.02)
+        # secondary = primary / 2 = 1%
+        assert bs.effective_stability == pytest.approx(100.0 * 1.01)
+
+    def test_legendary_pilot_l10_gives_19pct_handling(self):
+        bs = BuildStats(effective_handling=100.0)
+        apply_crew_boosts(bs, [_crew("pilot", "legendary", level=10)])
+        # 0.10 * (1 + 9*0.1) = 0.10 * 1.9 = 0.19
+        assert bs.effective_handling == pytest.approx(100.0 * 1.19)
+
+    def test_two_pilots_stack_multiplicatively(self):
+        bs = BuildStats(effective_handling=100.0)
+        apply_crew_boosts(
+            bs,
+            [_crew("pilot", "rare", 1), _crew("pilot", "rare", 1)],
+        )
+        # Each +5% compounds: 100 * 1.05 * 1.05
+        assert bs.effective_handling == pytest.approx(100.0 * 1.05 * 1.05)
+
+    def test_engineer_boosts_power_and_acceleration(self):
+        bs = BuildStats(effective_power=200.0, effective_acceleration=50.0)
+        apply_crew_boosts(bs, [_crew("engineer", "rare", 1)])
+        assert bs.effective_power == pytest.approx(200.0 * 1.05)
+        assert bs.effective_acceleration == pytest.approx(50.0 * 1.025)
+
+    def test_medic_stability_stacks_with_pilot_stability(self):
+        bs = BuildStats(effective_durability=100.0, effective_stability=100.0)
+        apply_crew_boosts(
+            bs,
+            [_crew("medic", "rare", 1), _crew("pilot", "rare", 1)],
+        )
+        # medic secondary: +2.5%, pilot secondary: +2.5% — compound
+        assert bs.effective_stability == pytest.approx(100.0 * 1.025 * 1.025)

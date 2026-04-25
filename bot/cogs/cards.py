@@ -17,13 +17,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from api.metrics import currency_spent, daily_claimed, packs_opened
+from bot.reveal import PartRevealEntry, RevealEntry
 from bot.system_gating import get_active_system, system_required_message
 from config.logging import get_logger
 from config.metrics import trace_exemplar
 from config.settings import settings
 from config.tracing import traced_command
-from db.models import Build, Card, CardSlot, Rarity, User, UserCard
+from db.models import Build, Card, CardSlot, CrewDailyLead, Rarity, User, UserCard
 from db.session import async_session
+from engine.crew_recruit import get_or_roll_today_lead
 
 _SALVAGE_RATES_PATH = Path(__file__).resolve().parent.parent.parent / "data" / "salvage_rates.json"
 
@@ -58,6 +60,16 @@ RARITY_EMOJI = {
     "epic": "🟪",
     "legendary": "🟨",
     "ghost": "👻",
+}
+
+# Phase 1: duplicated from bot.cogs.hiring._ARCHETYPE_EMOJI to avoid a
+# circular import. Consolidate into bot/reveal.py if a third caller appears.
+_ARCHETYPE_EMOJI = {
+    "pilot": "🧑‍✈️",
+    "engineer": "🔧",
+    "gunner": "🔫",
+    "navigator": "🧭",
+    "medic": "🩹",
 }
 
 
@@ -198,17 +210,52 @@ class CardsCog(commands.Cog):
                 )
                 return
 
+            # Look up today's lead (idempotent — does not roll on cooldown path)
+            today_date = datetime.now(timezone.utc).date()
+            existing_lead = await session.get(CrewDailyLead, (str(interaction.user.id), today_date))
+
             now = datetime.now(timezone.utc)
             if user.last_daily:
                 next_daily = user.last_daily + timedelta(hours=24)
                 if now < next_daily:
+                    # Cooldown active — show cooldown message + today's lead if any
                     remaining = next_daily - now
                     hours, rem = divmod(int(remaining.total_seconds()), 3600)
                     minutes = rem // 60
-                    await interaction.response.send_message(
-                        f"You already claimed your daily! Come back in **{hours}h {minutes}m**.",
-                        ephemeral=True,
+                    cooldown_msg = (
+                        f"You already claimed your daily! Come back in **{hours}h {minutes}m**."
                     )
+
+                    if existing_lead is None:
+                        await interaction.response.send_message(cooldown_msg, ephemeral=True)
+                        return
+
+                    # Capture scalars for embed (we're still inside async_session)
+                    lead_archetype = existing_lead.archetype.value
+                    lead_first = existing_lead.first_name
+                    lead_last = existing_lead.last_name
+                    lead_callsign = existing_lead.callsign
+                    lead_rarity = existing_lead.rarity.value
+                    lead_claimed = existing_lead.claimed_at is not None
+
+                    embed = discord.Embed(
+                        title="⏳ Daily on Cooldown",
+                        description=cooldown_msg,
+                        color=0xF59E0B,
+                    )
+                    archetype_emoji = _ARCHETYPE_EMOJI.get(lead_archetype, "")
+                    claimed_note = " *(already claimed)*" if lead_claimed else ""
+                    embed.add_field(
+                        name="👤 Today's Lead",
+                        value=(
+                            f"{archetype_emoji} "
+                            f'**{lead_first} "{lead_callsign}" {lead_last}** — '
+                            f"{lead_archetype.title()} [{lead_rarity.title()}]{claimed_note}\n"
+                            f"Run `/hire` to recruit them."
+                        ),
+                        inline=False,
+                    )
+                    await interaction.response.send_message(embed=embed, ephemeral=True)
                     return
 
             user.currency += 100
@@ -236,6 +283,17 @@ class CardsCog(commands.Cog):
                     uc = await _grant_card(session, user.discord_id, card)
                     granted_parts.append((card, uc))
 
+            # Phase 1: roll/refresh today's daily lead
+            lead = await get_or_roll_today_lead(session, user)
+
+            # Capture scalars before session close (for the embed-build phase)
+            lead_archetype = lead.archetype.value
+            lead_first = lead.first_name
+            lead_last = lead.last_name
+            lead_callsign = lead.callsign
+            lead_rarity = lead.rarity.value
+            lead_claimed = lead.claimed_at is not None
+
             await session.commit()
 
         daily_claimed.inc(exemplar=trace_exemplar())
@@ -255,6 +313,21 @@ class CardsCog(commands.Cog):
                     f"{emoji} **{card.name}** #{uc.serial_number} [{card.slot.value}]"
                 )
             embed.add_field(name="Today's Parts", value="\n".join(part_lines), inline=False)
+
+        # Phase 1: surface today's lead in the daily embed
+        if lead is not None:
+            archetype_emoji = _ARCHETYPE_EMOJI.get(lead_archetype, "")
+            claimed_note = " *(already claimed)*" if lead_claimed else ""
+            embed.add_field(
+                name="👤 Today's Lead",
+                value=(
+                    f"{archetype_emoji} "
+                    f'**{lead_first} "{lead_callsign}" {lead_last}** — '
+                    f"{lead_archetype.title()} [{lead_rarity.title()}]{claimed_note}\n"
+                    f"Run `/hire` to recruit them."
+                ),
+                inline=False,
+            )
 
         await interaction.response.send_message(embed=embed)
 
@@ -312,8 +385,20 @@ class CardsCog(commands.Cog):
 
         tables = _load_loot_tables()
         display_name = tables[pack_type]["display_name"]
+        entries: list[RevealEntry] = [
+            PartRevealEntry(
+                name=card.name,
+                rarity=card.rarity.value,
+                slot=card.slot.value,
+                serial_number=uc.serial_number,
+                print_max=card.print_max,
+                primary_stats=card.stats.get("primary", {}),
+                secondary_stats=card.stats.get("secondary", {}),
+            )
+            for card, uc in minted
+        ]
         view = _PackRevealView(
-            minted=minted, display_name=display_name, owner_id=interaction.user.id
+            entries=entries, display_name=display_name, owner_id=interaction.user.id
         )
         await interaction.response.send_message(embed=view.build_embed(), view=view)
 
@@ -532,16 +617,16 @@ RARITY_ORDER_DESC = {"ghost": 0, "legendary": 1, "epic": 2, "rare": 3, "uncommon
 
 
 class _PackRevealView(discord.ui.View):
-    """Single-message pack reveal widget — scroll through cards one at a time."""
+    """Single-message pack reveal widget — scroll through entries one at a time."""
 
     def __init__(
         self,
-        minted: list[tuple],
+        entries: list[RevealEntry],
         display_name: str,
         owner_id: int,
     ) -> None:
         super().__init__(timeout=120)
-        self.minted = minted
+        self.entries = entries
         self.display_name = display_name
         self.owner_id = owner_id
         self.index = 0
@@ -549,39 +634,14 @@ class _PackRevealView(discord.ui.View):
 
     def _update_buttons(self) -> None:
         self.prev_card.disabled = self.index == 0
-        self.next_card.disabled = self.index == len(self.minted) - 1
+        self.next_card.disabled = self.index == len(self.entries) - 1
 
     def build_embed(self) -> discord.Embed:
-        card, uc = self.minted[self.index]
-        color = RARITY_COLORS.get(card.rarity.value, 0x9CA3AF)
-        emoji = RARITY_EMOJI.get(card.rarity.value, "")
-        embed = discord.Embed(
-            title=f"{emoji} {card.name} #{uc.serial_number}",
-            description=(
-                f"**Slot:** {card.slot.value.title()}\n**Rarity:** {card.rarity.value.title()}"
-            ),
-            color=color,
-        )
-        primary = card.stats.get("primary", {})
-        if primary:
-            embed.add_field(
-                name="Primary Stats",
-                value="\n".join(f"`{k}`: {v}" for k, v in primary.items()),
-                inline=True,
-            )
-        secondary = card.stats.get("secondary", {})
-        if secondary:
-            embed.add_field(
-                name="Secondary Stats",
-                value="\n".join(f"`{k}`: {v}" for k, v in secondary.items()),
-                inline=True,
-            )
-        if card.print_max:
-            footer = f"Limited Edition — {card.print_max} prints"
-        else:
-            footer = ""
-        card_counter = f"Card {self.index + 1} of {len(self.minted)} • {self.display_name}"
-        embed.set_footer(text=f"{footer}  {card_counter}".strip(" •"))
+        entry = self.entries[self.index]
+        embed = entry.build_embed()
+        existing_footer = embed.footer.text or ""
+        card_counter = f"Card {self.index + 1} of {len(self.entries)} • {self.display_name}"
+        embed.set_footer(text=f"{existing_footer}  {card_counter}".strip(" •"))
         return embed
 
     @discord.ui.button(label="◀ Prev", style=discord.ButtonStyle.secondary)

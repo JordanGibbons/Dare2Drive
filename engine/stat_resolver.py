@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from api.metrics import crew_boost_apply
 from config.logging import get_logger
 
 log = get_logger(__name__)
@@ -222,4 +223,61 @@ def aggregate_build(
             "Overheat risk flagged: temp_inc=%.1f > %.1f", engine_temp_inc, bs.engine_max_temp * 0.8
         )
 
+    return bs
+
+
+_ARCHETYPE_MAPPING_PATH = (
+    Path(__file__).resolve().parent.parent / "data" / "crew" / "archetypes.json"
+)
+_RARITY_BOOSTS_PATH = (
+    Path(__file__).resolve().parent.parent / "data" / "crew" / "rarity_boosts.json"
+)
+
+_archetype_mapping_cache: dict[str, dict[str, str]] | None = None
+_rarity_boosts_cache: dict[str, float] | None = None
+
+
+def _get_archetype_mapping() -> dict[str, dict[str, str]]:
+    global _archetype_mapping_cache
+    if _archetype_mapping_cache is None:
+        with open(_ARCHETYPE_MAPPING_PATH, "r", encoding="utf-8") as f:
+            _archetype_mapping_cache = json.load(f)
+    return _archetype_mapping_cache
+
+
+def _get_rarity_boosts() -> dict[str, float]:
+    global _rarity_boosts_cache
+    if _rarity_boosts_cache is None:
+        with open(_RARITY_BOOSTS_PATH, "r", encoding="utf-8") as f:
+            _rarity_boosts_cache = json.load(f)
+    return _rarity_boosts_cache
+
+
+def _bump(bs: BuildStats, stat_name: str, pct: float) -> None:
+    """Multiplicatively bump a BuildStats attribute by `pct` (e.g. 0.05 = +5%)."""
+    current = getattr(bs, stat_name)
+    setattr(bs, stat_name, current * (1.0 + pct))
+
+
+def apply_crew_boosts(bs: BuildStats, crew: list[Any]) -> BuildStats:
+    """Fold assigned crew boosts into the BuildStats in place.
+
+    Called AFTER aggregate_build and BEFORE environment weighting. Pure — no DB access.
+
+    Each crew member's archetype determines primary/secondary stats. Rarity and
+    level determine magnitude. Multiple crew on the same stat compound multiplicatively.
+    """
+    mapping = _get_archetype_mapping()
+    base_boosts = _get_rarity_boosts()
+    for member in crew:
+        arch = member.archetype.value
+        primary_stat = mapping[arch]["primary"]
+        secondary_stat = mapping[arch]["secondary"]
+        level_mult = 1.0 + (member.level - 1) * 0.1
+        base = base_boosts[member.rarity.value]
+        primary_boost = base * level_mult
+        secondary_boost = (base / 2) * level_mult
+        _bump(bs, primary_stat, primary_boost)
+        _bump(bs, secondary_stat, secondary_boost)
+        crew_boost_apply.labels(archetype=arch, rarity=member.rarity.value).inc()
     return bs

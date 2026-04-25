@@ -29,3 +29,53 @@ class TestEnums:
         ordered = list(Rarity)
         assert ordered[0] == Rarity.COMMON
         assert ordered[-1] == Rarity.GHOST
+
+
+def test_crew_archetype_enum_values():
+    from db.models import CrewArchetype
+
+    assert {a.value for a in CrewArchetype} == {"pilot", "engineer", "gunner", "navigator", "medic"}
+
+
+def test_crew_member_has_required_fields():
+    from db.models import CrewMember
+
+    fields = {c.name for c in CrewMember.__table__.columns}
+    assert fields >= {
+        "id",
+        "user_id",
+        "first_name",
+        "last_name",
+        "callsign",
+        "archetype",
+        "rarity",
+        "level",
+        "xp",
+        "portrait_key",
+        "acquired_at",
+        "retired_at",
+    }
+
+
+def test_crew_assignment_has_required_fields():
+    from db.models import CrewAssignment
+
+    fields = {c.name for c in CrewAssignment.__table__.columns}
+    assert fields >= {"id", "crew_id", "build_id", "archetype", "assigned_at"}
+
+
+def test_crew_daily_lead_has_required_fields():
+    from db.models import CrewDailyLead
+
+    fields = {c.name for c in CrewDailyLead.__table__.columns}
+    assert fields >= {
+        "user_id",
+        "rolled_for_date",
+        "archetype",
+        "rarity",
+        "first_name",
+        "last_name",
+        "callsign",
+        "claimed_at",
+        "created_at",
+    }

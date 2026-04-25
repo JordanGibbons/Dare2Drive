@@ -11,7 +11,7 @@ from discord.ext import commands
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.metrics import parts_destroyed, races_completed, races_started
+from api.metrics import crew_level_up, parts_destroyed, races_completed, races_started
 from bot.cogs.tutorial import _load_tutorial_data, build_npc_race_data, is_tutorial_complete
 from bot.system_gating import get_active_system, system_required_message
 from config.logging import get_logger
@@ -21,6 +21,8 @@ from db.models import (
     Build,
     Card,
     CardSlot,
+    CrewAssignment,
+    CrewMember,
     HullClass,
     Race,
     RaceFormat,
@@ -31,6 +33,7 @@ from db.models import (
     WreckLog,
 )
 from db.session import async_session
+from engine.crew_xp import award_xp
 from engine.race_engine import RaceResult, compute_race
 
 log = get_logger(__name__)
@@ -201,6 +204,76 @@ async def _resolve_build_for_race(
     }
 
 
+async def _load_assigned_crew_for_build(
+    session: AsyncSession, build_id_str: str
+) -> list[CrewMember]:
+    """Return assigned crew for the given build_id, or [] for NPC/missing builds."""
+    if not build_id_str or build_id_str.startswith("npc_"):
+        return []
+    result = await session.execute(
+        select(CrewMember)
+        .join(CrewAssignment, CrewAssignment.crew_id == CrewMember.id)
+        .where(CrewAssignment.build_id == uuid.UUID(build_id_str))
+    )
+    return list(result.scalars().all())
+
+
+def _award_xp_to_crew(
+    builds_with_crew: list[dict[str, Any]],
+    race_result: RaceResult,
+) -> dict[str, list[tuple[CrewMember, int]]]:
+    """Award XP to assigned crew based on placement. Returns {user_id: [(member, new_level), ...]}.
+
+    Mutates `member.xp` and `member.level` in place (they're ORM instances attached to the
+    surrounding session); the caller's commit persists.
+    """
+    level_ups: dict[str, list[tuple[CrewMember, int]]] = {}
+    pos_by_user = {p.user_id: p.position for p in race_result.placements}
+    for build in builds_with_crew:
+        user_id = build["user_id"]
+        if user_id.startswith("NPC_"):
+            continue
+        crew = build.get("crew") or []
+        position = pos_by_user.get(user_id)
+        if position is None:
+            continue
+        xp_gain = 20 + (10 if position == 1 else 0)
+        for member in crew:
+            pre_level = member.level
+            leveled = award_xp(member, xp_gain)
+            if leveled:
+                crew_level_up.labels(
+                    archetype=member.archetype.value,
+                    from_level=str(pre_level),
+                    to_level=str(member.level),
+                ).inc()
+                level_ups.setdefault(user_id, []).append((member, member.level))
+    return level_ups
+
+
+def _add_crew_levelups_field(
+    embed: discord.Embed,
+    level_ups: dict[str, list[tuple[CrewMember, int]]],
+) -> None:
+    """Append a 'Crew Level-Ups' field to `embed` if any level-ups occurred.
+
+    Truncates the field value if it would exceed Discord's 1024-char per-field limit.
+    """
+    if not level_ups:
+        return
+    lines = [
+        f'⭐ {m.first_name} "{m.callsign}" {m.last_name} reached Level {lvl}.'
+        for bumps in level_ups.values()
+        for m, lvl in bumps
+    ]
+    if not lines:
+        return
+    value = "\n".join(lines)
+    if len(value) > 1024:
+        value = value[:1000].rsplit("\n", 1)[0] + "\n…"
+    embed.add_field(name="Crew Level-Ups", value=value, inline=False)
+
+
 async def _apply_wreck_results(
     session: AsyncSession,
     race_result: RaceResult,
@@ -272,7 +345,18 @@ async def _run_race_and_send(
         # Re-attach users to this session
         challenger = await session.get(User, challenger.discord_id)
 
+        # Load assigned crew onto each real-player build before the race runs
+        challenger_build["crew"] = await _load_assigned_crew_for_build(
+            session, challenger_build.get("build_id", "")
+        )
+        opp_build["crew"] = await _load_assigned_crew_for_build(
+            session, opp_build.get("build_id", "")
+        )
+
         race_result = compute_race([challenger_build, opp_build])
+
+        # Award XP to crew based on placement (NPCs are skipped inside the helper)
+        crew_level_ups = _award_xp_to_crew([challenger_build, opp_build], race_result)
 
         build_id_map = {
             bd["user_id"]: bd["build_id"]
@@ -507,6 +591,8 @@ async def _run_race_and_send(
             wear_lines.append(f"{label} — **{card_name}** ({slot_name}) wore out")
         embed.add_field(name="🔧 Worn Out", value="\n".join(wear_lines), inline=False)
 
+    _add_crew_levelups_field(embed, crew_level_ups)
+
     await interaction.followup.send(embed=embed)
 
     # Tutorial progression
@@ -736,11 +822,20 @@ class _MultiRaceView(discord.ui.View):
 
         # Run the multi-race
         all_builds = [build for _, build, _ in self.entrants]
-        race_result = compute_race(all_builds)
-
-        build_id_map = {bd["user_id"]: bd["build_id"] for bd in all_builds if "build_id" in bd}
 
         async with async_session() as session:
+            # Load assigned crew onto each real-player build before the race runs
+            for build in all_builds:
+                build["crew"] = await _load_assigned_crew_for_build(
+                    session, build.get("build_id", "")
+                )
+
+            race_result = compute_race(all_builds)
+
+            crew_level_ups = _award_xp_to_crew(all_builds, race_result)
+
+            build_id_map = {bd["user_id"]: bd["build_id"] for bd in all_builds if "build_id" in bd}
+
             # Store race record
             race_record = Race(
                 participants={"players": [u.discord_id for u, _, _ in self.entrants]},
@@ -923,6 +1018,8 @@ class _MultiRaceView(discord.ui.View):
                 label = display_names.get(uid, uid)
                 wear_lines.append(f"{label} — **{card_name}** ({slot_name}) wore out")
             embed.add_field(name="🔧 Worn Out", value="\n".join(wear_lines), inline=False)
+
+        _add_crew_levelups_field(embed, crew_level_ups)
 
         await self.original_interaction.followup.send(embed=embed)
 

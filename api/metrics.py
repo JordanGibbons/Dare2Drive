@@ -91,3 +91,39 @@ api_request_duration_seconds = Histogram(
     ["route"],
     buckets=(0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5),
 )
+
+# ---------------------------------------------------------------------------
+# Crew metrics
+# ---------------------------------------------------------------------------
+
+crew_recruited = Counter(
+    "dare2drive_crew_recruited_total",
+    "Total number of crew recruited.",
+    ["source", "tier", "archetype", "rarity"],
+    # source: dossier | daily_lead
+    # tier: recruit_lead | dossier | elite_dossier | daily_lead (sentinel)
+)
+
+dossier_purchased = Counter(
+    "dare2drive_dossier_purchased_total",
+    "Total number of dossiers purchased.",
+    ["tier"],
+)
+
+crew_assignment = Counter(
+    "dare2drive_crew_assignment_total",
+    "Crew assignment actions.",
+    ["action"],  # assign | unassign | auto_unassign
+)
+
+crew_level_up = Counter(
+    "dare2drive_crew_level_up_total",
+    "Crew level-up events.",
+    ["archetype", "from_level", "to_level"],
+)
+
+crew_boost_apply = Counter(
+    "dare2drive_crew_boost_apply_total",
+    "Crew boost applications during stat resolution.",
+    ["archetype", "rarity"],
+)

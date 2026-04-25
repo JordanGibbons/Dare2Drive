@@ -281,3 +281,62 @@ class TestPlacement:
         assert d["position"] == 1
         assert d["dnf"] is False
         assert d["narrative"] == "Great race!"
+
+
+class TestComputeRaceWithCrew:
+    def test_compute_race_consumes_build_crew_key(self, full_build):
+        """compute_race must read build['crew']: same build with vs. without crew
+        must produce different Placement scores."""
+        from unittest.mock import MagicMock
+
+        def _crew(arch, rarity, lvl=10):
+            m = MagicMock()
+            m.archetype = MagicMock(value=arch)
+            m.rarity = MagicMock(value=rarity)
+            m.level = lvl
+            return m
+
+        env = EnvironmentCondition(
+            name="clear",
+            display_name="Clear Track",
+            description="A clear track for crew testing.",
+            stat_weights={
+                "power": 1.0,
+                "handling": 1.0,
+                "top_speed": 1.0,
+                "grip": 1.0,
+                "braking": 1.0,
+                "durability": 1.0,
+                "acceleration": 1.0,
+                "stability": 1.0,
+                "weather_performance": 1.0,
+            },
+            variance_multiplier=0.0,
+        )
+
+        crew = [_crew("pilot", "legendary", 10), _crew("engineer", "legendary", 10)]
+
+        # Run 1: solo race with crew
+        random.seed(42)
+        r_with = compute_race([{**full_build, "crew": crew}], environment=env)
+
+        # Run 2: identical solo race without crew (same seed, same build, same env)
+        random.seed(42)
+        r_without = compute_race([{**full_build, "crew": []}], environment=env)
+
+        score_with = r_with.placements[0].score
+        score_without = r_without.placements[0].score
+
+        # If compute_race didn't consume build["crew"], these would be identical.
+        assert score_with > score_without, (
+            f"crewed score {score_with} should exceed uncrewed score {score_without}; "
+            "compute_race may not be reading build['crew']"
+        )
+
+    def test_build_without_crew_key_still_works(self, full_build):
+        """Backward compat: build dict without a 'crew' key computes normally."""
+        from engine.race_engine import compute_race
+
+        # Explicitly no 'crew' key
+        result = compute_race([full_build])
+        assert len(result.placements) == 1

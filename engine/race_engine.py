@@ -9,7 +9,7 @@ from typing import Any
 from config.logging import get_logger
 from engine.durability import DurabilityResult, WreckPart, check_durability
 from engine.environment import EnvironmentCondition, apply_environment_weights, roll_environment
-from engine.stat_resolver import BuildStats, aggregate_build
+from engine.stat_resolver import BuildStats, aggregate_build, apply_crew_boosts
 
 log = get_logger(__name__)
 
@@ -159,6 +159,11 @@ def compute_race(
         # 1. Aggregate build stats
         hull_class = build.get("hull_class")
         build_stats = aggregate_build(slots, cards, hull_class=hull_class)
+
+        # 1b. Fold crew boosts (if any)
+        crew = build.get("crew", [])
+        if crew:
+            build_stats = apply_crew_boosts(build_stats, crew)
 
         # 2. Convert to flat dict and apply environment weights
         flat = _build_stats_to_flat(build_stats)
