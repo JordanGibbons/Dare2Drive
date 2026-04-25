@@ -129,6 +129,7 @@ class Dare2DriveBot(commands.Bot):
             "bot.cogs.tutorial",
             "bot.cogs.cards",
             "bot.cogs.hangar",
+            "bot.cogs.hiring",
             "bot.cogs.race",
             "bot.cogs.market",
             "bot.cogs.admin",
