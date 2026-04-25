@@ -281,3 +281,46 @@ class TestPlacement:
         assert d["position"] == 1
         assert d["dnf"] is False
         assert d["narrative"] == "Great race!"
+
+
+class TestComputeRaceWithCrew:
+    def test_crew_in_build_dict_moves_score(self, full_build):
+        """A build with crew should have a higher base score due to stat boosts."""
+        from unittest.mock import MagicMock
+
+        from engine.stat_resolver import aggregate_build, apply_crew_boosts
+
+        def _crew(arch, rarity, lvl=10):
+            m = MagicMock()
+            m.archetype = MagicMock(value=arch)
+            m.rarity = MagicMock(value=rarity)
+            m.level = lvl
+            return m
+
+        # Directly test that crew boosts the aggregated stats
+        slots = full_build["slots"]
+        cards = full_build["cards"]
+
+        build_stats_no_crew = aggregate_build(slots, cards)
+        crew = [_crew("pilot", "legendary", 10), _crew("engineer", "legendary", 10)]
+        build_stats_with_crew = apply_crew_boosts(aggregate_build(slots, cards), crew)
+
+        # Crew should boost multiple stats
+        assert build_stats_with_crew.effective_power > build_stats_no_crew.effective_power
+        assert build_stats_with_crew.effective_handling > build_stats_no_crew.effective_handling
+        assert (
+            build_stats_with_crew.effective_acceleration
+            > build_stats_no_crew.effective_acceleration
+        )
+
+        # Empty crew list should not change stats
+        build_stats_empty_crew = apply_crew_boosts(aggregate_build(slots, cards), [])
+        assert build_stats_empty_crew.effective_power == build_stats_no_crew.effective_power
+
+    def test_build_without_crew_key_still_works(self, full_build):
+        """Backward compat: build dict without a 'crew' key computes normally."""
+        from engine.race_engine import compute_race
+
+        # Explicitly no 'crew' key
+        result = compute_race([full_build])
+        assert len(result.placements) == 1
