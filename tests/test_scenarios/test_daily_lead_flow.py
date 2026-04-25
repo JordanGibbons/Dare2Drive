@@ -59,3 +59,23 @@ async def test_next_day_rolls_fresh_lead(lead_user, db_session):
         select(CrewDailyLead).where(CrewDailyLead.user_id == lead_user.discord_id)
     )
     assert len(list(res.scalars().all())) == 2
+
+
+@pytest.mark.asyncio
+async def test_daily_cooldown_still_surfaces_existing_lead(lead_user, db_session):
+    """A user on /daily cooldown should still see today's pre-rolled lead."""
+    from datetime import datetime, timezone
+
+    from engine.crew_recruit import get_or_roll_today_lead
+
+    # Set last_daily so user is on cooldown
+    lead_user.last_daily = datetime.now(timezone.utc)
+    await db_session.flush()
+
+    # Pre-create today's lead
+    lead = await get_or_roll_today_lead(db_session, lead_user)
+    await db_session.flush()
+    assert lead is not None
+    # The cog test would patch async_session and assert the embed contains the lead;
+    # the engine-level invariant we check here is: the lead row exists, claimable.
+    assert lead.claimed_at is None

@@ -23,7 +23,7 @@ from config.logging import get_logger
 from config.metrics import trace_exemplar
 from config.settings import settings
 from config.tracing import traced_command
-from db.models import Build, Card, CardSlot, Rarity, User, UserCard
+from db.models import Build, Card, CardSlot, CrewDailyLead, Rarity, User, UserCard
 from db.session import async_session
 from engine.crew_recruit import get_or_roll_today_lead
 
@@ -64,7 +64,7 @@ RARITY_EMOJI = {
 
 # Phase 1: duplicated to avoid circular import with bot.cogs.hiring.
 # Single-source-of-truth lives in bot/reveal.py for future consolidation.
-_ARCHETYPE_EMOJI_FROM_HIRING = {
+_ARCHETYPE_EMOJI = {
     "pilot": "🧑‍✈️",
     "engineer": "🔧",
     "gunner": "🔫",
@@ -210,17 +210,52 @@ class CardsCog(commands.Cog):
                 )
                 return
 
+            # Look up today's lead (idempotent — does not roll on cooldown path)
+            today_date = datetime.now(timezone.utc).date()
+            existing_lead = await session.get(CrewDailyLead, (str(interaction.user.id), today_date))
+
             now = datetime.now(timezone.utc)
             if user.last_daily:
                 next_daily = user.last_daily + timedelta(hours=24)
                 if now < next_daily:
+                    # Cooldown active — show cooldown message + today's lead if any
                     remaining = next_daily - now
                     hours, rem = divmod(int(remaining.total_seconds()), 3600)
                     minutes = rem // 60
-                    await interaction.response.send_message(
-                        f"You already claimed your daily! Come back in **{hours}h {minutes}m**.",
-                        ephemeral=True,
+                    cooldown_msg = (
+                        f"You already claimed your daily! Come back in **{hours}h {minutes}m**."
                     )
+
+                    if existing_lead is None:
+                        await interaction.response.send_message(cooldown_msg, ephemeral=True)
+                        return
+
+                    # Capture scalars for embed (we're still inside async_session)
+                    lead_archetype = existing_lead.archetype.value
+                    lead_first = existing_lead.first_name
+                    lead_last = existing_lead.last_name
+                    lead_callsign = existing_lead.callsign
+                    lead_rarity = existing_lead.rarity.value
+                    lead_claimed = existing_lead.claimed_at is not None
+
+                    embed = discord.Embed(
+                        title="⏳ Daily on Cooldown",
+                        description=cooldown_msg,
+                        color=0xF59E0B,
+                    )
+                    archetype_emoji = _ARCHETYPE_EMOJI.get(lead_archetype, "")
+                    claimed_note = " *(already claimed)*" if lead_claimed else ""
+                    embed.add_field(
+                        name="👤 Today's Lead",
+                        value=(
+                            f"{archetype_emoji} "
+                            f'**{lead_first} "{lead_callsign}" {lead_last}** — '
+                            f"{lead_archetype.title()} [{lead_rarity.title()}]{claimed_note}\n"
+                            f"Run `/hire` to recruit them."
+                        ),
+                        inline=False,
+                    )
+                    await interaction.response.send_message(embed=embed, ephemeral=True)
                     return
 
             user.currency += 100
@@ -251,6 +286,14 @@ class CardsCog(commands.Cog):
             # Phase 1: roll/refresh today's daily lead
             lead = await get_or_roll_today_lead(session, user)
 
+            # Capture scalars before session close (for the embed-build phase)
+            lead_archetype = lead.archetype.value
+            lead_first = lead.first_name
+            lead_last = lead.last_name
+            lead_callsign = lead.callsign
+            lead_rarity = lead.rarity.value
+            lead_claimed = lead.claimed_at is not None
+
             await session.commit()
 
         daily_claimed.inc(exemplar=trace_exemplar())
@@ -273,14 +316,14 @@ class CardsCog(commands.Cog):
 
         # Phase 1: surface today's lead in the daily embed
         if lead is not None:
-            archetype_emoji = _ARCHETYPE_EMOJI_FROM_HIRING.get(lead.archetype.value, "")
-            claimed_note = " *(already claimed)*" if lead.claimed_at else ""
+            archetype_emoji = _ARCHETYPE_EMOJI.get(lead_archetype, "")
+            claimed_note = " *(already claimed)*" if lead_claimed else ""
             embed.add_field(
                 name="👤 Today's Lead",
                 value=(
                     f"{archetype_emoji} "
-                    f'**{lead.first_name} "{lead.callsign}" {lead.last_name}** — '
-                    f"{lead.archetype.value.title()} [{lead.rarity.value.title()}]{claimed_note}\n"
+                    f'**{lead_first} "{lead_callsign}" {lead_last}** — '
+                    f"{lead_archetype.title()} [{lead_rarity.title()}]{claimed_note}\n"
                     f"Run `/hire` to recruit them."
                 ),
                 inline=False,
