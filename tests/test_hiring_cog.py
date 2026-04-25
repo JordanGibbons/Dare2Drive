@@ -71,3 +71,52 @@ async def test_dossier_command_deducts_creds_and_creates_crew(hiring_user, db_se
     )
     members = list(res.scalars().all())
     assert len(members) == 1
+
+
+@pytest.mark.asyncio
+async def test_crew_command_lists_user_crew(hiring_user, db_session):
+
+    from bot.cogs.hiring import HiringCog
+    from db.models import CrewArchetype, CrewMember, Rarity
+
+    # Pre-seed two crew
+    c1 = CrewMember(
+        user_id=hiring_user.discord_id,
+        first_name="Jax",
+        last_name="Krell",
+        callsign="Blackjack",
+        archetype=CrewArchetype.PILOT,
+        rarity=Rarity.RARE,
+    )
+    c2 = CrewMember(
+        user_id=hiring_user.discord_id,
+        first_name="Mira",
+        last_name="Voss",
+        callsign="Sixgun",
+        archetype=CrewArchetype.ENGINEER,
+        rarity=Rarity.EPIC,
+    )
+    db_session.add_all([c1, c2])
+    await db_session.flush()
+
+    bot = commands.Bot(command_prefix="!", intents=discord.Intents.default())
+    cog = HiringCog(bot)
+
+    interaction = MagicMock()
+    interaction.user = MagicMock()
+    interaction.user.id = hiring_user.discord_id
+    interaction.response = MagicMock()
+    interaction.response.send_message = AsyncMock()
+
+    with patch("bot.cogs.hiring.async_session") as sess_ctx:
+        sess_ctx.return_value.__aenter__.return_value = db_session
+        sess_ctx.return_value.__aexit__.return_value = None
+        await cog.crew.callback(cog, interaction, filter=None)
+
+    interaction.response.send_message.assert_called_once()
+    kwargs = interaction.response.send_message.call_args.kwargs
+    embed = kwargs.get("embed")
+    assert embed is not None
+    flat = (embed.description or "") + " ".join(f.value for f in embed.fields)
+    assert "Jax" in flat
+    assert "Mira" in flat

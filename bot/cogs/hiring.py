@@ -5,6 +5,7 @@ from __future__ import annotations
 import discord
 from discord import app_commands
 from discord.ext import commands
+from sqlalchemy import select
 
 from api.metrics import crew_recruited, currency_spent, dossier_purchased
 from bot.cogs.cards import _PackRevealView
@@ -13,7 +14,7 @@ from bot.system_gating import get_active_system, system_required_message
 from config.logging import get_logger
 from config.metrics import trace_exemplar
 from config.tracing import traced_command
-from db.models import User
+from db.models import CrewAssignment, CrewMember, User
 from db.session import async_session
 from engine.crew_recruit import InsufficientCreditsError, recruit_crew_from_dossier
 from engine.stat_resolver import _get_archetype_mapping
@@ -27,6 +28,52 @@ _TIER_DISPLAY = {
     "dossier": "Dossier",
     "elite_dossier": "Elite Dossier",
 }
+
+_ARCHETYPE_EMOJI = {
+    "pilot": "🧑‍✈️",
+    "engineer": "🔧",
+    "gunner": "🔫",
+    "navigator": "🧭",
+    "medic": "🩹",
+}
+_RARITY_EMOJI = {
+    "common": "⬜",
+    "uncommon": "🟩",
+    "rare": "🟦",
+    "epic": "🟪",
+    "legendary": "🟨",
+    "ghost": "👻",
+}
+
+
+def _format_crew_line(member: CrewMember, assigned: bool) -> str:
+    emoji = _ARCHETYPE_EMOJI[member.archetype.value]
+    rarity_emoji = _RARITY_EMOJI[member.rarity.value]
+    name = f'{member.first_name} "{member.callsign}" {member.last_name}'
+    tag = " *(assigned)*" if assigned else ""
+    return (
+        f"{emoji} {rarity_emoji} **{name}** — {member.archetype.value.title()} L{member.level}{tag}"
+    )
+
+
+async def _crew_name_autocomplete(
+    interaction: discord.Interaction, current: str
+) -> list[app_commands.Choice[str]]:
+    """Autocomplete for /crew_inspect, /assign, /unassign — used by Tasks 14, 15."""
+    async with async_session() as session:
+        result = await session.execute(
+            select(CrewMember).where(CrewMember.user_id == str(interaction.user.id))
+        )
+        members = list(result.scalars().all())
+    q = current.lower()
+    out: list[app_commands.Choice[str]] = []
+    for m in members:
+        name = f'{m.first_name} "{m.callsign}" {m.last_name}'
+        if q in name.lower():
+            out.append(app_commands.Choice(name=name[:100], value=name[:100]))
+        if len(out) >= 25:
+            break
+    return out
 
 
 class HiringCog(commands.Cog):
@@ -109,9 +156,82 @@ class HiringCog(commands.Cog):
         await interaction.response.send_message("Not implemented yet.", ephemeral=True)
 
     @app_commands.command(name="crew", description="View your crew roster.")
+    @app_commands.describe(
+        filter="Optional filter: all, unassigned, assigned, or an archetype name."
+    )
+    @app_commands.choices(
+        filter=[
+            app_commands.Choice(name="All", value="all"),
+            app_commands.Choice(name="Unassigned", value="unassigned"),
+            app_commands.Choice(name="Assigned", value="assigned"),
+            app_commands.Choice(name="Pilot", value="pilot"),
+            app_commands.Choice(name="Engineer", value="engineer"),
+            app_commands.Choice(name="Gunner", value="gunner"),
+            app_commands.Choice(name="Navigator", value="navigator"),
+            app_commands.Choice(name="Medic", value="medic"),
+        ]
+    )
     @traced_command
     async def crew(self, interaction: discord.Interaction, filter: str | None = None) -> None:
-        await interaction.response.send_message("Not implemented yet.", ephemeral=True)
+        """Universe-wide roster — no system gating."""
+        user_id = str(interaction.user.id)
+        async with async_session() as session:
+            members_q = await session.execute(
+                select(CrewMember).where(CrewMember.user_id == user_id)
+            )
+            members = list(members_q.scalars().all())
+            if not members:
+                await interaction.response.send_message(
+                    "No crew yet — try `/dossier` or `/hire`.", ephemeral=True
+                )
+                return
+
+            assigned_q = await session.execute(
+                select(CrewAssignment.crew_id).where(
+                    CrewAssignment.crew_id.in_([m.id for m in members])
+                )
+            )
+            assigned_ids = {row[0] for row in assigned_q.all()}
+
+        f = (filter or "all").lower()
+        if f == "unassigned":
+            members = [m for m in members if m.id not in assigned_ids]
+        elif f == "assigned":
+            members = [m for m in members if m.id in assigned_ids]
+        elif f in {"pilot", "engineer", "gunner", "navigator", "medic"}:
+            members = [m for m in members if m.archetype.value == f]
+        # else: all — no filter
+
+        if not members:
+            await interaction.response.send_message(f"No crew match filter `{f}`.", ephemeral=True)
+            return
+
+        rarity_order = {
+            "ghost": 0,
+            "legendary": 1,
+            "epic": 2,
+            "rare": 3,
+            "uncommon": 4,
+            "common": 5,
+        }
+        members.sort(
+            key=lambda m: (
+                rarity_order.get(m.rarity.value, 99),
+                -m.level,
+                m.first_name,
+            )
+        )
+
+        lines = [_format_crew_line(m, m.id in assigned_ids) for m in members[:25]]
+
+        embed = discord.Embed(
+            title=f"🛰️ Crew Roster — {len(members)} total",
+            description="\n".join(lines),
+            color=0x3B82F6,
+        )
+        if len(members) > 25:
+            embed.set_footer(text=f"Showing 25 of {len(members)}. Use filters to narrow.")
+        await interaction.response.send_message(embed=embed)
 
     @app_commands.command(name="assign", description="Assign a crew member to your active build.")
     @traced_command
