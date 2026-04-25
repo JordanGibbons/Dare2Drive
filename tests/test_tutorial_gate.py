@@ -1,4 +1,4 @@
-"""Regression tests for the tutorial-gate allow-list.
+"""Regression tests for the tutorial-gate allow-list and step transitions.
 
 The allow-list in `bot.cogs.tutorial.STEP_ALLOWED_COMMANDS` references commands
 by their slash-command name (the name registered on `@app_commands.command`).
@@ -6,16 +6,25 @@ A rename of a command without a matching update to the allow-list silently
 breaks the tutorial — `interaction_check` blocks the command and its
 autocomplete, leaving the player stuck.
 
-These tests catch that class of bug at import time.
+The cogs also call `advance_tutorial(interaction, user_id, command_name)`
+manually after a successful command. The string they pass must match what
+`advance_tutorial`'s internal `command_name == "..."` checks expect — another
+class of soft-lock bug.
+
+These tests catch both classes of bug at import / DB-fixture time.
 """
 
 from __future__ import annotations
 
+from unittest.mock import AsyncMock, MagicMock
+
 import discord
+import pytest
+import pytest_asyncio
 from discord.ext import commands
 
-from bot.cogs.tutorial import STEP_ALLOWED_COMMANDS
-from db.models import TutorialStep
+from bot.cogs.tutorial import STEP_ALLOWED_COMMANDS, advance_tutorial
+from db.models import HullClass, TutorialStep, User
 
 
 def _all_registered_slash_command_names() -> set[str]:
@@ -61,3 +70,82 @@ def test_race_step_allows_race_and_hangar():
     """Player on RACE step must be able to run /race (and /hangar to re-check)."""
     assert "race" in STEP_ALLOWED_COMMANDS[TutorialStep.RACE]
     assert "hangar" in STEP_ALLOWED_COMMANDS[TutorialStep.RACE]
+
+
+# ---------------------------------------------------------------------------
+# Step transitions: advance_tutorial actually fires when the right command
+# fires at the right step.
+# ---------------------------------------------------------------------------
+
+
+@pytest_asyncio.fixture
+async def garage_step_user(db_session):
+    """A player parked on TutorialStep.GARAGE — has a minted ship, ready to /hangar."""
+    u = User(
+        discord_id="666666666",
+        username="garagestepper",
+        hull_class=HullClass.SKIRMISHER,
+        currency=0,
+        tutorial_step=TutorialStep.GARAGE,
+    )
+    db_session.add(u)
+    await db_session.flush()
+    return u
+
+
+@pytest.mark.asyncio
+async def test_advance_tutorial_garage_to_race_fires_on_hangar(
+    garage_step_user, db_session, monkeypatch
+):
+    """Running /hangar while on GARAGE step must advance the player to RACE.
+
+    Regression test for the bug where bot/cogs/hangar.py called
+    advance_tutorial(..., "garage") but tutorial.py expected command_name
+    to be "hangar", silently failing to advance the step.
+    """
+    from bot.cogs import tutorial as tutorial_mod
+
+    # advance_tutorial opens its own async_session(); patch it to yield the test session
+    sess_ctx = MagicMock()
+    sess_ctx.__aenter__ = AsyncMock(return_value=db_session)
+    sess_ctx.__aexit__ = AsyncMock(return_value=None)
+    monkeypatch.setattr(tutorial_mod, "async_session", lambda: sess_ctx)
+
+    # send_dialogue calls Discord APIs we don't want to exercise; stub it.
+    monkeypatch.setattr(tutorial_mod, "send_dialogue", AsyncMock(return_value=None))
+
+    interaction = MagicMock(spec=discord.Interaction)
+
+    await advance_tutorial(interaction, garage_step_user.discord_id, "hangar")
+    await db_session.refresh(garage_step_user)
+
+    assert garage_step_user.tutorial_step == TutorialStep.RACE, (
+        "Player on GARAGE step ran /hangar but tutorial did not advance to RACE. "
+        "Check that bot/cogs/hangar.py passes 'hangar' (not 'garage') to "
+        "advance_tutorial, and that tutorial.py's transition guard matches."
+    )
+
+
+@pytest.mark.asyncio
+async def test_advance_tutorial_garage_does_not_advance_on_wrong_command(
+    garage_step_user, db_session, monkeypatch
+):
+    """Sanity: passing the wrong command_name must NOT advance the step.
+
+    Locks in the symmetric guarantee — only the right command at the right
+    step fires the transition.
+    """
+    from bot.cogs import tutorial as tutorial_mod
+
+    sess_ctx = MagicMock()
+    sess_ctx.__aenter__ = AsyncMock(return_value=db_session)
+    sess_ctx.__aexit__ = AsyncMock(return_value=None)
+    monkeypatch.setattr(tutorial_mod, "async_session", lambda: sess_ctx)
+    monkeypatch.setattr(tutorial_mod, "send_dialogue", AsyncMock(return_value=None))
+
+    interaction = MagicMock(spec=discord.Interaction)
+
+    await advance_tutorial(interaction, garage_step_user.discord_id, "garage")
+    await db_session.refresh(garage_step_user)
+
+    assert garage_step_user.tutorial_step == TutorialStep.GARAGE

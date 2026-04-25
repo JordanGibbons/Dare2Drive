@@ -404,10 +404,10 @@ class HangarCog(commands.Cog):
 
         await interaction.response.send_message(embed=embed)
 
-        # Tutorial progression — internal step name is "garage"
+        # Tutorial progression
         from bot.cogs.tutorial import advance_tutorial
 
-        await advance_tutorial(interaction, str(interaction.user.id), "garage")
+        await advance_tutorial(interaction, str(interaction.user.id), "hangar")
 
     @app_commands.command(name="equip", description="Equip a card to a build slot")
     @app_commands.describe(
