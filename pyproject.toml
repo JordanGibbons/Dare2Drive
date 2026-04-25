@@ -67,6 +67,9 @@ target-version = ["py312"]
 asyncio_mode = "auto"
 testpaths = ["tests"]
 addopts = "--cov=bot --cov=engine --cov=api --cov=db --cov=config --cov-report=term-missing --cov-report=xml"
+markers = [
+    "perf: performance sanity tests",
+]
 
 [tool.coverage.run]
 source = ["bot", "engine", "api", "db", "config"]
