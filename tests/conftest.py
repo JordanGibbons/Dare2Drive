@@ -7,6 +7,7 @@ import uuid
 
 import pytest
 import pytest_asyncio
+import redis.asyncio as _redis_async
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 # ---------------------------------------------------------------------------
@@ -234,3 +235,15 @@ def empty_build():
         },
         "cards": {},
     }
+
+
+_TEST_REDIS_URL = os.environ.get("TEST_REDIS_URL", "redis://localhost:6379/15")
+
+
+@pytest_asyncio.fixture
+async def redis_client():
+    """Async Redis client pointed at db 15 (test isolation)."""
+    client = _redis_async.from_url(_TEST_REDIS_URL, decode_responses=True)
+    yield client
+    await client.flushdb()
+    await client.aclose()
