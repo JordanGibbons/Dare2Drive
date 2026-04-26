@@ -247,3 +247,36 @@ async def redis_client():
     yield client
     await client.flushdb()
     await client.aclose()
+
+
+# ---------------------------------------------------------------------------
+# Cog-side helper: wraps the savepoint-isolated `db_session` so production code
+# that does `async with async_session() as s, s.begin():` can run inside the
+# test's already-open transaction. `.begin()` is rerouted to `.begin_nested()`.
+# ---------------------------------------------------------------------------
+
+
+class SessionProxy:
+    """Forward attribute access to the wrapped session, but route .begin() to .begin_nested()."""
+
+    def __init__(self, session):
+        self._session = session
+
+    def __getattr__(self, name):
+        return getattr(self._session, name)
+
+    def begin(self):
+        return self._session.begin_nested()
+
+
+class SessionWrapper:
+    """Yield a SessionProxy around the test's db_session as an async context manager."""
+
+    def __init__(self, session):
+        self._session = session
+
+    async def __aenter__(self):
+        return SessionProxy(self._session)
+
+    async def __aexit__(self, *a):
+        return False

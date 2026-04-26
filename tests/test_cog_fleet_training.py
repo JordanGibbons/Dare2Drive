@@ -83,33 +83,4 @@ async def test_training_start_validates_credits_and_schedules_timer(
     assert refreshed_crew.current_activity == CrewActivity.TRAINING
 
 
-class _SessionProxy:
-    """Proxy for the test session that converts .begin() to .begin_nested().
-
-    The test session is already inside a transaction (savepoint isolation);
-    calling .begin() on it raises "already begun".  We intercept .begin()
-    and forward it to begin_nested() so the cog's
-    ``async with session, session.begin()`` pattern works without error.
-    """
-
-    def __init__(self, session):
-        self._session = session
-
-    def __getattr__(self, name):
-        return getattr(self._session, name)
-
-    def begin(self):
-        return self._session.begin_nested()
-
-
-class _SessionWrapper:
-    """Make async_session() return a context manager wrapping the test session."""
-
-    def __init__(self, session):
-        self._session = session
-
-    async def __aenter__(self):
-        return _SessionProxy(self._session)
-
-    async def __aexit__(self, *a):
-        return False
+from tests.conftest import SessionWrapper as _SessionWrapper  # noqa: E402, F401
