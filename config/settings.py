@@ -79,6 +79,26 @@ class Settings(BaseSettings):
     NOTIFICATION_BATCH_WINDOW_SECONDS: int = 30
     NOTIFICATION_STREAM_MAXLEN: int = 10000
 
+    # ---------------------------------------------------------------- #
+    # Phase 2b — expedition tunables                                   #
+    # ---------------------------------------------------------------- #
+    # Default per-user concurrent expedition cap. Overridable per-user
+    # later via engine/expedition_concurrency.get_max_expeditions().
+    EXPEDITION_MAX_PER_USER_DEFAULT: int = 2
+
+    # Default response window in minutes (templates can override per-template).
+    EXPEDITION_RESPONSE_WINDOW_DEFAULT_MIN: int = 30
+
+    # Jitter applied to inter-event spacing as a percentage of nominal spacing,
+    # e.g. 10 = events fire ±10% around their nominal time. Avoids synchronized
+    # cluster firing for templates with fixed schedules.
+    EXPEDITION_EVENT_JITTER_PCT: int = 10
+
+    # Rollout flag — when False, the expeditions cog does not register its
+    # slash commands. Allows merging schema + engine + handlers without
+    # exposing the surface to players. Removed after a stable rollout.
+    EXPEDITIONS_ENABLED: bool = False
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 
     @property
