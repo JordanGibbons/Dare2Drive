@@ -45,7 +45,8 @@ async def test_emit_notification_respects_maxlen(redis_client):
             client=redis_client,
             stream_key="d2d:notifications:cap",
             maxlen=5,
+            approximate=False,
         )
 
     length = await redis_client.xlen("d2d:notifications:cap")
-    assert length <= 10  # approximate trim — Redis may keep slightly more.
+    assert length == 5

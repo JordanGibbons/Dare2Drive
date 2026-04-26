@@ -38,12 +38,13 @@ async def emit_notification(
     client: redis_async.Redis | None = None,
     stream_key: str | None = None,
     maxlen: int | None = None,
+    approximate: bool = True,
 ) -> str:
     """XADD a NotificationRequest to the Redis stream. Returns the entry id."""
     c = client or get_redis_client()
     key = stream_key or DEFAULT_STREAM_KEY
     cap = maxlen if maxlen is not None else settings.NOTIFICATION_STREAM_MAXLEN
-    entry_id = await c.xadd(key, _to_stream_fields(n), maxlen=cap, approximate=False)
+    entry_id = await c.xadd(key, _to_stream_fields(n), maxlen=cap, approximate=approximate)
     log.info(
         "notification_emitted user_id=%s category=%s correlation_id=%s entry_id=%s",
         n.user_id,
