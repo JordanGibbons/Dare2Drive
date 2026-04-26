@@ -50,7 +50,7 @@ d2d = "scripts.dev:cli"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["api*", "bot*", "config*", "db*", "engine*", "scripts*"]
+include = ["api*", "bot*", "config*", "db*", "engine*", "scheduler*", "scripts*"]
 
 [tool.ruff]
 line-length = 100
@@ -66,14 +66,14 @@ target-version = ["py312"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
-addopts = "--cov=bot --cov=engine --cov=api --cov=db --cov=config --cov-report=term-missing --cov-report=xml"
+addopts = "--cov=bot --cov=engine --cov=api --cov=db --cov=config --cov=scheduler --cov-report=term-missing --cov-report=xml"
 markers = [
     "perf: performance sanity tests",
 ]
 
 [tool.coverage.run]
-source = ["bot", "engine", "api", "db", "config"]
-omit = ["*/migrations/*", "*/tests/*", "bot/cogs/*", "bot/main.py"]
+source = ["bot", "engine", "api", "db", "config", "scheduler"]
+omit = ["*/migrations/*", "*/tests/*", "bot/cogs/*", "bot/main.py", "scheduler/worker.py"]
 
 [tool.coverage.report]
 fail_under = 70
