@@ -45,6 +45,7 @@ class NotificationConsumer:
         consumer_id: str = "bot-1",
         batch_window_seconds: float | None = None,
         rate_limit_per_hour: int | None = None,
+        start_id: str = "$",
     ) -> None:
         self.bot = bot
         self.redis = redis
@@ -61,6 +62,7 @@ class NotificationConsumer:
             if rate_limit_per_hour is not None
             else settings.NOTIFICATION_RATE_LIMIT_PER_HOUR
         )
+        self.start_id = start_id
         self._buffer: dict[str, list[_PendingItem]] = defaultdict(list)
         self._rate_buckets: dict[tuple[str, int], int] = defaultdict(int)
         self._stop = asyncio.Event()
@@ -68,11 +70,17 @@ class NotificationConsumer:
     async def ensure_group(self) -> None:
         try:
             await self.redis.xgroup_create(
-                self.stream_key, self.consumer_group, id="0", mkstream=True
+                self.stream_key, self.consumer_group, id=self.start_id, mkstream=True
             )
         except redis_async.ResponseError as e:
             if "BUSYGROUP" not in str(e):
                 raise
+
+    def _evict_stale_rate_buckets(self) -> None:
+        current_hour = int(time.time() // 3600)
+        stale = [k for k in self._rate_buckets if k[1] < current_hour]
+        for k in stale:
+            del self._rate_buckets[k]
 
     async def run(self) -> None:
         """Run forever, until stop() is called."""
@@ -117,6 +125,7 @@ class NotificationConsumer:
 
     async def flush_pending(self) -> None:
         now = time.monotonic()
+        self._evict_stale_rate_buckets()
         for user_id, items in list(self._buffer.items()):
             ready = [it for it in items if (now - it.received_at) >= self.batch_window_seconds]
             if not ready:

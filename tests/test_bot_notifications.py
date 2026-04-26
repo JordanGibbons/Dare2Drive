@@ -80,6 +80,7 @@ async def test_consumer_sends_dm_for_in_band_message(db_session, redis_client, m
         consumer_group="d2d-bot-test",
         consumer_id="bot-test-1",
         batch_window_seconds=0,  # immediate flush.
+        start_id="0",  # test XADDs before ensure_group; deliver from start.
     )
     await consumer.ensure_group()
     await consumer.process_once(block_ms=200)
@@ -138,6 +139,7 @@ async def test_consumer_skips_opted_out_user(db_session, redis_client, monkeypat
         consumer_group="g",
         consumer_id="c1",
         batch_window_seconds=0,
+        start_id="0",
     )
     await consumer.ensure_group()
     await consumer.process_once(block_ms=200)
@@ -196,6 +198,7 @@ async def test_consumer_rate_limit_drops_excess(db_session, redis_client, monkey
         consumer_id="c1",
         batch_window_seconds=0,
         rate_limit_per_hour=3,
+        start_id="0",
     )
     await consumer.ensure_group()
     for _ in range(10):
