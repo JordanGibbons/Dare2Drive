@@ -194,6 +194,8 @@ class User(Base):
         nullable=True,
         default=None,
     )
+    # server_default literal is frozen by migration 0003_phase2a_scheduler;
+    # any change to the JSON requires a new migration that updates existing rows.
     notification_prefs: Mapped[dict] = mapped_column(
         JSONB,
         nullable=False,
