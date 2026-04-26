@@ -28,8 +28,10 @@ async def apply_reward(
     Returns True if rewards were applied (first time seeing this source),
     False if the (source_type, source_id) row already existed (no-op).
 
-    Caller is responsible for the surrounding transaction. This function
-    flushes after the ledger insert but does not commit.
+    Caller is responsible for the surrounding transaction. The ledger INSERT
+    executes immediately as a Core statement (visible inside the transaction
+    on return). User-row mutations are ORM-level and flush when the caller
+    flushes or commits.
     """
     stmt = (
         pg_insert(RewardLedger)
