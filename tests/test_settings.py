@@ -32,3 +32,18 @@ class TestSettings:
         assert s.JUNKYARD_PACK_SIZE == 3
         assert s.PERFORMANCE_PACK_SIZE == 3
         assert s.LEGEND_CRATE_SIZE == 3
+
+    def test_phase2a_scheduler_settings_defaults(self):
+        from config.settings import settings
+
+        assert settings.SCHEDULER_TICK_INTERVAL_SECONDS == 5
+        assert settings.SCHEDULER_BATCH_SIZE == 100
+        assert settings.SCHEDULER_MAX_ATTEMPTS == 3
+        assert settings.SCHEDULER_STUCK_CLAIM_TIMEOUT_SECS == 300
+        assert settings.SCHEDULER_RECOVERY_INTERVAL_SECS == 60
+        assert settings.ACCRUAL_TICK_INTERVAL_MINUTES == 30
+        assert settings.ACCRUAL_NOTIFICATION_THRESHOLD == 1000
+        assert settings.TIMER_CANCEL_REFUND_PCT == 50
+        assert settings.NOTIFICATION_RATE_LIMIT_PER_HOUR == 5
+        assert settings.NOTIFICATION_BATCH_WINDOW_SECONDS == 30
+        assert settings.NOTIFICATION_STREAM_MAXLEN == 10000

@@ -7,6 +7,7 @@ import uuid
 
 import pytest
 import pytest_asyncio
+import redis.asyncio as _redis_async
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 # ---------------------------------------------------------------------------
@@ -234,3 +235,48 @@ def empty_build():
         },
         "cards": {},
     }
+
+
+_TEST_REDIS_URL = os.environ.get("TEST_REDIS_URL", "redis://localhost:6379/15")
+
+
+@pytest_asyncio.fixture
+async def redis_client():
+    """Async Redis client pointed at db 15 (test isolation)."""
+    client = _redis_async.from_url(_TEST_REDIS_URL, decode_responses=True)
+    yield client
+    await client.flushdb()
+    await client.aclose()
+
+
+# ---------------------------------------------------------------------------
+# Cog-side helper: wraps the savepoint-isolated `db_session` so production code
+# that does `async with async_session() as s, s.begin():` can run inside the
+# test's already-open transaction. `.begin()` is rerouted to `.begin_nested()`.
+# ---------------------------------------------------------------------------
+
+
+class SessionProxy:
+    """Forward attribute access to the wrapped session, but route .begin() to .begin_nested()."""
+
+    def __init__(self, session):
+        self._session = session
+
+    def __getattr__(self, name):
+        return getattr(self._session, name)
+
+    def begin(self):
+        return self._session.begin_nested()
+
+
+class SessionWrapper:
+    """Yield a SessionProxy around the test's db_session as an async context manager."""
+
+    def __init__(self, session):
+        self._session = session
+
+    async def __aenter__(self):
+        return SessionProxy(self._session)
+
+    async def __aexit__(self, *a):
+        return False

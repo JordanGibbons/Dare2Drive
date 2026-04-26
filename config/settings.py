@@ -60,6 +60,25 @@ class Settings(BaseSettings):
     PERFORMANCE_PACK_SIZE: int = 3
     LEGEND_CRATE_SIZE: int = 3
 
+    # Phase 2a — Scheduler
+    SCHEDULER_TICK_INTERVAL_SECONDS: int = 5
+    SCHEDULER_BATCH_SIZE: int = 100
+    SCHEDULER_MAX_ATTEMPTS: int = 3
+    SCHEDULER_STUCK_CLAIM_TIMEOUT_SECS: int = 300
+    SCHEDULER_RECOVERY_INTERVAL_SECS: int = 60
+
+    # Phase 2a — Accrual
+    ACCRUAL_TICK_INTERVAL_MINUTES: int = 30
+    ACCRUAL_NOTIFICATION_THRESHOLD: int = 1000
+
+    # Phase 2a — Timers
+    TIMER_CANCEL_REFUND_PCT: int = 50
+
+    # Phase 2a — Notifications
+    NOTIFICATION_RATE_LIMIT_PER_HOUR: int = 5
+    NOTIFICATION_BATCH_WINDOW_SECONDS: int = 30
+    NOTIFICATION_STREAM_MAXLEN: int = 10000
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 
     @property

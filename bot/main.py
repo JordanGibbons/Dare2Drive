@@ -133,10 +133,27 @@ class Dare2DriveBot(commands.Bot):
             "bot.cogs.race",
             "bot.cogs.market",
             "bot.cogs.admin",
+            "bot.cogs.fleet",
         ]
         for module in cog_modules:
             await self.load_extension(module)
             log.info("Loaded cog: %s", module)
+
+        # Phase 2a — start the notification consumer.
+        import redis.asyncio as _redis_async
+
+        from bot.notifications import NotificationConsumer
+
+        self._notif_redis = _redis_async.from_url(settings.REDIS_URL, decode_responses=True)
+        self._notif_consumer = NotificationConsumer(
+            bot=self,
+            redis=self._notif_redis,
+        )
+        self._notif_task = asyncio.create_task(
+            self._notif_consumer.run(),
+            name="notification_consumer",
+        )
+        log.info("notification_consumer_started")
 
         if settings.DISCORD_GUILD_ID:
             guild = discord.Object(id=int(settings.DISCORD_GUILD_ID))
@@ -153,6 +170,26 @@ class Dare2DriveBot(commands.Bot):
         else:
             await self.tree.sync()
             log.info("Synced commands globally")
+
+    async def close(self) -> None:
+        # Stop notification consumer cleanly.
+        consumer = getattr(self, "_notif_consumer", None)
+        task = getattr(self, "_notif_task", None)
+        if consumer is not None:
+            consumer.stop()
+        if task is not None:
+            task.cancel()
+            try:
+                await task
+            except (asyncio.CancelledError, Exception):
+                pass
+        redis_client = getattr(self, "_notif_redis", None)
+        if redis_client is not None:
+            try:
+                await redis_client.aclose()
+            except Exception:
+                pass
+        await super().close()
 
     async def on_guild_join(self, guild: discord.Guild) -> None:
         """Auto-register a Sector row when the bot joins a new guild."""

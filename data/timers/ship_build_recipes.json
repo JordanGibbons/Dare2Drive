@@ -1,0 +1,13 @@
+[
+  {
+    "id": "salvage_reconstruction",
+    "name": "Salvage Reconstruction",
+    "duration_minutes": 120,
+    "cost_credits": 500,
+    "input_scrapped_ship_count": 3,
+    "rewards": {
+      "new_ship": {"hull_class": "hauler", "title": "Reconstructed Hull"}
+    },
+    "flavor": "Three wrecks become one rough but functional hull. The slipway hums."
+  }
+]

@@ -58,10 +58,20 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     env:
       DATABASE_URL: "postgresql+asyncpg://dare2drive:dare2drive@localhost:5432/dare2drive"
       TEST_DATABASE_URL: "postgresql+asyncpg://dare2drive:dare2drive@localhost:5432/dare2drive"
       REDIS_URL: "redis://localhost:6379/0"
+      TEST_REDIS_URL: "redis://localhost:6379/15"
       DISCORD_TOKEN: "test-token"
       ENVIRONMENT: "development"
     steps:

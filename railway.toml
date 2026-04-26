@@ -38,3 +38,13 @@ startCommand = "uvicorn relay:app --host 0.0.0.0 --port 9096"
 name = "alertmanager"
 buildCommand = "docker build -f monitoring/alertmanager/Dockerfile -t alertmanager monitoring/alertmanager/"
 startCommand = ""
+
+[[services]]
+name = "scheduler-worker"
+buildCommand = "docker build -f docker/Dockerfile.prod --target runtime -t dare2drive-scheduler ."
+startCommand = "python -m scheduler.worker"
+
+[services.variables]
+DATABASE_URL = "${{Postgres.DATABASE_URL}}"
+REDIS_URL = "${{Redis.REDIS_URL}}"
+TEMPO_URL = "${{tempo.RAILWAY_PRIVATE_DOMAIN}}:4318"

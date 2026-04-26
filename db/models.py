@@ -7,6 +7,7 @@ import uuid
 from datetime import date, datetime
 
 from sqlalchemy import (
+    BigInteger,  # noqa: F401 – reserved for Phase 2a numeric columns
     Boolean,
     Date,
     DateTime,
@@ -16,6 +17,7 @@ from sqlalchemy import (
     Index,
     Integer,
     String,
+    Text,
     UniqueConstraint,
     func,
 )
@@ -88,6 +90,52 @@ class CrewArchetype(str, enum.Enum):
     MEDIC = "medic"
 
 
+class JobType(str, enum.Enum):
+    TIMER_COMPLETE = "timer_complete"
+    ACCRUAL_TICK = "accrual_tick"
+
+
+class JobState(str, enum.Enum):
+    PENDING = "pending"
+    CLAIMED = "claimed"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+class TimerType(str, enum.Enum):
+    TRAINING = "training"
+    RESEARCH = "research"
+    SHIP_BUILD = "ship_build"
+
+
+class TimerState(str, enum.Enum):
+    ACTIVE = "active"
+    COMPLETED = "completed"
+    CANCELLED = "cancelled"
+
+
+class StationType(str, enum.Enum):
+    CARGO_RUN = "cargo_run"
+    REPAIR_BAY = "repair_bay"
+    WATCH_TOWER = "watch_tower"
+
+
+class RewardSourceType(str, enum.Enum):
+    TIMER_COMPLETE = "timer_complete"
+    ACCRUAL_TICK = "accrual_tick"
+    ACCRUAL_CLAIM = "accrual_claim"
+    TIMER_CANCEL_REFUND = "timer_cancel_refund"
+
+
+class CrewActivity(str, enum.Enum):
+    IDLE = "idle"
+    ON_BUILD = "on_build"
+    TRAINING = "training"
+    RESEARCHING = "researching"
+    ON_STATION = "on_station"
+
+
 # ──────────── Multi-tenant Models ────────────
 
 
@@ -145,6 +193,13 @@ class User(Base):
         DateTime(timezone=True),
         nullable=True,
         default=None,
+    )
+    # server_default literal is frozen by migration 0003_phase2a_scheduler;
+    # any change to the JSON requires a new migration that updates existing rows.
+    notification_prefs: Mapped[dict] = mapped_column(
+        JSONB,
+        nullable=False,
+        server_default='{"timer_completion": "dm", "accrual_threshold": "dm", "_version": 1}',
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
@@ -387,6 +442,12 @@ class CrewMember(Base):
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
     retired_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    current_activity: Mapped[CrewActivity] = mapped_column(
+        Enum(CrewActivity, values_callable=lambda x: [e.value for e in x]),
+        nullable=False,
+        server_default="idle",
+    )
+    current_activity_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
 
     __table_args__ = (
         UniqueConstraint(
@@ -448,3 +509,159 @@ class CrewDailyLead(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+
+
+# ──────────── Phase 2a: Scheduler / Timers / Accrual ────────────
+
+
+class ScheduledJob(Base):
+    __tablename__ = "scheduled_jobs"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[str] = mapped_column(
+        String(20), ForeignKey("users.discord_id"), nullable=False, index=True
+    )
+    job_type: Mapped[JobType] = mapped_column(
+        Enum(JobType, values_callable=lambda x: [e.value for e in x]), nullable=False
+    )
+    payload: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+    scheduled_for: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    state: Mapped[JobState] = mapped_column(
+        Enum(JobState, values_callable=lambda x: [e.value for e in x]),
+        nullable=False,
+        server_default="pending",
+    )
+    claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    __table_args__ = (
+        Index(
+            "ix_scheduled_jobs_pending_due",
+            "state",
+            "scheduled_for",
+            postgresql_where="state IN ('pending', 'claimed')",
+        ),
+    )
+
+
+class Timer(Base):
+    __tablename__ = "timers"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[str] = mapped_column(
+        String(20), ForeignKey("users.discord_id"), nullable=False, index=True
+    )
+    timer_type: Mapped[TimerType] = mapped_column(
+        Enum(TimerType, values_callable=lambda x: [e.value for e in x]), nullable=False
+    )
+    recipe_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    payload: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    completes_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    state: Mapped[TimerState] = mapped_column(
+        Enum(TimerState, values_callable=lambda x: [e.value for e in x]),
+        nullable=False,
+        server_default="active",
+    )
+    linked_scheduled_job_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("scheduled_jobs.id"), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    __table_args__ = (
+        Index(
+            "ux_timers_one_research_active",
+            "user_id",
+            unique=True,
+            postgresql_where="timer_type = 'research' AND state = 'active'",
+        ),
+        Index(
+            "ux_timers_one_ship_build_active",
+            "user_id",
+            unique=True,
+            postgresql_where="timer_type = 'ship_build' AND state = 'active'",
+        ),
+    )
+
+
+class StationAssignment(Base):
+    __tablename__ = "station_assignments"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[str] = mapped_column(
+        String(20), ForeignKey("users.discord_id"), nullable=False, index=True
+    )
+    station_type: Mapped[StationType] = mapped_column(
+        Enum(StationType, values_callable=lambda x: [e.value for e in x]), nullable=False
+    )
+    crew_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("crew_members.id"), nullable=False
+    )
+    assigned_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    last_yield_tick_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    pending_credits: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    pending_xp: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    recalled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    __table_args__ = (
+        Index(
+            "ux_station_assignments_user_type_active",
+            "user_id",
+            "station_type",
+            unique=True,
+            postgresql_where="recalled_at IS NULL",
+        ),
+    )
+
+
+class RewardLedger(Base):
+    __tablename__ = "reward_ledger"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[str] = mapped_column(
+        String(20), ForeignKey("users.discord_id"), nullable=False, index=True
+    )
+    source_type: Mapped[RewardSourceType] = mapped_column(
+        Enum(RewardSourceType, values_callable=lambda x: [e.value for e in x]), nullable=False
+    )
+    source_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    delta: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    applied_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (UniqueConstraint("source_type", "source_id", name="ux_reward_ledger_source"),)
