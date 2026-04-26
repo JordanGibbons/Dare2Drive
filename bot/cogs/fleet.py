@@ -116,11 +116,6 @@ class FleetCog(commands.Cog):
         crew: str,
         routine: str,
     ) -> None:
-        sys = await get_active_system(interaction)
-        if sys is None:
-            await interaction.response.send_message(system_required_message(), ephemeral=True)
-            return
-
         try:
             recipe = get_recipe(TimerType.TRAINING, routine)
         except RecipeNotFound:
@@ -128,6 +123,10 @@ class FleetCog(commands.Cog):
             return
 
         async with async_session() as session, session.begin():
+            sys = await get_active_system(interaction, session)
+            if sys is None:
+                await interaction.response.send_message(system_required_message(), ephemeral=True)
+                return
             user = await session.get(User, str(interaction.user.id), with_for_update=True)
             if user is None or user.currency < recipe["cost_credits"]:
                 await interaction.response.send_message(
@@ -273,16 +272,16 @@ class FleetCog(commands.Cog):
         ]
     )
     async def research_start(self, interaction: discord.Interaction, project: str) -> None:
-        sys = await get_active_system(interaction)
-        if sys is None:
-            await interaction.response.send_message(system_required_message(), ephemeral=True)
-            return
         try:
             recipe = get_recipe(TimerType.RESEARCH, project)
         except RecipeNotFound:
             await interaction.response.send_message("Unknown project.", ephemeral=True)
             return
         async with async_session() as session, session.begin():
+            sys = await get_active_system(interaction, session)
+            if sys is None:
+                await interaction.response.send_message(system_required_message(), ephemeral=True)
+                return
             user = await session.get(User, str(interaction.user.id), with_for_update=True)
             if user is None or user.currency < recipe["cost_credits"]:
                 await interaction.response.send_message(
@@ -434,14 +433,14 @@ class FleetCog(commands.Cog):
     async def stations_assign(
         self, interaction: discord.Interaction, crew: str, station: str
     ) -> None:
-        sys = await get_active_system(interaction)
-        if sys is None:
-            await interaction.response.send_message(system_required_message(), ephemeral=True)
-            return
         from db.models import StationType as _ST
 
         st = _ST(station)
         async with async_session() as session, session.begin():
+            sys = await get_active_system(interaction, session)
+            if sys is None:
+                await interaction.response.send_message(system_required_message(), ephemeral=True)
+                return
             crew_row = await _lookup_crew_by_display(session, str(interaction.user.id), crew)
             if crew_row is None:
                 await interaction.response.send_message("Crew member not found.", ephemeral=True)
@@ -513,13 +512,13 @@ class FleetCog(commands.Cog):
 
     @app_commands.command(name="claim", description="Claim all pending station yield.")
     async def claim(self, interaction: discord.Interaction) -> None:
-        sys = await get_active_system(interaction)
-        if sys is None:
-            await interaction.response.send_message(system_required_message(), ephemeral=True)
-            return
         from api.metrics import claim_total
 
         async with async_session() as session, session.begin():
+            sys = await get_active_system(interaction, session)
+            if sys is None:
+                await interaction.response.send_message(system_required_message(), ephemeral=True)
+                return
             user = await session.get(User, str(interaction.user.id), with_for_update=True)
             if user is None:
                 claim_total.labels(result="empty").inc()
