@@ -23,21 +23,30 @@ log = get_logger(__name__)
 
 _TUTORIAL_DATA_PATH = Path(__file__).resolve().parent.parent.parent / "data" / "tutorial.json"
 
-# Which commands are allowed at each tutorial step.
+# Which commands are allowed at each tutorial step. Keyed by the slash
+# command's qualified_name (i.e. full path including any parent Group),
+# so e.g. "build preview" matches /build preview but NOT /research preview.
 # Anything not listed is blocked until COMPLETE.
 STEP_ALLOWED_COMMANDS: dict[TutorialStep, set[str]] = {
     TutorialStep.STARTED: set(),
     TutorialStep.INVENTORY: {"inventory"},
     TutorialStep.INSPECT: {"inventory", "inspect"},
     TutorialStep.EQUIP: {"inventory", "inspect", "equip", "autoequip"},
-    TutorialStep.MINT: {"inventory", "inspect", "equip", "autoequip", "preview", "mint"},
+    TutorialStep.MINT: {
+        "inventory",
+        "inspect",
+        "equip",
+        "autoequip",
+        "build preview",
+        "build mint",
+    },
     TutorialStep.GARAGE: {"inventory", "inspect", "equip", "autoequip", "hangar"},
     TutorialStep.RACE: {"inventory", "inspect", "equip", "autoequip", "hangar", "race"},
     TutorialStep.PACK: {"inventory", "inspect", "equip", "autoequip", "hangar"},
     TutorialStep.COMPLETE: set(),  # Empty means all commands allowed
 }
 
-# Commands that are always allowed regardless of tutorial step
+# Commands that are always allowed regardless of tutorial step (qualified names).
 ALWAYS_ALLOWED = {
     "start",
     "profile",
