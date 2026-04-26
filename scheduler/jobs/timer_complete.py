@@ -76,7 +76,7 @@ async def _resolve_training(
         delta={"xp": 0, "credits": 0},  # User-scoped fields are zero — XP goes to crew.
     )
     if applied:
-        award_xp(crew, xp_amount)  # sync — see spec correction note in the controller's prompt
+        award_xp(crew, xp_amount)
 
     crew.current_activity = CrewActivity.IDLE
     crew.current_activity_id = None
