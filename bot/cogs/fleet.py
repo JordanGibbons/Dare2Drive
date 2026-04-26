@@ -251,6 +251,205 @@ class FleetCog(commands.Cog):
             ephemeral=True,
         )
 
+    research = app_commands.Group(name="research", description="Fleet-wide research projects")
+
+    @research.command(name="start", description="Start a research project (one active per pilot).")
+    @app_commands.choices(
+        project=[
+            app_commands.Choice(
+                name="Drive Tuning (200 Creds, 60m, +2% acceleration 48h)", value="drive_tuning"
+            ),
+            app_commands.Choice(
+                name="Shield Calibration (250 Creds, 75m, +2% durability 48h)",
+                value="shield_calibration",
+            ),
+            app_commands.Choice(
+                name="Navigational Charting (300 Creds, 90m, +3% weather 48h)",
+                value="nav_charting",
+            ),
+        ]
+    )
+    async def research_start(self, interaction: discord.Interaction, project: str) -> None:
+        sys = await get_active_system(interaction)
+        if sys is None:
+            await interaction.response.send_message(system_required_message(), ephemeral=True)
+            return
+        try:
+            recipe = get_recipe(TimerType.RESEARCH, project)
+        except RecipeNotFound:
+            await interaction.response.send_message("Unknown project.", ephemeral=True)
+            return
+        async with async_session() as session, session.begin():
+            user = await session.get(User, str(interaction.user.id), with_for_update=True)
+            if user is None or user.currency < recipe["cost_credits"]:
+                await interaction.response.send_message(
+                    f"You need {recipe['cost_credits']} credits.",
+                    ephemeral=True,
+                )
+                return
+            now = datetime.now(timezone.utc)
+            completes_at = now + timedelta(minutes=recipe["duration_minutes"])
+            await enqueue_timer(
+                session,
+                user_id=user.discord_id,
+                timer_type=TimerType.RESEARCH,
+                recipe_id=project,
+                completes_at=completes_at,
+                payload={},
+            )
+            user.currency -= recipe["cost_credits"]
+        currency_spent.labels(reason="research").inc(recipe["cost_credits"])
+        timers_started_total.labels(timer_type="research").inc()
+        await interaction.response.send_message(
+            f"**{recipe['name']}** started. Completes in {recipe['duration_minutes']} minutes.",
+            ephemeral=True,
+        )
+
+    @research.command(name="status", description="Status of your active research project.")
+    async def research_status(self, interaction: discord.Interaction) -> None:
+        async with async_session() as session:
+            t = (
+                await session.execute(
+                    select(Timer)
+                    .where(Timer.user_id == str(interaction.user.id))
+                    .where(Timer.timer_type == TimerType.RESEARCH)
+                    .where(Timer.state == TimerState.ACTIVE)
+                )
+            ).scalar_one_or_none()
+        if t is None:
+            await interaction.response.send_message("No active research.", ephemeral=True)
+            return
+        await interaction.response.send_message(
+            f"**Active research:** `{t.recipe_id}` — "
+            f"completes {discord.utils.format_dt(t.completes_at, 'R')}",
+            ephemeral=True,
+        )
+
+    @research.command(name="cancel", description="Cancel your active research (50% credit refund).")
+    async def research_cancel(self, interaction: discord.Interaction) -> None:
+        await self._cancel_user_scoped_timer(interaction, TimerType.RESEARCH, "research")
+
+    build = app_commands.Group(name="build", description="Ship construction recipes")
+
+    @build.command(
+        name="construct", description="Start a ship-build recipe (one active per pilot)."
+    )
+    @app_commands.choices(
+        recipe=[
+            app_commands.Choice(
+                name="Salvage Reconstruction (500 Creds, 120m, 1 hauler hull)",
+                value="salvage_reconstruction",
+            ),
+        ]
+    )
+    async def build_construct(self, interaction: discord.Interaction, recipe: str) -> None:
+        sys = await get_active_system(interaction)
+        if sys is None:
+            await interaction.response.send_message(system_required_message(), ephemeral=True)
+            return
+        try:
+            r = get_recipe(TimerType.SHIP_BUILD, recipe)
+        except RecipeNotFound:
+            await interaction.response.send_message("Unknown recipe.", ephemeral=True)
+            return
+        async with async_session() as session, session.begin():
+            user = await session.get(User, str(interaction.user.id), with_for_update=True)
+            if user is None or user.currency < r["cost_credits"]:
+                await interaction.response.send_message(
+                    f"You need {r['cost_credits']} credits.",
+                    ephemeral=True,
+                )
+                return
+            now = datetime.now(timezone.utc)
+            await enqueue_timer(
+                session,
+                user_id=user.discord_id,
+                timer_type=TimerType.SHIP_BUILD,
+                recipe_id=recipe,
+                completes_at=now + timedelta(minutes=r["duration_minutes"]),
+                payload={},
+            )
+            user.currency -= r["cost_credits"]
+        currency_spent.labels(reason="ship_build").inc(r["cost_credits"])
+        timers_started_total.labels(timer_type="ship_build").inc()
+        await interaction.response.send_message(
+            f"**{r['name']}** started. Slipway hum-time: {r['duration_minutes']} minutes.",
+            ephemeral=True,
+        )
+
+    @build.command(name="status", description="Status of your active ship-build.")
+    async def build_status(self, interaction: discord.Interaction) -> None:
+        async with async_session() as session:
+            t = (
+                await session.execute(
+                    select(Timer)
+                    .where(Timer.user_id == str(interaction.user.id))
+                    .where(Timer.timer_type == TimerType.SHIP_BUILD)
+                    .where(Timer.state == TimerState.ACTIVE)
+                )
+            ).scalar_one_or_none()
+        if t is None:
+            await interaction.response.send_message("No active ship-build.", ephemeral=True)
+            return
+        await interaction.response.send_message(
+            f"**Active ship-build:** `{t.recipe_id}` — "
+            f"completes {discord.utils.format_dt(t.completes_at, 'R')}",
+            ephemeral=True,
+        )
+
+    @build.command(name="cancel", description="Cancel your active ship-build (50% credit refund).")
+    async def build_cancel(self, interaction: discord.Interaction) -> None:
+        await self._cancel_user_scoped_timer(interaction, TimerType.SHIP_BUILD, "ship_build")
+
+    async def _cancel_user_scoped_timer(
+        self, interaction: discord.Interaction, ttype: TimerType, label: str
+    ) -> None:
+        async with async_session() as session, session.begin():
+            t = (
+                await session.execute(
+                    select(Timer)
+                    .where(Timer.user_id == str(interaction.user.id))
+                    .where(Timer.timer_type == ttype)
+                    .where(Timer.state == TimerState.ACTIVE)
+                    .with_for_update()
+                )
+            ).scalar_one_or_none()
+            if t is None:
+                await interaction.response.send_message(
+                    f"No active {label} to cancel.",
+                    ephemeral=True,
+                )
+                return
+            recipe = get_recipe(ttype, t.recipe_id)
+            from sqlalchemy import update as _upd
+
+            result = await session.execute(
+                _upd(ScheduledJob)
+                .where(ScheduledJob.id == t.linked_scheduled_job_id)
+                .where(ScheduledJob.state == JobState.PENDING)
+                .values(state=JobState.CANCELLED)
+            )
+            if (result.rowcount or 0) == 0:
+                await interaction.response.send_message(
+                    f"{label.title()} is already firing — too late to cancel.",
+                    ephemeral=True,
+                )
+                return
+            refund = (recipe["cost_credits"] * settings.TIMER_CANCEL_REFUND_PCT) // 100
+            await apply_reward(
+                session,
+                user_id=t.user_id,
+                source_type=RewardSourceType.TIMER_CANCEL_REFUND,
+                source_id=f"timer_cancel_refund:{t.id}",
+                delta={"credits": refund},
+            )
+            t.state = TimerState.CANCELLED
+        timers_completed_total.labels(timer_type=ttype.value, outcome="cancelled").inc()
+        await interaction.response.send_message(
+            f"{label.title()} cancelled. Refunded {refund} credits.",
+            ephemeral=True,
+        )
+
 
 async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(FleetCog(bot))
