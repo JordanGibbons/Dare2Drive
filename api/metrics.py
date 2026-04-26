@@ -127,3 +127,71 @@ crew_boost_apply = Counter(
     "Crew boost applications during stat resolution.",
     ["archetype", "rarity"],
 )
+
+# ---------------------------------------------------------------------------
+# Phase 2a — Scheduler / Timers / Accrual / Notifications
+# ---------------------------------------------------------------------------
+
+scheduler_jobs_total = Counter(
+    "dare2drive_scheduler_jobs_total",
+    "Scheduler job dispatch outcomes.",
+    ["job_type", "result"],  # result: success | failure
+)
+
+scheduler_job_duration_seconds = Histogram(
+    "dare2drive_scheduler_job_duration_seconds",
+    "Scheduler job dispatch duration.",
+    ["job_type"],
+    buckets=(0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0),
+)
+
+scheduler_jobs_in_flight = Gauge(
+    "dare2drive_scheduler_jobs_in_flight",
+    "Jobs currently in state='claimed' (snapshot).",
+)
+
+scheduler_jobs_pending = Gauge(
+    "dare2drive_scheduler_jobs_pending",
+    "Jobs currently in state='pending' (snapshot).",
+)
+
+scheduler_tick_duration_seconds = Histogram(
+    "dare2drive_scheduler_tick_duration_seconds",
+    "Scheduler tick duration.",
+    buckets=(0.001, 0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5),
+)
+
+notifications_total = Counter(
+    "dare2drive_notifications_total",
+    "Notification delivery outcomes.",
+    ["category", "result"],
+    # result: delivered | rate_limited | opted_out | dm_closed | failed | user_missing
+)
+
+notification_stream_lag = Gauge(
+    "dare2drive_notification_stream_lag",
+    "Approx XLEN of d2d:notifications stream.",
+)
+
+timers_started_total = Counter(
+    "dare2drive_timers_started_total",
+    "Timers started, by type.",
+    ["timer_type"],
+)
+
+timers_completed_total = Counter(
+    "dare2drive_timers_completed_total",
+    "Timers completed, by type and outcome.",
+    ["timer_type", "outcome"],  # success | cancelled
+)
+
+station_yield_credits_total = Counter(
+    "dare2drive_station_yield_credits_total",
+    "Total credits yielded by station accrual (pre-claim).",
+)
+
+claim_total = Counter(
+    "dare2drive_claim_total",
+    "/claim invocations.",
+    ["result"],  # success | empty
+)
