@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import uuid
 from datetime import datetime, timedelta, timezone
 
 import discord
@@ -19,8 +20,10 @@ from db.models import (
     CrewActivity,
     CrewMember,
     JobState,
+    JobType,
     RewardSourceType,
     ScheduledJob,
+    StationAssignment,
     Timer,
     TimerState,
     TimerType,
@@ -447,6 +450,186 @@ class FleetCog(commands.Cog):
         timers_completed_total.labels(timer_type=ttype.value, outcome="cancelled").inc()
         await interaction.response.send_message(
             f"{label.title()} cancelled. Refunded {refund} credits.",
+            ephemeral=True,
+        )
+
+    stations = app_commands.Group(name="stations", description="Station accrual roster")
+
+    @stations.command(name="list", description="See your station roster + pending yield.")
+    async def stations_list(self, interaction: discord.Interaction) -> None:
+        async with async_session() as session:
+            rows = (
+                (
+                    await session.execute(
+                        select(StationAssignment)
+                        .where(StationAssignment.user_id == str(interaction.user.id))
+                        .where(StationAssignment.recalled_at.is_(None))
+                    )
+                )
+                .scalars()
+                .all()
+            )
+        if not rows:
+            await interaction.response.send_message(
+                "No active station assignments.", ephemeral=True
+            )
+            return
+        lines = [
+            f"• **{r.station_type.value}** — {r.pending_credits} cred / {r.pending_xp} xp pending"
+            for r in rows
+        ]
+        await interaction.response.send_message(
+            "**Stations:**\n" + "\n".join(lines),
+            ephemeral=True,
+        )
+
+    @stations.command(name="assign", description="Assign a crew member to a station type.")
+    @app_commands.describe(crew="Idle crew member to assign", station="Station type")
+    @app_commands.autocomplete(crew=_crew_idle_autocomplete)
+    @app_commands.choices(
+        station=[
+            app_commands.Choice(name="Cargo Run", value="cargo_run"),
+            app_commands.Choice(name="Repair Bay", value="repair_bay"),
+            app_commands.Choice(name="Watch Tower", value="watch_tower"),
+        ]
+    )
+    async def stations_assign(
+        self, interaction: discord.Interaction, crew: str, station: str
+    ) -> None:
+        sys = await get_active_system(interaction)
+        if sys is None:
+            await interaction.response.send_message(system_required_message(), ephemeral=True)
+            return
+        from db.models import StationType as _ST
+
+        st = _ST(station)
+        async with async_session() as session, session.begin():
+            crew_row = await _lookup_crew_by_display(session, str(interaction.user.id), crew)
+            if crew_row is None:
+                await interaction.response.send_message("Crew member not found.", ephemeral=True)
+                return
+            if crew_row.current_activity != CrewActivity.IDLE:
+                await interaction.response.send_message(
+                    f"{crew_row.first_name} is currently {crew_row.current_activity.value}.",
+                    ephemeral=True,
+                )
+                return
+            sa = StationAssignment(
+                id=uuid.uuid4(),
+                user_id=str(interaction.user.id),
+                station_type=st,
+                crew_id=crew_row.id,
+            )
+            session.add(sa)
+            crew_row.current_activity = CrewActivity.ON_STATION
+            crew_row.current_activity_id = sa.id
+            # Bootstrap an accrual_tick if none pending for this user.
+            from scheduler.enqueue import enqueue_accrual_tick
+
+            existing = (
+                await session.execute(
+                    select(ScheduledJob)
+                    .where(ScheduledJob.user_id == str(interaction.user.id))
+                    .where(ScheduledJob.job_type == JobType.ACCRUAL_TICK)
+                    .where(ScheduledJob.state == JobState.PENDING)
+                )
+            ).scalar_one_or_none()
+            if existing is None:
+                fires = datetime.now(timezone.utc) + timedelta(
+                    minutes=settings.ACCRUAL_TICK_INTERVAL_MINUTES
+                )
+                await enqueue_accrual_tick(
+                    session,
+                    user_id=str(interaction.user.id),
+                    scheduled_for=fires,
+                )
+        await interaction.response.send_message(
+            f"{crew} assigned to **{station.replace('_', ' ').title()}**.",
+            ephemeral=True,
+        )
+
+    @stations.command(
+        name="recall", description="Recall a crew from station (yield stays claimable)."
+    )
+    async def stations_recall(self, interaction: discord.Interaction, crew: str) -> None:
+        async with async_session() as session, session.begin():
+            crew_row = await _lookup_crew_by_display(session, str(interaction.user.id), crew)
+            if crew_row is None or crew_row.current_activity != CrewActivity.ON_STATION:
+                await interaction.response.send_message(
+                    "That crew member is not on a station.",
+                    ephemeral=True,
+                )
+                return
+            sa = await session.get(
+                StationAssignment,
+                crew_row.current_activity_id,
+                with_for_update=True,
+            )
+            if sa is not None:
+                sa.recalled_at = datetime.now(timezone.utc)
+            crew_row.current_activity = CrewActivity.IDLE
+            crew_row.current_activity_id = None
+        await interaction.response.send_message(
+            f"{crew} recalled. Yield remains claimable.", ephemeral=True
+        )
+
+    @app_commands.command(name="claim", description="Claim all pending station yield.")
+    async def claim(self, interaction: discord.Interaction) -> None:
+        sys = await get_active_system(interaction)
+        if sys is None:
+            await interaction.response.send_message(system_required_message(), ephemeral=True)
+            return
+        from api.metrics import claim_total
+
+        async with async_session() as session, session.begin():
+            user = await session.get(User, str(interaction.user.id), with_for_update=True)
+            if user is None:
+                claim_total.labels(result="empty").inc()
+                await interaction.response.send_message("No account.", ephemeral=True)
+                return
+            rows = (
+                (
+                    await session.execute(
+                        select(StationAssignment)
+                        .where(StationAssignment.user_id == user.discord_id)
+                        .with_for_update()
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            total_credits = 0
+            total_xp_per_crew: dict[uuid.UUID, int] = {}
+            for r in rows:
+                total_credits += r.pending_credits
+                if r.pending_xp:
+                    total_xp_per_crew[r.crew_id] = (
+                        total_xp_per_crew.get(r.crew_id, 0) + r.pending_xp
+                    )
+                r.pending_credits = 0
+                r.pending_xp = 0
+            if total_credits == 0 and not total_xp_per_crew:
+                claim_total.labels(result="empty").inc()
+                await interaction.response.send_message("Nothing to claim.", ephemeral=True)
+                return
+            await apply_reward(
+                session,
+                user_id=user.discord_id,
+                source_type=RewardSourceType.ACCRUAL_CLAIM,
+                source_id=f"accrual_claim:{uuid.uuid4()}",
+                delta={"credits": total_credits},
+            )
+            for crew_id, xp in total_xp_per_crew.items():
+                crew_row = await session.get(CrewMember, crew_id)
+                if crew_row is not None:
+                    crew_row.xp += xp
+            # Cleanup recalled rows that are now empty.
+            for r in rows:
+                if r.recalled_at is not None:
+                    await session.delete(r)
+        claim_total.labels(result="success").inc()
+        await interaction.response.send_message(
+            f"Claimed **{total_credits}** credits and XP across stations.",
             ephemeral=True,
         )
 
