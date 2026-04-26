@@ -37,3 +37,76 @@ def test_reward_source_type_extended_with_expedition_outcome():
     from db.models import RewardSourceType
 
     assert "expedition_outcome" in {s.value for s in RewardSourceType}
+
+
+def test_expedition_columns():
+    from db.models import Expedition
+
+    cols = {c.name for c in Expedition.__table__.columns}
+    assert cols >= {
+        "id",
+        "user_id",
+        "build_id",
+        "template_id",
+        "state",
+        "started_at",
+        "completes_at",
+        "correlation_id",
+        "scene_log",
+        "outcome_summary",
+        "created_at",
+    }
+
+
+def test_expedition_crew_assignment_columns():
+    from db.models import ExpeditionCrewAssignment
+
+    cols = {c.name for c in ExpeditionCrewAssignment.__table__.columns}
+    assert cols >= {"expedition_id", "crew_id", "archetype"}
+
+
+def test_expedition_crew_assignment_unique_archetype_per_expedition():
+    """Only one crew per archetype slot per expedition."""
+    from db.models import ExpeditionCrewAssignment
+
+    constraints = ExpeditionCrewAssignment.__table__.constraints
+    unique_pairs = {
+        tuple(sorted(c.name for c in constraint.columns))
+        for constraint in constraints
+        if constraint.__class__.__name__ == "UniqueConstraint"
+    }
+    assert ("archetype", "expedition_id") in unique_pairs
+
+
+def test_build_has_current_activity_columns():
+    from db.models import Build
+
+    cols = {c.name for c in Build.__table__.columns}
+    assert {"current_activity", "current_activity_id"} <= cols
+
+
+def test_crew_member_has_injured_until_column():
+    from db.models import CrewMember
+
+    cols = {c.name for c in CrewMember.__table__.columns}
+    assert "injured_until" in cols
+
+
+def test_expedition_active_per_build_partial_unique_index():
+    """At most one ACTIVE expedition per build, enforced at DB level."""
+    from db.models import Expedition
+
+    # Find a partial unique index on build_id with the ACTIVE-state predicate.
+    indexes = list(Expedition.__table__.indexes)
+    matched = [
+        ix
+        for ix in indexes
+        if ix.unique
+        and {c.name for c in ix.columns} == {"build_id"}
+        and "active"
+        in (
+            str(ix.dialect_options.get("postgresql", {}).get("where", "")).lower()
+            + str(ix.kwargs.get("postgresql_where", "")).lower()
+        )
+    ]
+    assert matched, "expected a partial unique index on Expedition(build_id) WHERE state = 'active'"

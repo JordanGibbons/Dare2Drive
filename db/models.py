@@ -20,6 +20,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
@@ -303,6 +304,14 @@ class Build(Base):
         ForeignKey("ship_titles.id", use_alter=True, name="fk_builds_ship_title_id"),
         nullable=True,
     )
+    # Phase 2b — activity lock (mirrors crew pattern)
+    current_activity: Mapped[BuildActivity] = mapped_column(
+        Enum(BuildActivity, values_callable=lambda x: [e.value for e in x], name="build_activity"),
+        nullable=False,
+        default=BuildActivity.IDLE,
+        server_default=BuildActivity.IDLE.value,
+    )
+    current_activity_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
 
     user: Mapped[User] = relationship(back_populates="builds")
     ship_title: Mapped[ShipTitle | None] = relationship(  # type: ignore[name-defined]
@@ -465,6 +474,8 @@ class CrewMember(Base):
         server_default="idle",
     )
     current_activity_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    # Phase 2b — injury timestamp; blocks assignment while > now()
+    injured_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     __table_args__ = (
         UniqueConstraint(
@@ -682,3 +693,69 @@ class RewardLedger(Base):
     )
 
     __table_args__ = (UniqueConstraint("source_type", "source_id", name="ux_reward_ledger_source"),)
+
+
+# ──────────── Phase 2b: Expeditions ────────────
+
+
+class Expedition(Base):
+    __tablename__ = "expeditions"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[str] = mapped_column(
+        String, ForeignKey("users.discord_id", ondelete="CASCADE"), nullable=False
+    )
+    build_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("builds.id"), nullable=False
+    )
+    template_id: Mapped[str] = mapped_column(String, nullable=False)
+    state: Mapped[ExpeditionState] = mapped_column(
+        Enum(
+            ExpeditionState, values_callable=lambda x: [e.value for e in x], name="expedition_state"
+        ),
+        nullable=False,
+        default=ExpeditionState.ACTIVE,
+    )
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    completes_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    correlation_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), nullable=False, default=uuid.uuid4
+    )
+    scene_log: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    outcome_summary: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        Index("ix_expeditions_user_state", "user_id", "state"),
+        Index(
+            "ix_expeditions_active_per_build",
+            "build_id",
+            unique=True,
+            postgresql_where=text("state = 'active'"),
+        ),
+    )
+
+
+class ExpeditionCrewAssignment(Base):
+    __tablename__ = "expedition_crew_assignments"
+
+    expedition_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("expeditions.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    crew_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("crew_members.id"), primary_key=True
+    )
+    archetype: Mapped[CrewArchetype] = mapped_column(
+        Enum(CrewArchetype, values_callable=lambda x: [e.value for e in x], name="crew_archetype"),
+        nullable=False,
+    )
+
+    __table_args__ = (
+        UniqueConstraint("expedition_id", "archetype", name="uq_expedition_archetype_slot"),
+    )
