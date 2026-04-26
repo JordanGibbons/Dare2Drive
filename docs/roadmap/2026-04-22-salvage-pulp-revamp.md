@@ -283,6 +283,14 @@ Players start timers, assign crew to stations, claim accrued yield. Bot pings th
 - Rate-limit test: notification throttling respects user opt-out + per-hour cap
 - Idempotency test: simulated double-fire of the same job does not double-pay rewards
 
+### Phase 2a follow-ons (deferred from initial implementation)
+
+These were intentionally stubbed in the initial Phase 2a ship to keep the scope focused on the durable scheduler + notification infrastructure. The handlers fire and the ledger records the intended reward, but the gameplay-side effects below are not yet wired up. Address before Phase 2b expeditions, or in a Phase 2a.1 patch — they are independent of each other and can land separately.
+
+- **Ship-build hull creation + input consumption + slash command surface.** `scheduler/jobs/timer_complete.py:_resolve_ship_build` writes a `RewardLedger` entry with `delta={"new_ship": {...}}` and emits a "Ship build complete" DM, but does not actually create a `Build` row, mint a Ship Title, or consume the recipe's `input_scrapped_ship_count` wrecks. The `/build construct/status/cancel` slash commands were also removed before launch (the chosen group name `build` collided with hangar's existing `/build` for parts management). Re-introduce as `/shipyard construct/status/cancel` once the hull-creation logic is built. Open questions: does "Reconstructed Hull" produce a fresh empty `Build`, or one pre-equipped with parts salvaged from the input wrecks? Which `hull_class` is selected — fixed (`hauler`) per recipe, or chosen by the player at start time?
+- **Research fleet-buff application + expiry.** `scheduler/jobs/timer_complete.py:_resolve_research` writes a `RewardLedger` entry with `delta={"fleet_buff": {"stat": ..., "pct": ..., "duration_hours": 48}}` but `engine/stat_resolver.py` does not read active fleet buffs. Players see "Research complete" DMs but their `effective_acceleration` / `effective_durability` / `effective_weather_performance` never actually change. Needs (a) a `FleetBuff` table or derived view from `reward_ledger`, (b) `stat_resolver` integration to apply active buffs at resolve time, (c) expiry — buffs naturally drop off after `duration_hours` (could be a scheduler job, or just an `applied_at + duration > now()` filter at read time).
+- **DM-closed user feedback loop.** `bot/notifications.py:_deliver_batch` silently XACKs entries when `discord.Forbidden` fires (player has DMs closed), incrementing the `dm_closed` notification metric. Players never learn their notifications are being dropped. Optional follow-on: track per-user `dm_closed` streaks and surface a one-time warning in a guild channel the player has used recently, prompting them to either re-open DMs or set the relevant `notification_prefs` category to `off`.
+
 ---
 
 ## Phase 2b — Expeditions

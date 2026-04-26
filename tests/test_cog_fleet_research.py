@@ -1,4 +1,4 @@
-"""Tests for /research and /build commands."""
+"""Tests for /research commands."""
 
 from __future__ import annotations
 
@@ -71,34 +71,3 @@ async def test_research_start_blocked_by_partial_unique_index(
     inter2 = _make_interaction(user.discord_id)
     with pytest.raises(IntegrityError):
         await cog.research_start.callback(cog, inter2, project="shield_calibration")
-
-
-@pytest.mark.asyncio
-async def test_build_construct_inserts_active_ship_build_timer(
-    db_session, sample_system, monkeypatch
-):
-    from sqlalchemy import select
-
-    from bot.cogs import fleet as fleet_mod
-    from db.models import Timer
-
-    user = User(discord_id="600403", username="r_c", hull_class=HullClass.HAULER, currency=1000)
-    db_session.add(user)
-    await db_session.flush()
-
-    monkeypatch.setattr(fleet_mod, "async_session", lambda: SessionWrapper(db_session))
-    monkeypatch.setattr(fleet_mod, "get_active_system", AsyncMock(return_value=sample_system))
-
-    cog = fleet_mod.FleetCog(MagicMock())
-    inter = _make_interaction(user.discord_id)
-    await cog.build_construct.callback(cog, inter, recipe="salvage_reconstruction")
-
-    timer = (
-        await db_session.execute(
-            select(Timer).where(
-                Timer.user_id == user.discord_id, Timer.timer_type == TimerType.SHIP_BUILD
-            )
-        )
-    ).scalar_one_or_none()
-    assert timer is not None
-    assert timer.recipe_id == "salvage_reconstruction"

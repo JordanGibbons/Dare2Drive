@@ -332,77 +332,15 @@ class FleetCog(commands.Cog):
     async def research_cancel(self, interaction: discord.Interaction) -> None:
         await self._cancel_user_scoped_timer(interaction, TimerType.RESEARCH, "research")
 
-    build = app_commands.Group(name="build", description="Ship construction recipes")
-
-    @build.command(
-        name="construct", description="Start a ship-build recipe (one active per pilot)."
-    )
-    @app_commands.choices(
-        recipe=[
-            app_commands.Choice(
-                name="Salvage Reconstruction (500 Creds, 120m, 1 hauler hull)",
-                value="salvage_reconstruction",
-            ),
-        ]
-    )
-    async def build_construct(self, interaction: discord.Interaction, recipe: str) -> None:
-        sys = await get_active_system(interaction)
-        if sys is None:
-            await interaction.response.send_message(system_required_message(), ephemeral=True)
-            return
-        try:
-            r = get_recipe(TimerType.SHIP_BUILD, recipe)
-        except RecipeNotFound:
-            await interaction.response.send_message("Unknown recipe.", ephemeral=True)
-            return
-        async with async_session() as session, session.begin():
-            user = await session.get(User, str(interaction.user.id), with_for_update=True)
-            if user is None or user.currency < r["cost_credits"]:
-                await interaction.response.send_message(
-                    f"You need {r['cost_credits']} credits.",
-                    ephemeral=True,
-                )
-                return
-            now = datetime.now(timezone.utc)
-            await enqueue_timer(
-                session,
-                user_id=user.discord_id,
-                timer_type=TimerType.SHIP_BUILD,
-                recipe_id=recipe,
-                completes_at=now + timedelta(minutes=r["duration_minutes"]),
-                payload={},
-            )
-            user.currency -= r["cost_credits"]
-        currency_spent.labels(reason="ship_build").inc(r["cost_credits"])
-        timers_started_total.labels(timer_type="ship_build").inc()
-        await interaction.response.send_message(
-            f"**{r['name']}** started. Slipway hum-time: {r['duration_minutes']} minutes.",
-            ephemeral=True,
-        )
-
-    @build.command(name="status", description="Status of your active ship-build.")
-    async def build_status(self, interaction: discord.Interaction) -> None:
-        async with async_session() as session:
-            t = (
-                await session.execute(
-                    select(Timer)
-                    .where(Timer.user_id == str(interaction.user.id))
-                    .where(Timer.timer_type == TimerType.SHIP_BUILD)
-                    .where(Timer.state == TimerState.ACTIVE)
-                )
-            ).scalar_one_or_none()
-        if t is None:
-            await interaction.response.send_message("No active ship-build.", ephemeral=True)
-            return
-        await interaction.response.send_message(
-            f"**Active ship-build:** `{t.recipe_id}` — "
-            f"completes {discord.utils.format_dt(t.completes_at, 'R')}",
-            ephemeral=True,
-        )
-
-    @build.command(name="cancel", description="Cancel your active ship-build (50% credit refund).")
-    async def build_cancel(self, interaction: discord.Interaction) -> None:
-        await self._cancel_user_scoped_timer(interaction, TimerType.SHIP_BUILD, "ship_build")
+    # NOTE: ship-build slash commands (`/build construct/status/cancel`) were
+    # removed before launch — the chosen group name `build` collided with
+    # bot/cogs/hangar.py's existing `/build` (manage parts/cards on a ship).
+    # The scheduler-side infrastructure (SHIP_BUILD timer_type, recipe JSON,
+    # _resolve_ship_build handler) remains and is exercised by the scheduler
+    # tests; the slash command surface will return as `/shipyard construct`
+    # once the deferred follow-on (see roadmap "Phase 2a follow-ons") lands
+    # the actual hull-creation + input-ship-consumption logic. Currently the
+    # _resolve_ship_build handler only writes a ledger entry and emits a DM.
 
     async def _cancel_user_scoped_timer(
         self, interaction: discord.Interaction, ttype: TimerType, label: str
