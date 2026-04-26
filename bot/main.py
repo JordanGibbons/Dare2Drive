@@ -62,13 +62,10 @@ class TutorialCommandTree(app_commands.CommandTree):
         if not interaction.command:
             return True
 
-        # qualified_name returns the full path including parent Groups
-        # (e.g. "training start"); name returns just the leaf ("start").
-        # Observability uses qualified so /training start, /research start, etc.
-        # are distinguishable in logs/metrics/traces. Tutorial gating still
-        # matches against the leaf name because STEP_ALLOWED_COMMANDS is keyed
-        # by leaf — see follow-up note in tutorial cog.
-        leaf_name = interaction.command.name
+        # Use qualified_name everywhere — it includes any parent Group
+        # (e.g. "training start"). Leaf-only matching would let /training start
+        # bypass gating because "start" is in ALWAYS_ALLOWED for the top-level
+        # /start command.
         qualified_name = interaction.command.qualified_name
 
         with tracer.start_as_current_span(
@@ -86,11 +83,11 @@ class TutorialCommandTree(app_commands.CommandTree):
             if not user:
                 return True
 
-            if is_command_allowed(user, leaf_name):
+            if is_command_allowed(user, qualified_name):
                 return True
 
             span.set_attribute("discord.blocked", True)
-            msg = get_blocked_message(user, leaf_name)
+            msg = get_blocked_message(user, qualified_name)
             await interaction.response.send_message(msg, ephemeral=True)
             return False
 

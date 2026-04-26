@@ -1,10 +1,11 @@
 """Regression tests for the tutorial-gate allow-list and step transitions.
 
-The allow-list in `bot.cogs.tutorial.STEP_ALLOWED_COMMANDS` references commands
-by their slash-command name (the name registered on `@app_commands.command`).
-A rename of a command without a matching update to the allow-list silently
-breaks the tutorial — `interaction_check` blocks the command and its
-autocomplete, leaving the player stuck.
+The allow-list in `bot.cogs.tutorial.STEP_ALLOWED_COMMANDS` and `ALWAYS_ALLOWED`
+references commands by their slash-command qualified_name (full path including
+any parent Group, e.g. "build preview"). A rename of a command without a
+matching update to the allow-list silently breaks the tutorial —
+`interaction_check` blocks the command and its autocomplete, leaving the
+player stuck.
 
 The cogs also call `advance_tutorial(interaction, user_id, command_name)`
 manually after a successful command. The string they pass must match what
@@ -23,12 +24,21 @@ import pytest
 import pytest_asyncio
 from discord.ext import commands
 
-from bot.cogs.tutorial import STEP_ALLOWED_COMMANDS, advance_tutorial
+from bot.cogs.tutorial import (
+    ALWAYS_ALLOWED,
+    STEP_ALLOWED_COMMANDS,
+    advance_tutorial,
+    is_command_allowed,
+)
 from db.models import HullClass, TutorialStep, User
 
 
-def _all_registered_slash_command_names() -> set[str]:
-    """Load every cog and collect the names of all registered app commands."""
+def _all_registered_qualified_names() -> set[str]:
+    """Load every cog and collect the qualified_names of all registered app commands.
+
+    qualified_name returns the full path (e.g. "build preview"), so this set
+    correctly distinguishes /build preview from a hypothetical /research preview.
+    """
     bot = commands.Bot(command_prefix="!", intents=discord.Intents.default())
     cog_modules = [
         "bot.cogs.tutorial",
@@ -38,6 +48,7 @@ def _all_registered_slash_command_names() -> set[str]:
         "bot.cogs.market",
         "bot.cogs.admin",
         "bot.cogs.hiring",
+        "bot.cogs.fleet",
     ]
     import asyncio
 
@@ -46,19 +57,37 @@ def _all_registered_slash_command_names() -> set[str]:
             await bot.load_extension(m)
 
     asyncio.run(_load())
-    return {c.name for c in bot.tree.walk_commands()}
+    # walk_commands yields both Groups and leaf commands. Filter to the leaves
+    # (Groups themselves cannot be invoked, so they should never appear in the
+    # allow-list).
+    return {
+        c.qualified_name
+        for c in bot.tree.walk_commands()
+        if not isinstance(c, discord.app_commands.Group)
+    }
 
 
 def test_allow_list_only_references_real_command_names():
-    """Every name in the allow-list must match a real registered slash command."""
-    registered = _all_registered_slash_command_names()
+    """Every name in STEP_ALLOWED_COMMANDS must match a real qualified slash-command name."""
+    registered = _all_registered_qualified_names()
     for step, allowed in STEP_ALLOWED_COMMANDS.items():
         bogus = allowed - registered
         assert not bogus, (
             f"TutorialStep.{step.name} allow-list references command(s) that "
             f"don't exist as slash commands: {bogus}. The command(s) may have "
-            f"been renamed without updating the allow-list."
+            f"been renamed without updating the allow-list. "
+            f"Reminder: entries are full qualified names (e.g. 'build preview'), "
+            f"not leaf names."
         )
+
+
+def test_always_allowed_only_references_real_command_names():
+    """Every entry in ALWAYS_ALLOWED must match a real qualified slash-command name."""
+    registered = _all_registered_qualified_names()
+    bogus = ALWAYS_ALLOWED - registered
+    assert not bogus, (
+        f"ALWAYS_ALLOWED references command(s) that don't exist as slash commands: " f"{bogus}."
+    )
 
 
 def test_garage_step_allows_hangar_command():
@@ -70,6 +99,42 @@ def test_race_step_allows_race_and_hangar():
     """Player on RACE step must be able to run /race (and /hangar to re-check)."""
     assert "race" in STEP_ALLOWED_COMMANDS[TutorialStep.RACE]
     assert "hangar" in STEP_ALLOWED_COMMANDS[TutorialStep.RACE]
+
+
+def test_subcommand_does_not_match_top_level_allowed():
+    """/training start must NOT bypass gating just because /start is in ALWAYS_ALLOWED.
+
+    Regression: previously the gating call site keyed on `interaction.command.name`
+    (the leaf "start"), so any subcommand whose leaf happened to be in the
+    allow-list bypassed the gate. Switched to qualified_name; this test locks
+    in that invariant.
+    """
+    user = User(
+        discord_id="100",
+        username="x",
+        hull_class=HullClass.SKIRMISHER,
+        currency=0,
+        tutorial_step=TutorialStep.STARTED,
+    )
+    assert is_command_allowed(user, "start"), "/start should remain allowed at STARTED"
+    assert not is_command_allowed(user, "training start"), (
+        "/training start must be blocked at STARTED — leaf 'start' must not match "
+        "ALWAYS_ALLOWED entry 'start'"
+    )
+    assert not is_command_allowed(user, "research start"), "/research start must be blocked"
+
+
+def test_mint_step_allows_only_build_subcommands():
+    """/build preview and /build mint allowed at MINT; bare 'preview' / 'mint' must not match."""
+    user = User(
+        discord_id="101",
+        username="y",
+        hull_class=HullClass.SKIRMISHER,
+        currency=0,
+        tutorial_step=TutorialStep.MINT,
+    )
+    assert is_command_allowed(user, "build preview")
+    assert is_command_allowed(user, "build mint")
 
 
 # ---------------------------------------------------------------------------
