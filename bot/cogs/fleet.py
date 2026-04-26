@@ -633,6 +633,54 @@ class FleetCog(commands.Cog):
             ephemeral=True,
         )
 
+    @app_commands.command(
+        name="notifications",
+        description="View or edit your notification preferences.",
+    )
+    @app_commands.describe(
+        category="Which notification category to edit (omit to view).",
+        value="dm = receive as DM, off = silenced.",
+    )
+    @app_commands.choices(
+        category=[
+            app_commands.Choice(name="Timer completion", value="timer_completion"),
+            app_commands.Choice(name="Accrual threshold", value="accrual_threshold"),
+        ],
+        value=[
+            app_commands.Choice(name="DM", value="dm"),
+            app_commands.Choice(name="Off", value="off"),
+        ],
+    )
+    async def notifications(
+        self,
+        interaction: discord.Interaction,
+        category: str | None = None,
+        value: str | None = None,
+    ) -> None:
+        async with async_session() as session, session.begin():
+            user = await session.get(User, str(interaction.user.id), with_for_update=True)
+            if user is None:
+                await interaction.response.send_message("No account.", ephemeral=True)
+                return
+            prefs = dict(user.notification_prefs or {})
+            if category and value:
+                prefs[category] = value
+                prefs["_version"] = 1
+                user.notification_prefs = prefs
+                await interaction.response.send_message(
+                    f"`{category}` set to **{value}**.",
+                    ephemeral=True,
+                )
+                return
+        # View mode.
+        lines = [
+            f"• **{k}**: `{v}`" for k, v in user.notification_prefs.items() if not k.startswith("_")
+        ]
+        await interaction.response.send_message(
+            "**Your notification preferences:**\n" + "\n".join(lines),
+            ephemeral=True,
+        )
+
 
 async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(FleetCog(bot))
