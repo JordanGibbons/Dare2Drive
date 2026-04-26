@@ -1,0 +1,29 @@
+[
+  {
+    "id": "combat_drills",
+    "name": "Combat Drills",
+    "duration_minutes": 30,
+    "cost_credits": 50,
+    "min_crew_level": 1,
+    "rewards": {"xp": 200, "archetype_perk": null},
+    "flavor": "Standard sim runs in the gunnery pod. Reliable progress."
+  },
+  {
+    "id": "specialty_course",
+    "name": "Specialty Course",
+    "duration_minutes": 90,
+    "cost_credits": 150,
+    "min_crew_level": 3,
+    "rewards": {"xp": 800, "archetype_perk": null},
+    "flavor": "Advanced curriculum tailored to your crew's archetype."
+  },
+  {
+    "id": "field_exercise",
+    "name": "Field Exercise",
+    "duration_minutes": 120,
+    "cost_credits": 80,
+    "min_crew_level": 1,
+    "rewards": {"xp": 500, "archetype_perk": null},
+    "flavor": "Slow-burn live drills at the outer markers. Cheap, patient."
+  }
+]

@@ -1,0 +1,26 @@
+[
+  {
+    "id": "cargo_run",
+    "name": "Cargo Run",
+    "yields_per_tick": {"credits": 50, "xp": 10},
+    "preferred_archetype": "navigator",
+    "archetype_bonus_pct": 25,
+    "flavor": "Standard freight runs. Reliable, modest pay."
+  },
+  {
+    "id": "repair_bay",
+    "name": "Repair Bay",
+    "yields_per_tick": {"credits": 30, "xp": 25},
+    "preferred_archetype": "engineer",
+    "archetype_bonus_pct": 25,
+    "flavor": "Patching up other captains' wrecks. Bad coffee, decent XP."
+  },
+  {
+    "id": "watch_tower",
+    "name": "Watch Tower",
+    "yields_per_tick": {"credits": 20, "xp": 35},
+    "preferred_archetype": "gunner",
+    "archetype_bonus_pct": 25,
+    "flavor": "Long shifts staring at the void. The crew gets sharp."
+  }
+]

@@ -1,0 +1,32 @@
+[
+  {
+    "id": "drive_tuning",
+    "name": "Drive Tuning",
+    "duration_minutes": 60,
+    "cost_credits": 200,
+    "rewards": {
+      "fleet_buff": {"stat": "effective_acceleration", "pct": 2, "duration_hours": 48}
+    },
+    "flavor": "Bench testing on your drive coil. Wins you a small acceleration edge."
+  },
+  {
+    "id": "shield_calibration",
+    "name": "Shield Calibration",
+    "duration_minutes": 75,
+    "cost_credits": 250,
+    "rewards": {
+      "fleet_buff": {"stat": "effective_durability", "pct": 2, "duration_hours": 48}
+    },
+    "flavor": "Re-tuning hull shielding emitters. Marginal but compounding."
+  },
+  {
+    "id": "nav_charting",
+    "name": "Navigational Charting",
+    "duration_minutes": 90,
+    "cost_credits": 300,
+    "rewards": {
+      "fleet_buff": {"stat": "effective_weather_performance", "pct": 3, "duration_hours": 48}
+    },
+    "flavor": "Survey runs through the dust belts. Your nav crew loves it."
+  }
+]
