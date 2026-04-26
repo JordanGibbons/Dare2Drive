@@ -25,6 +25,9 @@ async def tick(
     Uses SELECT FOR UPDATE SKIP LOCKED so multiple concurrent tick() calls
     claim disjoint rows. Each claimed row is transitioned pending -> claimed
     in the same transaction; the dispatcher is then called outside the claim tx.
+
+    Caller must construct `session_maker` with `expire_on_commit=False` so the
+    returned rows remain readable after the claim transaction commits.
     """
     n = batch_size or settings.SCHEDULER_BATCH_SIZE
     async with session_maker() as session, session.begin():
