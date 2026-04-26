@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import uuid
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, create_autospec
 
 import pytest
 
+from bot.system_gating import get_active_system
 from db.models import (
     CrewActivity,
     CrewArchetype,
@@ -65,7 +66,7 @@ async def test_training_start_validates_credits_and_schedules_timer(
     monkeypatch.setattr(
         fleet_mod,
         "get_active_system",
-        AsyncMock(return_value=sample_system),
+        create_autospec(get_active_system, return_value=sample_system),
     )
 
     inter = _make_interaction(user.discord_id)
