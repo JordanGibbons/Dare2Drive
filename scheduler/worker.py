@@ -54,8 +54,10 @@ def _install_signal_handlers(loop: asyncio.AbstractEventLoop, shutdown: asyncio.
         try:
             loop.add_signal_handler(sig, _trigger)
         except NotImplementedError:
-            # Windows may not support signal handlers on the event loop.
-            signal.signal(sig, lambda *a: _trigger())
+            # Windows: signal handlers run in the OS signal context, not the
+            # event loop thread. Marshal the trigger back via call_soon_threadsafe
+            # so asyncio.Event.set() runs in the loop thread.
+            signal.signal(sig, lambda *a: loop.call_soon_threadsafe(_trigger))
 
 
 async def _main() -> None:
