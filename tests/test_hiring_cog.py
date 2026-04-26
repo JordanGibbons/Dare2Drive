@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, create_autospec, patch
 
 import discord
 import pytest
@@ -11,6 +11,7 @@ import pytest_asyncio
 from discord.ext import commands
 
 from bot.cogs.hiring import HiringCog
+from bot.system_gating import get_active_system
 from db.models import CrewMember, HullClass, User
 
 
@@ -59,7 +60,7 @@ async def test_dossier_command_deducts_creds_and_creates_crew(hiring_user, db_se
         sess_ctx.return_value.__aexit__.return_value = None
         with patch(
             "bot.cogs.hiring.get_active_system",
-            new=AsyncMock(return_value=MagicMock()),
+            new=create_autospec(get_active_system, return_value=MagicMock()),
         ):
             await cog.dossier.callback(cog, interaction, tier="dossier")
 
@@ -220,7 +221,7 @@ async def test_assign_auto_unassigns_prior_same_archetype(hiring_user, db_sessio
         sess_ctx.return_value.__aexit__.return_value = None
         with patch(
             "bot.cogs.hiring.get_active_system",
-            new=AsyncMock(return_value=MagicMock()),
+            new=create_autospec(get_active_system, return_value=MagicMock()),
         ):
             await cog.assign.callback(cog, interaction, crew='Mira "Sixgun" Voss')
 
@@ -278,7 +279,7 @@ async def test_unassign_removes_crew_from_build(hiring_user, db_session):
         sess_ctx.return_value.__aexit__.return_value = None
         with patch(
             "bot.cogs.hiring.get_active_system",
-            new=AsyncMock(return_value=MagicMock()),
+            new=create_autospec(get_active_system, return_value=MagicMock()),
         ):
             await cog.unassign.callback(cog, interaction, crew='Jax "Blackjack" Krell')
 
@@ -314,7 +315,7 @@ async def test_hire_claims_todays_lead(hiring_user, db_session):
         sess_ctx.return_value.__aexit__.return_value = None
         with patch(
             "bot.cogs.hiring.get_active_system",
-            new=AsyncMock(return_value=MagicMock()),
+            new=create_autospec(get_active_system, return_value=MagicMock()),
         ):
             await cog.hire.callback(cog, interaction)
 

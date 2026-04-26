@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, create_autospec
+
+import pytest
 
 from bot.system_gating import (
     SYSTEM_GATED_COMMANDS,
@@ -90,3 +92,27 @@ def test_requires_system_helper():
     """requires_system('race') returns True; requires_system('profile') returns False."""
     assert requires_system("race") is True
     assert requires_system("profile") is False
+
+
+async def test_create_autospec_get_active_system_enforces_signature():
+    """Document the mock idiom that catches signature drift on get_active_system.
+
+    Cog tests mock get_active_system. If the signature changes (as it did when
+    the `session` parameter was added — see PR #18), an AsyncMock(return_value=...)
+    accepts ANY call shape, so the cog tests pass while production crashes with
+    TypeError. create_autospec(func) is the right tool: it inspects the real
+    function and rejects calls that don't match its signature.
+
+    This test fails if the idiom regresses (e.g. if a refactor switches to a
+    looser mock helper that no longer enforces signature).
+    """
+    mock = create_autospec(get_active_system, return_value="ok")
+
+    # Correct call shape: succeeds.
+    assert await mock(MagicMock(), MagicMock()) == "ok"
+
+    # Wrong call shape: must TypeError, not silently return "ok".
+    with pytest.raises(TypeError):
+        await mock(MagicMock())  # missing session
+    with pytest.raises(TypeError):
+        await mock(MagicMock(), MagicMock(), MagicMock())  # too many args

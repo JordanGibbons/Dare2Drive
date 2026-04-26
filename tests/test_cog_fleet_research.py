@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, create_autospec
 
 import pytest
 from sqlalchemy.exc import IntegrityError
 
+from bot.system_gating import get_active_system
 from db.models import HullClass, TimerType, User
 from tests.conftest import SessionWrapper
 
@@ -33,7 +34,11 @@ async def test_research_start_inserts_active_research_timer(db_session, sample_s
     await db_session.flush()
 
     monkeypatch.setattr(fleet_mod, "async_session", lambda: SessionWrapper(db_session))
-    monkeypatch.setattr(fleet_mod, "get_active_system", AsyncMock(return_value=sample_system))
+    monkeypatch.setattr(
+        fleet_mod,
+        "get_active_system",
+        create_autospec(get_active_system, return_value=sample_system),
+    )
 
     inter = _make_interaction(user.discord_id)
     cog = fleet_mod.FleetCog(MagicMock())
@@ -62,7 +67,11 @@ async def test_research_start_blocked_by_partial_unique_index(
     await db_session.flush()
 
     monkeypatch.setattr(fleet_mod, "async_session", lambda: SessionWrapper(db_session))
-    monkeypatch.setattr(fleet_mod, "get_active_system", AsyncMock(return_value=sample_system))
+    monkeypatch.setattr(
+        fleet_mod,
+        "get_active_system",
+        create_autospec(get_active_system, return_value=sample_system),
+    )
 
     cog = fleet_mod.FleetCog(MagicMock())
     inter1 = _make_interaction(user.discord_id)
