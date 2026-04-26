@@ -60,3 +60,82 @@ def test_crew_activity_enum_values():
         "researching",
         "on_station",
     }
+
+
+def test_scheduled_job_columns():
+    from db.models import ScheduledJob
+
+    cols = {c.name for c in ScheduledJob.__table__.columns}
+    assert cols >= {
+        "id",
+        "user_id",
+        "job_type",
+        "payload",
+        "scheduled_for",
+        "state",
+        "claimed_at",
+        "completed_at",
+        "attempts",
+        "last_error",
+        "created_at",
+        "updated_at",
+    }
+
+
+def test_timer_columns():
+    from db.models import Timer
+
+    cols = {c.name for c in Timer.__table__.columns}
+    assert cols >= {
+        "id",
+        "user_id",
+        "timer_type",
+        "recipe_id",
+        "payload",
+        "started_at",
+        "completes_at",
+        "state",
+        "linked_scheduled_job_id",
+        "created_at",
+        "updated_at",
+    }
+
+
+def test_station_assignment_columns():
+    from db.models import StationAssignment
+
+    cols = {c.name for c in StationAssignment.__table__.columns}
+    assert cols >= {
+        "id",
+        "user_id",
+        "station_type",
+        "crew_id",
+        "assigned_at",
+        "last_yield_tick_at",
+        "pending_credits",
+        "pending_xp",
+        "recalled_at",
+        "created_at",
+        "updated_at",
+    }
+
+
+def test_reward_ledger_columns():
+    from db.models import RewardLedger
+
+    cols = {c.name for c in RewardLedger.__table__.columns}
+    assert cols >= {"id", "user_id", "source_type", "source_id", "delta", "applied_at"}
+
+
+def test_crew_member_has_current_activity_columns():
+    from db.models import CrewMember
+
+    cols = {c.name for c in CrewMember.__table__.columns}
+    assert {"current_activity", "current_activity_id"} <= cols
+
+
+def test_user_has_notification_prefs():
+    from db.models import User
+
+    cols = {c.name for c in User.__table__.columns}
+    assert "notification_prefs" in cols
