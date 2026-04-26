@@ -93,6 +93,10 @@ class CrewArchetype(str, enum.Enum):
 class JobType(str, enum.Enum):
     TIMER_COMPLETE = "timer_complete"
     ACCRUAL_TICK = "accrual_tick"
+    EXPEDITION_EVENT = "expedition_event"
+    EXPEDITION_AUTO_RESOLVE = "expedition_auto_resolve"
+    EXPEDITION_RESOLVE = "expedition_resolve"
+    EXPEDITION_COMPLETE = "expedition_complete"
 
 
 class JobState(str, enum.Enum):
@@ -126,6 +130,7 @@ class RewardSourceType(str, enum.Enum):
     ACCRUAL_TICK = "accrual_tick"
     ACCRUAL_CLAIM = "accrual_claim"
     TIMER_CANCEL_REFUND = "timer_cancel_refund"
+    EXPEDITION_OUTCOME = "expedition_outcome"
 
 
 class CrewActivity(str, enum.Enum):
@@ -134,6 +139,18 @@ class CrewActivity(str, enum.Enum):
     TRAINING = "training"
     RESEARCHING = "researching"
     ON_STATION = "on_station"
+    ON_EXPEDITION = "on_expedition"
+
+
+class ExpeditionState(str, enum.Enum):
+    ACTIVE = "active"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+class BuildActivity(str, enum.Enum):
+    IDLE = "idle"
+    ON_EXPEDITION = "on_expedition"
 
 
 # ──────────── Multi-tenant Models ────────────

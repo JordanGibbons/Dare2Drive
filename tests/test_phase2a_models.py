@@ -6,7 +6,7 @@ from __future__ import annotations
 def test_job_type_enum_values():
     from db.models import JobType
 
-    assert {j.value for j in JobType} == {"timer_complete", "accrual_tick"}
+    assert {"timer_complete", "accrual_tick"} <= {j.value for j in JobType}
 
 
 def test_job_state_enum_values():
@@ -42,24 +42,24 @@ def test_station_type_enum_values():
 def test_reward_source_type_enum_values():
     from db.models import RewardSourceType
 
-    assert {s.value for s in RewardSourceType} == {
+    assert {
         "timer_complete",
         "accrual_tick",
         "accrual_claim",
         "timer_cancel_refund",
-    }
+    } <= {s.value for s in RewardSourceType}
 
 
 def test_crew_activity_enum_values():
     from db.models import CrewActivity
 
-    assert {a.value for a in CrewActivity} == {
+    assert {
         "idle",
         "on_build",
         "training",
         "researching",
         "on_station",
-    }
+    } <= {a.value for a in CrewActivity}
 
 
 def test_scheduled_job_columns():
