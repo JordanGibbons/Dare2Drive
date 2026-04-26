@@ -88,6 +88,52 @@ class CrewArchetype(str, enum.Enum):
     MEDIC = "medic"
 
 
+class JobType(str, enum.Enum):
+    TIMER_COMPLETE = "timer_complete"
+    ACCRUAL_TICK = "accrual_tick"
+
+
+class JobState(str, enum.Enum):
+    PENDING = "pending"
+    CLAIMED = "claimed"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+class TimerType(str, enum.Enum):
+    TRAINING = "training"
+    RESEARCH = "research"
+    SHIP_BUILD = "ship_build"
+
+
+class TimerState(str, enum.Enum):
+    ACTIVE = "active"
+    COMPLETED = "completed"
+    CANCELLED = "cancelled"
+
+
+class StationType(str, enum.Enum):
+    CARGO_RUN = "cargo_run"
+    REPAIR_BAY = "repair_bay"
+    WATCH_TOWER = "watch_tower"
+
+
+class RewardSourceType(str, enum.Enum):
+    TIMER_COMPLETE = "timer_complete"
+    ACCRUAL_TICK = "accrual_tick"
+    ACCRUAL_CLAIM = "accrual_claim"
+    TIMER_CANCEL_REFUND = "timer_cancel_refund"
+
+
+class CrewActivity(str, enum.Enum):
+    IDLE = "idle"
+    ON_BUILD = "on_build"
+    TRAINING = "training"
+    RESEARCHING = "researching"
+    ON_STATION = "on_station"
+
+
 # ──────────── Multi-tenant Models ────────────
 
 
