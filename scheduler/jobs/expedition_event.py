@@ -7,10 +7,10 @@ enqueues the auto-resolve timeout job, appends a `pending` scene_log entry.
 
 from __future__ import annotations
 
-import json
 import uuid
 from datetime import datetime, timedelta, timezone
 
+from sqlalchemy import func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.metrics import expedition_events_fired_total
@@ -42,6 +42,8 @@ async def handle_expedition_event(session: AsyncSession, job: ScheduledJob) -> H
     expedition = await session.get(Expedition, expedition_id, with_for_update=True)
     if expedition is None:
         log.warning("expedition_event_handler: expedition not found id=%s", expedition_id)
+        job.state = JobState.COMPLETED
+        job.completed_at = func.now()
         return HandlerResult()
     if expedition.state != ExpeditionState.ACTIVE:
         log.info(
@@ -49,6 +51,8 @@ async def handle_expedition_event(session: AsyncSession, job: ScheduledJob) -> H
             expedition.state,
             expedition_id,
         )
+        job.state = JobState.COMPLETED
+        job.completed_at = func.now()
         return HandlerResult()
 
     template = load_template(template_id)
@@ -57,6 +61,8 @@ async def handle_expedition_event(session: AsyncSession, job: ScheduledJob) -> H
         log.error(
             "expedition_event_handler: scene %s not found in template %s", scene_id, template_id
         )
+        job.state = JobState.COMPLETED
+        job.completed_at = func.now()
         return HandlerResult()
 
     # Filter visible choices for this player's loadout.
@@ -102,22 +108,20 @@ async def handle_expedition_event(session: AsyncSession, job: ScheduledJob) -> H
     session.add(auto_job)
     await session.flush()
 
-    body = json.dumps(
-        {
-            "type": "expedition_event",
-            "expedition_id": str(expedition.id),
-            "scene_id": scene_id,
-            "narration": scene.get("narration", ""),
-            "choices": [{"id": c["id"], "text": c["text"]} for c in visible],
-            "auto_resolve_job_id": str(auto_job.id),
-            "response_window_minutes": int(response_window),
-        }
+    body = _format_event_body(
+        narration=scene.get("narration", ""),
+        choices=visible,
+        scene_id=scene_id,
+        response_window_minutes=int(response_window),
     )
 
     expedition_events_fired_total.labels(
         template_id=template_id,
         scene_id=scene_id,
     ).inc()
+
+    job.state = JobState.COMPLETED
+    job.completed_at = func.now()
 
     return HandlerResult(
         notifications=[
@@ -131,6 +135,24 @@ async def handle_expedition_event(session: AsyncSession, job: ScheduledJob) -> H
             )
         ]
     )
+
+
+def _format_event_body(
+    *, narration: str, choices: list[dict], scene_id: str, response_window_minutes: int
+) -> str:
+    """Player-facing event message — narration, choices, and slash-command hint."""
+    lines = [narration.strip()]
+    if choices:
+        lines.append("")
+        lines.append("**Choices:**")
+        for c in choices:
+            lines.append(f"• `{c['id']}` — {c['text']}")
+    lines.append("")
+    lines.append(
+        f"Use `/expedition respond` (scene `{scene_id}`) to commit a choice. "
+        f"Auto-resolves in {response_window_minutes} minutes."
+    )
+    return "\n".join(lines)
 
 
 def _find_scene(template: dict, scene_id: str) -> dict | None:

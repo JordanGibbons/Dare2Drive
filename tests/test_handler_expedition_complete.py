@@ -94,3 +94,41 @@ async def test_complete_handler_emits_closing_dm(db_session, sample_expedition_w
     result = await handle_expedition_complete(db_session, job)
     assert len(result.notifications) == 1
     assert result.notifications[0].category == "expedition_complete"
+
+
+@pytest.mark.asyncio
+async def test_complete_handler_marks_job_completed(db_session, sample_expedition_with_pilot):
+    """Regression for the stuck-CLAIMED loop: handler must transition the job to COMPLETED."""
+    from db.models import JobState, ScheduledJob
+    from scheduler.jobs.expedition_complete import handle_expedition_complete
+
+    expedition, _ = sample_expedition_with_pilot
+    expedition.scene_log = []
+    await db_session.flush()
+
+    job = _make_complete_job(expedition.user_id, expedition.id)
+    db_session.add(job)
+    await db_session.flush()
+    await handle_expedition_complete(db_session, job)
+    await db_session.flush()
+
+    refreshed = await db_session.get(ScheduledJob, job.id)
+    assert refreshed.state == JobState.COMPLETED
+
+
+@pytest.mark.asyncio
+async def test_complete_handler_body_is_human_readable(db_session, sample_expedition_with_pilot):
+    """The closing DM must NOT be a JSON dump."""
+    from scheduler.jobs.expedition_complete import handle_expedition_complete
+
+    expedition, _ = sample_expedition_with_pilot
+    expedition.scene_log = []
+    await db_session.flush()
+
+    job = _make_complete_job(expedition.user_id, expedition.id)
+    db_session.add(job)
+    await db_session.flush()
+    result = await handle_expedition_complete(db_session, job)
+    body = result.notifications[0].body
+    assert not body.lstrip().startswith("{"), f"body looks like JSON: {body[:60]!r}"
+    assert "Successes" in body

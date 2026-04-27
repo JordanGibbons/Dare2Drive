@@ -145,3 +145,70 @@ async def test_expedition_event_handler_idempotent_skip_for_completed_expedition
 
     result = await handle_expedition_event(db_session, job)
     assert result.notifications == []
+    # The handler MUST mark the job COMPLETED even on the no-op skip path,
+    # otherwise recovery_sweep will resurrect it as PENDING and the cycle repeats.
+    assert job.state == JobState.COMPLETED
+
+
+@pytest.mark.asyncio
+async def test_expedition_event_handler_marks_job_completed(
+    db_session, sample_expedition_with_pilot
+):
+    """Regression for the stuck-CLAIMED loop: handler must transition the job to COMPLETED."""
+    from db.models import JobState, JobType, ScheduledJob
+    from scheduler.jobs.expedition_event import handle_expedition_event
+
+    expedition, _ = sample_expedition_with_pilot
+    job = ScheduledJob(
+        id=uuid.uuid4(),
+        user_id=expedition.user_id,
+        job_type=JobType.EXPEDITION_EVENT,
+        payload={
+            "expedition_id": str(expedition.id),
+            "scene_id": "pirate_skiff",
+            "template_id": "marquee_run",
+        },
+        scheduled_for=datetime.now(timezone.utc),
+        state=JobState.CLAIMED,
+    )
+    db_session.add(job)
+    await db_session.flush()
+
+    await handle_expedition_event(db_session, job)
+    await db_session.flush()
+
+    refreshed = await db_session.get(ScheduledJob, job.id)
+    assert refreshed.state == JobState.COMPLETED
+
+
+@pytest.mark.asyncio
+async def test_expedition_event_handler_body_is_human_readable(
+    db_session, sample_expedition_with_pilot
+):
+    """The DM body must NOT be a JSON dump — it should be readable text."""
+    from db.models import JobState, JobType, ScheduledJob
+    from scheduler.jobs.expedition_event import handle_expedition_event
+
+    expedition, _ = sample_expedition_with_pilot
+    job = ScheduledJob(
+        id=uuid.uuid4(),
+        user_id=expedition.user_id,
+        job_type=JobType.EXPEDITION_EVENT,
+        payload={
+            "expedition_id": str(expedition.id),
+            "scene_id": "pirate_skiff",
+            "template_id": "marquee_run",
+        },
+        scheduled_for=datetime.now(timezone.utc),
+        state=JobState.CLAIMED,
+    )
+    db_session.add(job)
+    await db_session.flush()
+
+    result = await handle_expedition_event(db_session, job)
+    body = result.notifications[0].body
+    # Sanity: not a raw JSON dump
+    assert not body.lstrip().startswith("{"), f"body looks like JSON: {body[:60]!r}"
+    # Should mention the slash command players use to respond
+    assert "/expedition respond" in body
+    assert "pirate_skiff" in body
