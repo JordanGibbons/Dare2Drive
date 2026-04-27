@@ -20,6 +20,7 @@ from discord.ext import commands
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.metrics import expedition_active, expeditions_started_total
 from bot.system_gating import get_active_system, system_required_message
 from config.logging import get_logger
 from config.settings import settings
@@ -464,6 +465,9 @@ class ExpeditionsCog(commands.Cog):
                 )
             )
             await session.flush()
+
+        expeditions_started_total.labels(template_id=template, kind=tmpl["kind"]).inc()
+        expedition_active.inc()
 
         await interaction.response.send_message(
             f"**{tmpl.get('id', template)}** launched. ETA "

@@ -154,3 +154,21 @@ class TestMetricsEndpoint:
             resp = await client.get("/metrics")
 
         assert "application/openmetrics-text" in resp.headers.get("content-type", "")
+
+
+def test_phase2b_metrics_exist():
+    from api.metrics import (
+        expedition_active,
+        expedition_event_response_seconds,
+        expedition_events_fired_total,
+        expedition_events_resolved_total,
+        expeditions_completed_total,
+        expeditions_started_total,
+    )
+
+    expeditions_started_total.labels(template_id="x", kind="rolled").inc(0)
+    expeditions_completed_total.labels(template_id="x", outcome="success").inc(0)
+    expedition_events_fired_total.labels(template_id="x", scene_id="y").inc(0)
+    expedition_events_resolved_total.labels(template_id="x", scene_id="y", source="auto").inc(0)
+    expedition_active.set(0)
+    expedition_event_response_seconds.labels(template_id="x").observe(0.0)

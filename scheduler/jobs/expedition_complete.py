@@ -8,6 +8,7 @@ import uuid
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.metrics import expedition_active, expeditions_completed_total
 from config.logging import get_logger
 from db.models import (
     Build,
@@ -82,6 +83,18 @@ async def handle_expedition_complete(session: AsyncSession, job: ScheduledJob) -
             .where(CrewMember.id.in_(assignments))
             .values(current_activity=CrewActivity.IDLE, current_activity_id=None)
         )
+
+    if state["failures"] == 0:
+        outcome_label = "success"
+    elif state["successes"] == 0:
+        outcome_label = "failure"
+    else:
+        outcome_label = "partial"
+    expeditions_completed_total.labels(
+        template_id=template_id,
+        outcome=outcome_label,
+    ).inc()
+    expedition_active.dec()
 
     body = json.dumps(
         {

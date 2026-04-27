@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.metrics import expedition_event_response_seconds, expedition_events_resolved_total
 from config.logging import get_logger
 from db.models import Expedition, ExpeditionState, JobType, ScheduledJob
 from engine.expedition_engine import resolve_scene
@@ -57,6 +58,23 @@ async def handle_expedition_resolve(session: AsyncSession, job: ScheduledJob) ->
             break
     expedition.scene_log = scene_log
     await session.flush()
+
+    source = "auto" if auto_resolved else "player"
+    expedition_events_resolved_total.labels(
+        template_id=template_id,
+        scene_id=scene_id,
+        source=source,
+    ).inc()
+
+    fired_at_iso = None
+    for e in scene_log:
+        if e.get("scene_id") == scene_id and e.get("status") == "resolved":
+            fired_at_iso = e.get("fired_at")
+            break
+    if fired_at_iso:
+        fired_at = datetime.fromisoformat(fired_at_iso.replace("Z", "+00:00"))
+        delta = (datetime.now(timezone.utc) - fired_at).total_seconds()
+        expedition_event_response_seconds.labels(template_id=template_id).observe(delta)
 
     body = json.dumps(
         {

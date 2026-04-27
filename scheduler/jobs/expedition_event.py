@@ -13,6 +13,7 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.metrics import expedition_events_fired_total
 from config.logging import get_logger
 from config.settings import settings
 from db.models import (
@@ -107,6 +108,11 @@ async def handle_expedition_event(session: AsyncSession, job: ScheduledJob) -> H
             "response_window_minutes": int(response_window),
         }
     )
+
+    expedition_events_fired_total.labels(
+        template_id=template_id,
+        scene_id=scene_id,
+    ).inc()
 
     return HandlerResult(
         notifications=[
