@@ -24,7 +24,7 @@ def upgrade() -> None:
             "stats",
             postgresql.JSONB,
             nullable=False,
-            server_default=sa.text("'{}'::jsonb"),
+            server_default="{}",
         ),
     )
 
