@@ -223,6 +223,121 @@ def build_button_components(
 
 
 # ---------------------------------------------------------------------------
+# Slash-command autocompletes — players never type IDs.
+# ---------------------------------------------------------------------------
+
+from pathlib import Path as _Path  # noqa: E402
+
+_TEMPLATE_DIR = _Path(__file__).resolve().parents[2] / "data" / "expeditions"
+
+
+def _humanize_id(template_id: str) -> str:
+    """`outer_marker_patrol` → `Outer Marker Patrol`."""
+    return template_id.replace("_", " ").title()
+
+
+async def _template_autocomplete(
+    interaction: discord.Interaction, current: str
+) -> list[app_commands.Choice[str]]:
+    """List `data/expeditions/*.yaml` files. Player sees friendly names; value = template_id."""
+    q = current.lower()
+    out: list[app_commands.Choice[str]] = []
+    for p in sorted(_TEMPLATE_DIR.glob("*.yaml")):
+        tid = p.stem
+        if q and q not in tid.lower() and q not in _humanize_id(tid).lower():
+            continue
+        label = f"{_humanize_id(tid)} ({tid})"[:100]
+        out.append(app_commands.Choice(name=label, value=tid))
+        if len(out) >= 25:
+            break
+    return out
+
+
+async def _build_autocomplete(
+    interaction: discord.Interaction, current: str
+) -> list[app_commands.Choice[str]]:
+    """List the player's IDLE builds. Value is the build UUID; label is the build's name + hull."""
+    user_id = str(interaction.user.id)
+    q = current.lower()
+    async with async_session() as session:
+        result = await session.execute(
+            select(Build)
+            .where(Build.user_id == user_id)
+            .where(Build.current_activity == BuildActivity.IDLE)
+            .order_by(Build.name)
+        )
+        out: list[app_commands.Choice[str]] = []
+        for b in result.scalars().all():
+            label = f"{b.name} ({b.hull_class.value})"
+            if q and q not in label.lower():
+                continue
+            out.append(app_commands.Choice(name=label[:100], value=str(b.id)))
+            if len(out) >= 25:
+                break
+    return out
+
+
+def _make_crew_autocomplete(archetype: CrewArchetype):
+    """Factory: returns an autocomplete handler that lists IDLE, non-injured crew of `archetype`."""
+
+    async def _ac(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
+        user_id = str(interaction.user.id)
+        q = current.lower()
+        now = datetime.now(timezone.utc)
+        async with async_session() as session:
+            result = await session.execute(
+                select(CrewMember)
+                .where(CrewMember.user_id == user_id)
+                .where(CrewMember.archetype == archetype)
+                .where(CrewMember.current_activity == CrewActivity.IDLE)
+            )
+            out: list[app_commands.Choice[str]] = []
+            for c in result.scalars().all():
+                if c.injured_until and c.injured_until > now:
+                    continue
+                display = f'{c.first_name} "{c.callsign}" {c.last_name}'
+                if q and q not in display.lower():
+                    continue
+                # value matches what _lookup_crew_by_display() expects
+                out.append(app_commands.Choice(name=display[:100], value=display[:100]))
+                if len(out) >= 25:
+                    break
+        return out
+
+    return _ac
+
+
+_pilot_autocomplete = _make_crew_autocomplete(CrewArchetype.PILOT)
+_gunner_autocomplete = _make_crew_autocomplete(CrewArchetype.GUNNER)
+_engineer_autocomplete = _make_crew_autocomplete(CrewArchetype.ENGINEER)
+_navigator_autocomplete = _make_crew_autocomplete(CrewArchetype.NAVIGATOR)
+
+
+async def _active_expedition_autocomplete(
+    interaction: discord.Interaction, current: str
+) -> list[app_commands.Choice[str]]:
+    """List the player's ACTIVE expeditions for /expedition status + /expedition respond."""
+    user_id = str(interaction.user.id)
+    q = current.lower()
+    async with async_session() as session:
+        result = await session.execute(
+            select(Expedition)
+            .where(Expedition.user_id == user_id)
+            .where(Expedition.state == ExpeditionState.ACTIVE)
+            .order_by(Expedition.completes_at)
+        )
+        out: list[app_commands.Choice[str]] = []
+        for ex in result.scalars().all():
+            label = f"{_humanize_id(ex.template_id)} (ETA {ex.completes_at:%H:%M %m-%d})"
+            if q and q not in label.lower():
+                continue
+            out.append(app_commands.Choice(name=label[:100], value=str(ex.id)))
+            if len(out) >= 25:
+                break
+    return out
+
+
+# ---------------------------------------------------------------------------
 # Cog with /expedition slash commands.
 # ---------------------------------------------------------------------------
 
@@ -237,12 +352,20 @@ class ExpeditionsCog(commands.Cog):
 
     @expedition.command(name="start", description="Launch a new expedition.")
     @app_commands.describe(
-        template="Expedition template id",
-        build="Which build (ship) to deploy",
-        pilot="Optional: assigned PILOT (display name)",
+        template="Pick from the autocomplete list",
+        build="Pick a ship from your fleet",
+        pilot="Optional: assigned PILOT",
         gunner="Optional: assigned GUNNER",
         engineer="Optional: assigned ENGINEER",
         navigator="Optional: assigned NAVIGATOR",
+    )
+    @app_commands.autocomplete(
+        template=_template_autocomplete,
+        build=_build_autocomplete,
+        pilot=_pilot_autocomplete,
+        gunner=_gunner_autocomplete,
+        engineer=_engineer_autocomplete,
+        navigator=_navigator_autocomplete,
     )
     async def expedition_start(
         self,
@@ -476,7 +599,8 @@ class ExpeditionsCog(commands.Cog):
         )
 
     @expedition.command(name="status", description="Status of your active expeditions.")
-    @app_commands.describe(expedition="Optional: a specific expedition id for the timeline view.")
+    @app_commands.describe(expedition="Optional: pick one for the timeline view.")
+    @app_commands.autocomplete(expedition=_active_expedition_autocomplete)
     async def expedition_status(
         self,
         interaction: discord.Interaction,
@@ -547,10 +671,11 @@ class ExpeditionsCog(commands.Cog):
 
     @expedition.command(name="respond", description="Respond to a pending expedition event.")
     @app_commands.describe(
-        expedition="Which expedition (defaults from autocomplete)",
+        expedition="Pick from your active expeditions",
         scene="Scene id with the pending event",
         choice="Choice id to commit",
     )
+    @app_commands.autocomplete(expedition=_active_expedition_autocomplete)
     async def expedition_respond(
         self,
         interaction: discord.Interaction,
