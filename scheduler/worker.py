@@ -9,6 +9,12 @@ from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
 from prometheus_client import start_http_server
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
+import scheduler.jobs.expedition_auto_resolve as _expedition_auto_resolve_module  # noqa: F401
+import scheduler.jobs.expedition_complete as _expedition_complete_module  # noqa: F401
+
+# Phase 2b expedition handlers (registers via side-effect import)
+import scheduler.jobs.expedition_event as _expedition_event_module  # noqa: F401
+import scheduler.jobs.expedition_resolve as _expedition_resolve_module  # noqa: F401
 from config.logging import get_logger, setup_logging
 from config.settings import settings
 from config.tracing import init_tracing
