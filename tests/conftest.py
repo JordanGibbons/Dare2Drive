@@ -373,3 +373,20 @@ async def sample_expedition_with_pilot(db_session, sample_system):
 async def sample_expedition_pilot_only(sample_expedition_with_pilot):
     """Alias — fixture above already has only a PILOT, no GUNNER."""
     return sample_expedition_with_pilot
+
+
+@pytest_asyncio.fixture
+async def sample_user(db_session):
+    """A persisted User row with a unique discord_id (rolled back after test)."""
+    from db.models import HullClass, User
+
+    discord_id = f"sampleuser_{uuid.uuid4().hex[:8]}"
+    u = User(
+        discord_id=discord_id,
+        username=f"user_{discord_id}",
+        hull_class=HullClass.SKIRMISHER,
+        currency=1000,
+    )
+    db_session.add(u)
+    await db_session.flush()
+    return u
