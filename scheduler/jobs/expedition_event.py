@@ -64,7 +64,10 @@ async def handle_expedition_event(session: AsyncSession, job: ScheduledJob) -> H
     hull_class = await _ship_hull_class(session, expedition.build_id)
     visible = _filter_visible_choices(scene, archetypes, hull_class)
 
-    # Append `pending` log entry.
+    # Pre-generate the auto-resolve job ID so we can embed it in the scene_log entry.
+    auto_job_id = uuid.uuid4()
+
+    # Append `pending` log entry (includes auto_resolve_job_id for CAS in response handler).
     scene_log = list(expedition.scene_log or [])
     scene_log.append(
         {
@@ -72,6 +75,8 @@ async def handle_expedition_event(session: AsyncSession, job: ScheduledJob) -> H
             "status": "pending",
             "fired_at": datetime.now(timezone.utc).isoformat(),
             "visible_choice_ids": [c["id"] for c in visible],
+            "auto_resolve_job_id": str(auto_job_id),
+            "template_id": template_id,
         }
     )
     expedition.scene_log = scene_log
@@ -83,7 +88,7 @@ async def handle_expedition_event(session: AsyncSession, job: ScheduledJob) -> H
     )
     auto_resolve_at = datetime.now(timezone.utc) + timedelta(minutes=int(response_window))
     auto_job = ScheduledJob(
-        id=uuid.uuid4(),
+        id=auto_job_id,
         user_id=expedition.user_id,
         job_type=JobType.EXPEDITION_AUTO_RESOLVE,
         payload={
