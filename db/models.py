@@ -703,12 +703,12 @@ class Expedition(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[str] = mapped_column(
-        String, ForeignKey("users.discord_id", ondelete="CASCADE"), nullable=False
+        String(20), ForeignKey("users.discord_id", ondelete="CASCADE"), nullable=False
     )
     build_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("builds.id"), nullable=False
     )
-    template_id: Mapped[str] = mapped_column(String, nullable=False)
+    template_id: Mapped[str] = mapped_column(String(64), nullable=False)
     state: Mapped[ExpeditionState] = mapped_column(
         Enum(
             ExpeditionState, values_callable=lambda x: [e.value for e in x], name="expedition_state"
