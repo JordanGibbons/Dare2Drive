@@ -10,22 +10,43 @@ This file is built up across Tasks 17-20:
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from random import Random
 from typing import TypedDict
 
 import discord
+from discord import app_commands
+from discord.ext import commands
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from bot.system_gating import get_active_system, system_required_message
 from config.logging import get_logger
+from config.settings import settings
 from db.models import (
+    Build,
+    BuildActivity,
+    CrewActivity,
+    CrewArchetype,
+    CrewMember,
     Expedition,
+    ExpeditionCrewAssignment,
     ExpeditionState,
     JobState,
     JobType,
     ScheduledJob,
+    User,
 )
 from db.session import async_session
+from engine.expedition_concurrency import (
+    build_has_active_expedition,
+    count_active_expeditions_for_user,
+    get_max_expeditions,
+)
+from engine.expedition_template import (
+    TemplateValidationError,
+    load_template,
+)
 
 log = get_logger(__name__)
 
@@ -198,3 +219,289 @@ def build_button_components(
         )
         out.append(btn)
     return out
+
+
+# ---------------------------------------------------------------------------
+# Cog with /expedition slash commands.
+# ---------------------------------------------------------------------------
+
+
+class ExpeditionsCog(commands.Cog):
+    """Phase 2b — /expedition start, status, respond."""
+
+    def __init__(self, bot: commands.Bot) -> None:
+        self.bot = bot
+
+    expedition = app_commands.Group(name="expedition", description="Multi-hour expeditions")
+
+    @expedition.command(name="start", description="Launch a new expedition.")
+    @app_commands.describe(
+        template="Expedition template id",
+        build="Which build (ship) to deploy",
+        pilot="Optional: assigned PILOT (display name)",
+        gunner="Optional: assigned GUNNER",
+        engineer="Optional: assigned ENGINEER",
+        navigator="Optional: assigned NAVIGATOR",
+    )
+    async def expedition_start(
+        self,
+        interaction: discord.Interaction,
+        template: str,
+        build: str,
+        pilot: str | None = None,
+        gunner: str | None = None,
+        engineer: str | None = None,
+        navigator: str | None = None,
+    ) -> None:
+        # 1. Template exists?
+        try:
+            tmpl = load_template(template)
+        except (TemplateValidationError, FileNotFoundError):
+            await interaction.response.send_message(
+                f"Unknown template: `{template}`.", ephemeral=True
+            )
+            return
+
+        async with async_session() as session, session.begin():
+            sys = await get_active_system(interaction, session)
+            if sys is None:
+                await interaction.response.send_message(
+                    system_required_message(),
+                    ephemeral=True,
+                )
+                return
+
+            user = await session.get(User, str(interaction.user.id), with_for_update=True)
+            if user is None:
+                await interaction.response.send_message(
+                    "You don't have a profile yet — run `/start` first.",
+                    ephemeral=True,
+                )
+                return
+
+            # 2. Concurrency cap
+            max_active = await get_max_expeditions(session, user)
+            current = await count_active_expeditions_for_user(session, user.discord_id)
+            if current >= max_active:
+                await interaction.response.send_message(
+                    f"You're at the max active expedition limit ({current}/{max_active}). "
+                    "Wait for one to complete.",
+                    ephemeral=True,
+                )
+                return
+
+            # 3. Cost
+            cost = int(tmpl.get("cost_credits", 0))
+            if user.currency < cost:
+                await interaction.response.send_message(
+                    f"You need {cost} credits — you have {user.currency}.",
+                    ephemeral=True,
+                )
+                return
+
+            # 4. Build owned, IDLE
+            try:
+                build_uuid = uuid.UUID(build)
+            except ValueError:
+                await interaction.response.send_message(
+                    "Pick a valid build from the autocomplete list.",
+                    ephemeral=True,
+                )
+                return
+            build_row = await session.get(Build, build_uuid, with_for_update=True)
+            if build_row is None or build_row.user_id != user.discord_id:
+                await interaction.response.send_message(
+                    "Build not found in your fleet.",
+                    ephemeral=True,
+                )
+                return
+            if build_row.current_activity != BuildActivity.IDLE:
+                await interaction.response.send_message(
+                    f"Build `{build_row.name}` is already on expedition.",
+                    ephemeral=True,
+                )
+                return
+            if await build_has_active_expedition(session, build_row.id):
+                await interaction.response.send_message(
+                    f"Build `{build_row.name}` already has an active expedition.",
+                    ephemeral=True,
+                )
+                return
+
+            # 5. Resolve crew picks
+            crew_picks: list[tuple[CrewArchetype, CrewMember]] = []
+            for arche, display in (
+                (CrewArchetype.PILOT, pilot),
+                (CrewArchetype.GUNNER, gunner),
+                (CrewArchetype.ENGINEER, engineer),
+                (CrewArchetype.NAVIGATOR, navigator),
+            ):
+                if display is None:
+                    continue
+                row = await _lookup_crew_by_display(session, user.discord_id, display)
+                if row is None:
+                    await interaction.response.send_message(
+                        f"Crew member `{display}` not found.",
+                        ephemeral=True,
+                    )
+                    return
+                if row.archetype != arche:
+                    await interaction.response.send_message(
+                        f"`{display}` is a {row.archetype.value}, " f"not a {arche.value}.",
+                        ephemeral=True,
+                    )
+                    return
+                if row.current_activity != CrewActivity.IDLE:
+                    await interaction.response.send_message(
+                        f"`{display}` is currently {row.current_activity.value}.",
+                        ephemeral=True,
+                    )
+                    return
+                if row.injured_until and row.injured_until > datetime.now(timezone.utc):
+                    await interaction.response.send_message(
+                        f"`{display}` is recovering — back later.",
+                        ephemeral=True,
+                    )
+                    return
+                crew_picks.append((arche, row))
+
+            # 6. crew_required minimums
+            req = tmpl.get("crew_required", {}) or {}
+            if len(crew_picks) < req.get("min", 0):
+                await interaction.response.send_message(
+                    f"Template `{template}` requires at least {req['min']} crew. "
+                    f"You assigned {len(crew_picks)}.",
+                    ephemeral=True,
+                )
+                return
+            picked_archetypes = {a.value for a, _ in crew_picks}
+            picked_archetypes_upper = {a.upper() for a in picked_archetypes}
+            if "archetypes_any" in req:
+                if not (set(req["archetypes_any"]) & picked_archetypes_upper):
+                    await interaction.response.send_message(
+                        f"Template `{template}` requires at least one of "
+                        f"{req['archetypes_any']}. You assigned {sorted(picked_archetypes_upper)}.",
+                        ephemeral=True,
+                    )
+                    return
+            if "archetypes_all" in req:
+                missing = set(req["archetypes_all"]) - picked_archetypes_upper
+                if missing:
+                    await interaction.response.send_message(
+                        f"Template `{template}` requires all of "
+                        f"{req['archetypes_all']}. Missing: {sorted(missing)}.",
+                        ephemeral=True,
+                    )
+                    return
+
+            # 7. Atomic creation
+            now = datetime.now(timezone.utc)
+            duration = int(tmpl["duration_minutes"])
+            completes_at = now + timedelta(minutes=duration)
+            expedition = Expedition(
+                id=uuid.uuid4(),
+                user_id=user.discord_id,
+                build_id=build_row.id,
+                template_id=template,
+                state=ExpeditionState.ACTIVE,
+                started_at=now,
+                completes_at=completes_at,
+                correlation_id=uuid.uuid4(),
+                scene_log=[],
+            )
+            session.add(expedition)
+            await session.flush()
+
+            for arche, row in crew_picks:
+                session.add(
+                    ExpeditionCrewAssignment(
+                        expedition_id=expedition.id,
+                        crew_id=row.id,
+                        archetype=arche,
+                    )
+                )
+                row.current_activity = CrewActivity.ON_EXPEDITION
+                row.current_activity_id = expedition.id
+            build_row.current_activity = BuildActivity.ON_EXPEDITION
+            build_row.current_activity_id = expedition.id
+            user.currency -= cost
+            await session.flush()
+
+            # 8. Schedule events + completion
+            scheduled_scenes = _select_scheduled_scenes(tmpl, expedition.id)
+            spacing = duration / max(len(scheduled_scenes) + 1, 2)
+            jitter_pct = settings.EXPEDITION_EVENT_JITTER_PCT / 100.0
+            rng = Random(str(expedition.id))
+            for i, scene_id in enumerate(scheduled_scenes, start=1):
+                offset_min = spacing * i
+                jitter_min = offset_min * jitter_pct * (rng.random() * 2 - 1)
+                fire_at = now + timedelta(minutes=offset_min + jitter_min)
+                session.add(
+                    ScheduledJob(
+                        id=uuid.uuid4(),
+                        user_id=user.discord_id,
+                        job_type=JobType.EXPEDITION_EVENT,
+                        payload={
+                            "expedition_id": str(expedition.id),
+                            "scene_id": scene_id,
+                            "template_id": template,
+                        },
+                        scheduled_for=fire_at,
+                        state=JobState.PENDING,
+                    )
+                )
+            session.add(
+                ScheduledJob(
+                    id=uuid.uuid4(),
+                    user_id=user.discord_id,
+                    job_type=JobType.EXPEDITION_COMPLETE,
+                    payload={
+                        "expedition_id": str(expedition.id),
+                        "template_id": template,
+                    },
+                    scheduled_for=completes_at,
+                    state=JobState.PENDING,
+                )
+            )
+            await session.flush()
+
+        await interaction.response.send_message(
+            f"**{tmpl.get('id', template)}** launched. ETA "
+            f"{discord.utils.format_dt(completes_at, 'R')}.",
+            ephemeral=True,
+        )
+
+
+# ---------------------------------------------------------------------------
+# Helpers shared with /expedition status + respond.
+# ---------------------------------------------------------------------------
+
+
+def _select_scheduled_scenes(tmpl: dict, expedition_id: uuid.UUID) -> list[str]:
+    """Return the ordered list of scene_ids that get EXPEDITION_EVENT jobs."""
+    if tmpl["kind"] == "scripted":
+        return [
+            s["id"] for s in tmpl.get("scenes", []) if s.get("choices") and not s.get("is_closing")
+        ]
+    pool = tmpl.get("events", [])
+    n = int(tmpl.get("event_count", 1))
+    rng = Random(str(expedition_id))
+    sampled = rng.sample(pool, k=min(n, len(pool)))
+    return [s["id"] for s in sampled]
+
+
+async def _lookup_crew_by_display(
+    session: AsyncSession, user_id: str, display: str
+) -> CrewMember | None:
+    """Match a 'First "Callsign" Last' display string to a crew row."""
+    from sqlalchemy import select as sa_select
+
+    result = await session.execute(sa_select(CrewMember).where(CrewMember.user_id == user_id))
+    for row in result.scalars().all():
+        if _format_display(row) == display:
+            return row
+    return None
+
+
+def _format_display(crew: CrewMember) -> str:
+    return f'{crew.first_name} "{crew.callsign}" {crew.last_name}'
