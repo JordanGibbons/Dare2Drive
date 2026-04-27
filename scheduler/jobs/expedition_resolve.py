@@ -2,15 +2,15 @@
 
 from __future__ import annotations
 
-import json
 import uuid
 from datetime import datetime, timezone
 
+from sqlalchemy import func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.metrics import expedition_event_response_seconds, expedition_events_resolved_total
 from config.logging import get_logger
-from db.models import Expedition, ExpeditionState, JobType, ScheduledJob
+from db.models import Expedition, ExpeditionState, JobState, JobType, ScheduledJob
 from engine.expedition_engine import resolve_scene
 from engine.expedition_template import load_template
 from scheduler.dispatch import HandlerResult, NotificationRequest, register
@@ -28,6 +28,8 @@ async def handle_expedition_resolve(session: AsyncSession, job: ScheduledJob) ->
     expedition = await session.get(Expedition, expedition_id, with_for_update=True)
     if expedition is None:
         log.warning("expedition_resolve: expedition %s not found", expedition_id)
+        job.state = JobState.COMPLETED
+        job.completed_at = func.now()
         return HandlerResult()
     if expedition.state != ExpeditionState.ACTIVE:
         log.info(
@@ -35,12 +37,16 @@ async def handle_expedition_resolve(session: AsyncSession, job: ScheduledJob) ->
             expedition.state,
             expedition_id,
         )
+        job.state = JobState.COMPLETED
+        job.completed_at = func.now()
         return HandlerResult()
 
     template = load_template(template_id)
     scene = _find_scene(template, scene_id)
     if scene is None:
         log.error("expedition_resolve: scene %s not found in %s", scene_id, template_id)
+        job.state = JobState.COMPLETED
+        job.completed_at = func.now()
         return HandlerResult()
 
     resolution = await resolve_scene(session, expedition, scene, picked)
@@ -76,16 +82,14 @@ async def handle_expedition_resolve(session: AsyncSession, job: ScheduledJob) ->
         delta = (datetime.now(timezone.utc) - fired_at).total_seconds()
         expedition_event_response_seconds.labels(template_id=template_id).observe(delta)
 
-    body = json.dumps(
-        {
-            "type": "expedition_resolution",
-            "expedition_id": str(expedition.id),
-            "scene_id": scene_id,
-            "narrative": resolution["outcome"].get("narrative", ""),
-            "auto_resolved": auto_resolved,
-            "roll": resolution["roll"],
-        }
+    body = _format_resolution_body(
+        narrative=resolution["outcome"].get("narrative", ""),
+        auto_resolved=auto_resolved,
     )
+
+    job.state = JobState.COMPLETED
+    job.completed_at = func.now()
+
     return HandlerResult(
         notifications=[
             NotificationRequest(
@@ -98,6 +102,13 @@ async def handle_expedition_resolve(session: AsyncSession, job: ScheduledJob) ->
             )
         ]
     )
+
+
+def _format_resolution_body(*, narrative: str, auto_resolved: bool) -> str:
+    text = narrative.strip()
+    if auto_resolved:
+        text += "\n\n_(Auto-resolved — no choice was made before the response window expired.)_"
+    return text
 
 
 def _find_scene(template: dict, scene_id: str) -> dict | None:

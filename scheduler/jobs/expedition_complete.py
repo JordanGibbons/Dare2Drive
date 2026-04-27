@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-import json
 import uuid
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.metrics import expedition_active, expeditions_completed_total
@@ -18,6 +17,7 @@ from db.models import (
     Expedition,
     ExpeditionCrewAssignment,
     ExpeditionState,
+    JobState,
     JobType,
     ScheduledJob,
 )
@@ -36,9 +36,13 @@ async def handle_expedition_complete(session: AsyncSession, job: ScheduledJob) -
     expedition = await session.get(Expedition, expedition_id, with_for_update=True)
     if expedition is None:
         log.warning("expedition_complete: %s not found", expedition_id)
+        job.state = JobState.COMPLETED
+        job.completed_at = func.now()
         return HandlerResult()
     if expedition.state != ExpeditionState.ACTIVE:
         log.info("expedition_complete: already %s", expedition.state)
+        job.state = JobState.COMPLETED
+        job.completed_at = func.now()
         return HandlerResult()
 
     template = load_template(template_id)
@@ -96,14 +100,14 @@ async def handle_expedition_complete(session: AsyncSession, job: ScheduledJob) -
     ).inc()
     expedition_active.dec()
 
-    body = json.dumps(
-        {
-            "type": "expedition_complete",
-            "expedition_id": str(expedition.id),
-            "narrative": closing.get("body", ""),
-            "summary": expedition.outcome_summary,
-        }
+    body = _format_complete_body(
+        narrative=closing.get("body", ""),
+        summary=expedition.outcome_summary,
     )
+
+    job.state = JobState.COMPLETED
+    job.completed_at = func.now()
+
     return HandlerResult(
         notifications=[
             NotificationRequest(
@@ -116,6 +120,17 @@ async def handle_expedition_complete(session: AsyncSession, job: ScheduledJob) -
             )
         ]
     )
+
+
+def _format_complete_body(*, narrative: str, summary: dict) -> str:
+    successes = int(summary.get("successes", 0))
+    failures = int(summary.get("failures", 0))
+    flags = list(summary.get("flags", []) or [])
+    lines = [narrative.strip(), ""]
+    lines.append(f"Successes: **{successes}** · Failures: **{failures}**")
+    if flags:
+        lines.append("Flags: " + ", ".join(f"`{f}`" for f in flags))
+    return "\n".join(lines)
 
 
 def _all_closings(template: dict) -> list[dict]:

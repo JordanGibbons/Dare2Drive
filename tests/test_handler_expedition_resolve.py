@@ -116,6 +116,57 @@ async def test_resolve_handler_idempotent_on_re_fire(db_session, sample_expediti
 
 
 @pytest.mark.asyncio
+async def test_resolve_handler_marks_job_completed(db_session, sample_expedition_with_pilot):
+    """Regression for the stuck-CLAIMED loop: handler must transition the job to COMPLETED."""
+    from db.models import JobState, ScheduledJob
+    from scheduler.jobs.expedition_resolve import handle_expedition_resolve
+
+    expedition, _ = sample_expedition_with_pilot
+    expedition.scene_log = [
+        {
+            "scene_id": "pirate_skiff",
+            "status": "pending",
+            "fired_at": "2026-04-26T12:00:00Z",
+            "visible_choice_ids": ["outrun", "comply"],
+        },
+    ]
+    await db_session.flush()
+
+    job = _make_resolve_job(expedition.user_id, expedition.id, "pirate_skiff", "comply")
+    db_session.add(job)
+    await db_session.flush()
+    await handle_expedition_resolve(db_session, job)
+    await db_session.flush()
+
+    refreshed = await db_session.get(ScheduledJob, job.id)
+    assert refreshed.state == JobState.COMPLETED
+
+
+@pytest.mark.asyncio
+async def test_resolve_handler_body_is_human_readable(db_session, sample_expedition_with_pilot):
+    """The DM body must NOT be a JSON dump."""
+    from scheduler.jobs.expedition_resolve import handle_expedition_resolve
+
+    expedition, _ = sample_expedition_with_pilot
+    expedition.scene_log = [
+        {
+            "scene_id": "pirate_skiff",
+            "status": "pending",
+            "fired_at": "2026-04-26T12:00:00Z",
+            "visible_choice_ids": ["outrun", "comply"],
+        },
+    ]
+    await db_session.flush()
+
+    job = _make_resolve_job(expedition.user_id, expedition.id, "pirate_skiff", "comply")
+    db_session.add(job)
+    await db_session.flush()
+    result = await handle_expedition_resolve(db_session, job)
+    body = result.notifications[0].body
+    assert not body.lstrip().startswith("{"), f"body looks like JSON: {body[:60]!r}"
+
+
+@pytest.mark.asyncio
 async def test_button_click_vs_auto_resolve_race_only_one_wins(
     db_session, sample_expedition_with_pilot
 ):

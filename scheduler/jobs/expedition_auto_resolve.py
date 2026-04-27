@@ -9,6 +9,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 
+from sqlalchemy import func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config.logging import get_logger
@@ -35,6 +36,10 @@ async def handle_expedition_auto_resolve(session: AsyncSession, job: ScheduledJo
     )
     session.add(resolve)
     await session.flush()
+
+    job.state = JobState.COMPLETED
+    job.completed_at = func.now()
+
     return HandlerResult()
 
 
