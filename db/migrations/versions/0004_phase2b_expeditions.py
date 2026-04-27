@@ -66,6 +66,15 @@ def upgrade() -> None:
         "crew_members",
         sa.Column("injured_until", sa.DateTime(timezone=True), nullable=True),
     )
+    op.add_column(
+        "crew_members",
+        sa.Column(
+            "stats",
+            postgresql.JSONB,
+            nullable=False,
+            server_default="{}",
+        ),
+    )
 
     # 4. expeditions table
     op.create_table(
@@ -148,6 +157,7 @@ def downgrade() -> None:
     op.drop_index("ix_expeditions_user_state", table_name="expeditions")
     op.drop_table("expeditions")
 
+    op.drop_column("crew_members", "stats")
     op.drop_column("crew_members", "injured_until")
     op.drop_column("builds", "current_activity_id")
     op.drop_column("builds", "current_activity")

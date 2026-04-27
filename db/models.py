@@ -476,6 +476,9 @@ class CrewMember(Base):
     current_activity_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     # Phase 2b — injury timestamp; blocks assignment while > now()
     injured_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Phase 2b — per-crew stat values for expedition roll resolution
+    # Shape: {"acceleration": int, "luck": int, ...}  (archetype-specific subset)
+    stats: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
 
     __table_args__ = (
         UniqueConstraint(
