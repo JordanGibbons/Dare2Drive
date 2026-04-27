@@ -541,6 +541,42 @@ class ExpeditionsCog(commands.Cog):
                 ephemeral=True,
             )
 
+    @expedition.command(name="respond", description="Respond to a pending expedition event.")
+    @app_commands.describe(
+        expedition="Which expedition (defaults from autocomplete)",
+        scene="Scene id with the pending event",
+        choice="Choice id to commit",
+    )
+    async def expedition_respond(
+        self,
+        interaction: discord.Interaction,
+        expedition: str,
+        scene: str,
+        choice: str,
+    ) -> None:
+        try:
+            exp_uuid = uuid.UUID(expedition)
+        except ValueError:
+            await interaction.response.send_message(
+                "Pick an expedition from the autocomplete list.",
+                ephemeral=True,
+            )
+            return
+
+        async with async_session() as session, session.begin():
+            outcome = await handle_expedition_response(
+                session,
+                expedition_id=exp_uuid,
+                scene_id=scene,
+                choice_id=choice,
+                invoking_user_id=str(interaction.user.id),
+            )
+
+        await interaction.response.send_message(
+            _user_facing_message(outcome, choice),
+            ephemeral=True,
+        )
+
 
 # ---------------------------------------------------------------------------
 # Helpers shared with /expedition status + respond.
@@ -604,3 +640,17 @@ def _render_timeline(ex: "Expedition") -> str:
         elif entry.get("kind") == "flag":
             lines.append(f"  · flag set: {entry.get('name')}")
     return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# Cog setup hook
+# ---------------------------------------------------------------------------
+
+
+async def setup(bot: commands.Bot) -> None:
+    if not settings.EXPEDITIONS_ENABLED:
+        log.info("expeditions cog skipped — EXPEDITIONS_ENABLED is False")
+        return
+    await bot.add_cog(ExpeditionsCog(bot))
+    bot.add_view(ExpeditionResponseView())
+    log.info("expeditions cog loaded + persistent view registered")
