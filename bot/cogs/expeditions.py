@@ -17,7 +17,7 @@ from typing import TypedDict
 import discord
 from discord import app_commands
 from discord.ext import commands
-from sqlalchemy import update
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.system_gating import get_active_system, system_required_message
@@ -471,6 +471,76 @@ class ExpeditionsCog(commands.Cog):
             ephemeral=True,
         )
 
+    @expedition.command(name="status", description="Status of your active expeditions.")
+    @app_commands.describe(expedition="Optional: a specific expedition id for the timeline view.")
+    async def expedition_status(
+        self,
+        interaction: discord.Interaction,
+        expedition: str | None = None,
+    ) -> None:
+        async with async_session() as session:
+            user_id = str(interaction.user.id)
+            if expedition is None:
+                # List mode: all ACTIVE expeditions for this user.
+                rows = (
+                    (
+                        await session.execute(
+                            select(Expedition)
+                            .where(Expedition.user_id == user_id)
+                            .where(Expedition.state == ExpeditionState.ACTIVE)
+                            .order_by(Expedition.completes_at)
+                        )
+                    )
+                    .scalars()
+                    .all()
+                )
+                if not rows:
+                    await interaction.response.send_message(
+                        "No active expeditions.",
+                        ephemeral=True,
+                    )
+                    return
+                user = await session.get(User, user_id)
+                max_active = await get_max_expeditions(session, user) if user else len(rows)
+                lines = [f"**Active expeditions** ({len(rows)} / {max_active} slots used)\n"]
+                for ex in rows:
+                    pending_count = sum(
+                        1 for e in (ex.scene_log or []) if e.get("status") == "pending"
+                    )
+                    suffix = (
+                        f" — {pending_count} event pending response now" if pending_count else ""
+                    )
+                    lines.append(
+                        f"• `{ex.template_id}` — ETA "
+                        f"{discord.utils.format_dt(ex.completes_at, 'R')}{suffix}"
+                    )
+                await interaction.response.send_message(
+                    "\n".join(lines),
+                    ephemeral=True,
+                )
+                return
+
+            # Timeline mode
+            try:
+                exp_uuid = uuid.UUID(expedition)
+            except ValueError:
+                await interaction.response.send_message(
+                    "Pick an expedition from the autocomplete list.",
+                    ephemeral=True,
+                )
+                return
+            ex = await session.get(Expedition, exp_uuid)
+            if ex is None or ex.user_id != user_id:
+                await interaction.response.send_message(
+                    "Expedition not found.",
+                    ephemeral=True,
+                )
+                return
+            await interaction.response.send_message(
+                _render_timeline(ex),
+                ephemeral=True,
+            )
+
 
 # ---------------------------------------------------------------------------
 # Helpers shared with /expedition status + respond.
@@ -505,3 +575,32 @@ async def _lookup_crew_by_display(
 
 def _format_display(crew: CrewMember) -> str:
     return f'{crew.first_name} "{crew.callsign}" {crew.last_name}'
+
+
+def _render_timeline(ex: "Expedition") -> str:
+    lines: list[str] = [
+        f"**{ex.template_id}**",
+        f"State: {ex.state.value}  ·  " f"ETA: {discord.utils.format_dt(ex.completes_at, 'R')}",
+        "",
+        "**Timeline**",
+    ]
+    if not ex.scene_log:
+        lines.append("_(no scenes resolved yet)_")
+    for entry in ex.scene_log or []:
+        status = entry.get("status", "?")
+        sid = entry.get("scene_id", "?")
+        if status == "pending":
+            lines.append(f"○ `{sid}` — pending response")
+        elif status == "resolved":
+            choice = entry.get("choice_id") or "default"
+            outcome = "auto-resolved" if entry.get("auto_resolved") else f"chose {choice}"
+            roll = entry.get("roll") or {}
+            roll_note = ""
+            if roll:
+                roll_note = " (success)" if roll.get("success") else " (failure)"
+            narr = entry.get("narrative", "")
+            short = narr[:70] + "..." if len(narr) > 70 else narr
+            lines.append(f"✓ `{sid}` — {outcome}{roll_note} — {short}")
+        elif entry.get("kind") == "flag":
+            lines.append(f"  · flag set: {entry.get('name')}")
+    return "\n".join(lines)
