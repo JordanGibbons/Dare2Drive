@@ -195,3 +195,37 @@ claim_total = Counter(
     "/claim invocations.",
     ["result"],  # success | empty
 )
+
+# ----------------------------------------------------------------- #
+# Phase 2b — expedition metrics                                     #
+# ----------------------------------------------------------------- #
+expeditions_started_total = Counter(
+    "dare2drive_expeditions_started_total",
+    "Total expeditions started, labeled by template + kind",
+    ["template_id", "kind"],
+)
+expeditions_completed_total = Counter(
+    "dare2drive_expeditions_completed_total",
+    "Total expeditions completed, labeled by template + outcome",
+    ["template_id", "outcome"],
+)
+expedition_events_fired_total = Counter(
+    "dare2drive_expedition_events_fired_total",
+    "Mid-flight events fired, labeled by template + scene_id",
+    ["template_id", "scene_id"],
+)
+expedition_events_resolved_total = Counter(
+    "dare2drive_expedition_events_resolved_total",
+    "Events resolved, labeled by template + scene_id + source (button|slash|auto)",
+    ["template_id", "scene_id", "source"],
+)
+expedition_active = Gauge(
+    "dare2drive_expedition_active",
+    "Currently active expeditions across all users",
+)
+expedition_event_response_seconds = Histogram(
+    "dare2drive_expedition_event_response_seconds",
+    "How long players take to respond to a mid-flight event",
+    ["template_id"],
+    buckets=(5, 30, 60, 120, 300, 600, 1200, 1800, 3600, 7200, 14400),
+)

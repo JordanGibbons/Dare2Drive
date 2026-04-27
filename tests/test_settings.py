@@ -47,3 +47,11 @@ class TestSettings:
         assert settings.NOTIFICATION_RATE_LIMIT_PER_HOUR == 5
         assert settings.NOTIFICATION_BATCH_WINDOW_SECONDS == 30
         assert settings.NOTIFICATION_STREAM_MAXLEN == 10000
+
+    def test_phase2b_expedition_settings_defaults(self):
+        from config.settings import settings
+
+        assert settings.EXPEDITION_MAX_PER_USER_DEFAULT == 2
+        assert settings.EXPEDITION_RESPONSE_WINDOW_DEFAULT_MIN == 30
+        assert settings.EXPEDITION_EVENT_JITTER_PCT == 10
+        assert settings.EXPEDITIONS_ENABLED is False

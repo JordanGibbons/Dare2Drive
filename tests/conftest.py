@@ -280,3 +280,113 @@ class SessionWrapper:
 
     async def __aexit__(self, *a):
         return False
+
+
+# ---------------------------------------------------------------------------
+# Phase 2b: Expedition fixtures
+# ---------------------------------------------------------------------------
+
+
+@pytest_asyncio.fixture
+async def sample_expedition_with_pilot(db_session, sample_system):
+    """An ACTIVE expedition with a PILOT crew member assigned (acceleration=70)."""
+    import uuid
+    from datetime import datetime, timedelta, timezone
+
+    from db.models import (
+        Build,
+        BuildActivity,
+        CrewActivity,
+        CrewArchetype,
+        CrewMember,
+        Expedition,
+        ExpeditionCrewAssignment,
+        ExpeditionState,
+        HullClass,
+        Rarity,
+        User,
+    )
+
+    user = User(
+        discord_id="exp_test_user_1",
+        username="exp1",
+        hull_class=HullClass.SKIRMISHER,
+        currency=1000,
+    )
+    db_session.add(user)
+    await db_session.flush()
+
+    build = Build(
+        id=uuid.uuid4(),
+        user_id=user.discord_id,
+        name="Flagstaff",
+        hull_class=HullClass.SKIRMISHER,
+        current_activity=BuildActivity.ON_EXPEDITION,
+    )
+    db_session.add(build)
+    await db_session.flush()
+
+    pilot = CrewMember(
+        id=uuid.uuid4(),
+        user_id=user.discord_id,
+        first_name="Mira",
+        last_name="Voss",
+        callsign="Sixgun",
+        archetype=CrewArchetype.PILOT,
+        rarity=Rarity.RARE,
+        level=4,
+        stats={"acceleration": 70, "luck": 40},
+        current_activity=CrewActivity.ON_EXPEDITION,
+    )
+    db_session.add(pilot)
+    await db_session.flush()
+
+    now = datetime.now(timezone.utc)
+    expedition = Expedition(
+        id=uuid.uuid4(),
+        user_id=user.discord_id,
+        build_id=build.id,
+        template_id="outer_marker_patrol",
+        state=ExpeditionState.ACTIVE,
+        started_at=now,
+        completes_at=now + timedelta(hours=6),
+        correlation_id=uuid.uuid4(),
+        scene_log=[],
+    )
+    db_session.add(expedition)
+    await db_session.flush()
+    db_session.add(
+        ExpeditionCrewAssignment(
+            expedition_id=expedition.id,
+            crew_id=pilot.id,
+            archetype=CrewArchetype.PILOT,
+        )
+    )
+    await db_session.flush()
+    build.current_activity_id = expedition.id
+    pilot.current_activity_id = expedition.id
+    await db_session.flush()
+    return expedition, pilot
+
+
+@pytest_asyncio.fixture
+async def sample_expedition_pilot_only(sample_expedition_with_pilot):
+    """Alias — fixture above already has only a PILOT, no GUNNER."""
+    return sample_expedition_with_pilot
+
+
+@pytest_asyncio.fixture
+async def sample_user(db_session):
+    """A persisted User row with a unique discord_id (rolled back after test)."""
+    from db.models import HullClass, User
+
+    discord_id = f"sampleuser_{uuid.uuid4().hex[:8]}"
+    u = User(
+        discord_id=discord_id,
+        username=f"user_{discord_id}",
+        hull_class=HullClass.SKIRMISHER,
+        currency=1000,
+    )
+    db_session.add(u)
+    await db_session.flush()
+    return u

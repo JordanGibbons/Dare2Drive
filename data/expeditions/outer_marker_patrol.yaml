@@ -1,0 +1,262 @@
+id: outer_marker_patrol
+kind: rolled
+duration_minutes: 240
+response_window_minutes: 30
+cost_credits: 100
+event_count: 2
+crew_required: { min: 1, archetypes_any: [PILOT, GUNNER] }
+opening:
+  id: opening
+  narration: |
+    Outer-marker patrol — the slow loop that sector security pays for and
+    everyone hates. Four hours of scanning empty space for things that
+    almost never show up. You log the start of your run and settle in.
+
+events:
+  - id: drifting_wreck
+    narration: |
+      The scope picks up something cold and tumbling — a dead corvette,
+      the running lights long out. Could be salvage. Could be bait.
+    choices:
+      - id: salvage
+        text: "Match velocities and crack it open."
+        roll: { stat: engineer.repair, base_p: 0.50, base_stat: 50, per_point: 0.005 }
+        outcomes:
+          success:
+            narrative: "The hold yields a clean drive and a half-charged reactor."
+            effects:
+              - reward_card: { slot: drive, rarity: uncommon }
+              - reward_xp: { archetype: ENGINEER, amount: 40 }
+          failure:
+            narrative: "The wreck shifts under your tow rig and bites back. Hull damage."
+            effects:
+              - damage_part: { slot: hull, amount: 0.08 }
+      - id: leave_it
+        text: "Mark the position and move on."
+        default: true
+        outcomes:
+          result:
+            narrative: "Probably someone else's problem. You log it and keep flying."
+            effects:
+              - reward_xp: { archetype: PILOT, amount: 10 }
+
+  - id: distress_call
+    narration: |
+      Civilian distress call — a private yacht with engine trouble in the
+      asteroid debris. Their captain is panicking on open channels.
+    choices:
+      - id: assist
+        text: "Pull alongside and help with repairs."
+        requires: { archetype: ENGINEER }
+        outcomes:
+          result:
+            narrative: |
+              An hour of tedious work. The yacht's owner tips you for the
+              trouble — and remembers your callsign.
+            effects:
+              - reward_credits: 200
+              - reward_xp: { archetype: ENGINEER, amount: 30 }
+      - id: relay_only
+        text: "Relay the distress to a closer ship and continue patrol."
+        default: true
+        outcomes:
+          result:
+            narrative: "Procedure says relay-and-continue, and procedure pays."
+            effects:
+              - reward_credits: 50
+
+  - id: customs_check
+    narration: |
+      A customs cutter pulls alongside and demands your patrol logs.
+      Their officer looks bored. The logs are clean.
+    choices:
+      - id: comply_check
+        text: "Hand over the logs and answer their questions."
+        default: true
+        outcomes:
+          result:
+            narrative: "Twenty minutes of bureaucracy. They wave you on."
+            effects:
+              - reward_xp: { archetype: PILOT, amount: 10 }
+      - id: stall
+        text: "Stall. You don't have time for this."
+        roll: { stat: navigator.luck, base_p: 0.40, base_stat: 50, per_point: 0.005 }
+        outcomes:
+          success:
+            narrative: "They lose interest. You're back on patrol in five minutes."
+            effects:
+              - reward_xp: { archetype: NAVIGATOR, amount: 30 }
+          failure:
+            narrative: |
+              The customs officer wakes up. The fine is steep and the lecture
+              is longer.
+            effects:
+              - reward_credits: -150
+
+  - id: scope_ghost
+    narration: |
+      A contact appears at the edge of your scope — fast, hot, gone before
+      you can lock on. Could be nothing. Could be a courier running silent.
+    choices:
+      - id: pursue
+        text: "Pursue the contact."
+        roll: { stat: pilot.acceleration, base_p: 0.45, base_stat: 50, per_point: 0.005 }
+        outcomes:
+          success:
+            narrative: |
+              You overhaul a courier dropping cargo as you close. A canister
+              tumbles into the dark — recovered, it's worth something.
+            effects:
+              - reward_credits: 250
+              - reward_xp: { archetype: PILOT, amount: 50 }
+          failure:
+            narrative: "You burn fuel chasing a ghost. Nothing on scope."
+            effects:
+              - reward_xp: { archetype: PILOT, amount: 15 }
+      - id: log_only
+        text: "Log the contact and keep your patrol heading."
+        default: true
+        outcomes:
+          result:
+            narrative: "Whoever it was, they're gone. The scope is empty again."
+            effects: []
+
+  - id: corp_courier
+    narration: |
+      A small corporate courier hails on patrol channel — they need an
+      escort through a stretch of unmarked debris. They'll pay for it.
+    choices:
+      - id: escort
+        text: "Take the escort. Money is money."
+        outcomes:
+          result:
+            narrative: "Forty minutes flying close formation. The courier pays in clean credits."
+            effects:
+              - reward_credits: 175
+              - reward_xp: { archetype: NAVIGATOR, amount: 25 }
+      - id: refuse
+        text: "Patrol comes first. Decline."
+        default: true
+        outcomes:
+          result:
+            narrative: "By the book. The courier huffs and finds someone else."
+            effects: []
+
+  - id: sensor_anomaly
+    narration: |
+      Your sensors throw an anomaly — a brief, impossible reading from
+      empty space. Probably noise. Probably.
+    choices:
+      - id: investigate_anomaly
+        text: "Run a scan sweep on the bearing."
+        roll: { stat: navigator.perception, base_p: 0.50, base_stat: 50, per_point: 0.005 }
+        outcomes:
+          success:
+            narrative: |
+              You catch a faint encrypted ping — looks like a stash beacon.
+              Coordinates logged for later. Could be valuable.
+            effects:
+              - reward_credits: 150
+              - reward_xp: { archetype: NAVIGATOR, amount: 50 }
+              - set_flag: { name: stash_logged }
+          failure:
+            narrative: "Nothing on the scan. Probably was noise after all."
+            effects: []
+      - id: ignore_anomaly
+        text: "Log it and move on."
+        default: true
+        outcomes:
+          result:
+            narrative: "Anomalies happen. You file the readings for the analysts."
+            effects: []
+
+  - id: pirate_pair
+    narration: |
+      Two skiffs slide out of the asteroids ahead — coordinated, professional.
+      They want your cargo or your fuel.
+    choices:
+      - id: fight
+        text: "Hold position. Open fire."
+        requires: { archetype: GUNNER }
+        roll: { stat: gunner.combat, base_p: 0.50, base_stat: 50, per_point: 0.006 }
+        outcomes:
+          success:
+            narrative: "One skiff burns. The other runs. You collect a bounty."
+            effects:
+              - reward_credits: 300
+              - reward_xp: { archetype: GUNNER, amount: 60 }
+          failure:
+            narrative: "They got a hit in before they ran. Crew is shaken."
+            effects:
+              - injure_crew: { archetype: GUNNER, duration_hours: 12 }
+              - damage_part: { slot: hull, amount: 0.10 }
+      - id: outrun_pirates
+        text: "Don't engage. Burn for clear space."
+        roll: { stat: pilot.acceleration, base_p: 0.55, base_stat: 50, per_point: 0.005 }
+        outcomes:
+          success:
+            narrative: "You leave them eating exhaust."
+            effects:
+              - reward_xp: { archetype: PILOT, amount: 40 }
+          failure:
+            narrative: "They chase, fire a few warning shots, then break off."
+            effects:
+              - damage_part: { slot: hull, amount: 0.05 }
+      - id: pay_pirates
+        text: "Pay them. Live to patrol another day."
+        default: true
+        outcomes:
+          result:
+            narrative: "You hand over 200 credits. They wave you through."
+            effects:
+              - reward_credits: -200
+
+  - id: dead_buoy
+    narration: |
+      A navigation buoy is dark — out of position, batteries fried.
+      Sector security pays a small bonus for replacements logged in-flight.
+    choices:
+      - id: replace_buoy
+        text: "Pull alongside and reset it."
+        outcomes:
+          result:
+            narrative: "Ten minutes of work. You file the report and collect."
+            effects:
+              - reward_credits: 75
+              - reward_xp: { archetype: ENGINEER, amount: 20 }
+      - id: report_only
+        text: "Log it for a maintenance crew."
+        default: true
+        outcomes:
+          result:
+            narrative: "Not your problem today."
+            effects: []
+
+closings:
+  - when: { min_successes: 2 }
+    body: |
+      The patrol clock runs out clean. You file your logs and dock.
+      Sector security pays the standard fee — and the run paid more
+      than that. Good day.
+    effects:
+      - reward_credits: 200
+
+  - when: { max_failures: 2 }
+    body: |
+      The patrol ends and you limp into dock. The mandatory fee barely
+      covers the repairs. Tomorrow's run.
+    effects:
+      - reward_credits: 100
+
+  - when: { has_flag: stash_logged }
+    body: |
+      You file the logs. The stash beacon is in your private records now.
+      Something to come back to.
+    effects:
+      - reward_credits: 150
+
+  - when: { default: true }
+    body: |
+      Patrol completed. Standard pay. The dock lights welcome you back.
+    effects:
+      - reward_credits: 150

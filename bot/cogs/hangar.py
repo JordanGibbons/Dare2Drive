@@ -17,6 +17,7 @@ from config.metrics import trace_exemplar
 from config.tracing import traced_command
 from db.models import (
     Build,
+    BuildActivity,
     Card,
     CardSlot,
     HullClass,
@@ -437,6 +438,24 @@ class HangarCog(commands.Cog):
                 await interaction.response.send_message("Use `/start` first!", ephemeral=True)
                 return
 
+            b = await _resolve_build(session, user.discord_id, build_id=build)
+            if not b:
+                await interaction.response.send_message(
+                    "Build not found. Use `/build list` to see your builds.", ephemeral=True
+                )
+                return
+
+            # Expedition lock — refuse mutation while build is busy
+            if b.current_activity != BuildActivity.IDLE:
+                eta_note = ""
+                if b.current_activity == BuildActivity.ON_EXPEDITION:
+                    eta_note = " until it returns from expedition"
+                await interaction.response.send_message(
+                    f"Build `{b.name}` is busy{eta_note} — can't modify it right now.",
+                    ephemeral=True,
+                )
+                return
+
             # Find the card template
             card_result = await session.execute(select(Card).where(Card.name == parsed_name))
             card = card_result.scalar_one_or_none()
@@ -451,13 +470,6 @@ class HangarCog(commands.Cog):
                 await interaction.response.send_message(
                     f"`{card.name}` is a **{card.slot.value}** card and can't go in the **{slot}** slot.",  # noqa: E501
                     ephemeral=True,
-                )
-                return
-
-            b = await _resolve_build(session, user.discord_id, build_id=build)
-            if not b:
-                await interaction.response.send_message(
-                    "Build not found. Use `/build list` to see your builds.", ephemeral=True
                 )
                 return
 
@@ -609,6 +621,17 @@ class HangarCog(commands.Cog):
             if not b:
                 await interaction.response.send_message(
                     "Build not found. Use `/build list` to see your builds.", ephemeral=True
+                )
+                return
+
+            # Expedition lock — refuse mutation while build is busy
+            if b.current_activity != BuildActivity.IDLE:
+                eta_note = ""
+                if b.current_activity == BuildActivity.ON_EXPEDITION:
+                    eta_note = " until it returns from expedition"
+                await interaction.response.send_message(
+                    f"Build `{b.name}` is busy{eta_note} — can't modify it right now.",
+                    ephemeral=True,
                 )
                 return
 
@@ -894,6 +917,17 @@ class HangarCog(commands.Cog):
                 )
                 return
 
+            # Expedition lock — refuse mutation while build is busy
+            if b.current_activity != BuildActivity.IDLE:
+                eta_note = ""
+                if b.current_activity == BuildActivity.ON_EXPEDITION:
+                    eta_note = " until it returns from expedition"
+                await interaction.followup.send(
+                    f"Build `{b.name}` is busy{eta_note} — can't modify it right now.",
+                    ephemeral=True,
+                )
+                return
+
             if b.core_locked:
                 await interaction.followup.send(
                     "Your build already has a Ship Title. "
@@ -1045,6 +1079,17 @@ class HangarCog(commands.Cog):
             if not b or not b.core_locked or not b.ship_title_id:
                 await interaction.response.send_message(
                     "That build doesn't have a Ship Title to disassemble.", ephemeral=True
+                )
+                return
+
+            # Expedition lock — refuse mutation while build is busy
+            if b.current_activity != BuildActivity.IDLE:
+                eta_note = ""
+                if b.current_activity == BuildActivity.ON_EXPEDITION:
+                    eta_note = " until it returns from expedition"
+                await interaction.response.send_message(
+                    f"Build `{b.name}` is busy{eta_note} — can't modify it right now.",
+                    ephemeral=True,
                 )
                 return
 

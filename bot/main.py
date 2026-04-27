@@ -142,6 +142,7 @@ class Dare2DriveBot(commands.Bot):
             "bot.cogs.market",
             "bot.cogs.admin",
             "bot.cogs.fleet",
+            "bot.cogs.expeditions",  # Phase 2b — gated by settings.EXPEDITIONS_ENABLED
         ]
         for module in cog_modules:
             await self.load_extension(module)
@@ -162,6 +163,12 @@ class Dare2DriveBot(commands.Bot):
             name="notification_consumer",
         )
         log.info("notification_consumer_started")
+
+        # Phase 2b expedition handlers (registers via side-effect import)
+        import scheduler.jobs.expedition_auto_resolve as _expedition_auto_resolve_module  # noqa: F401
+        import scheduler.jobs.expedition_complete as _expedition_complete_module  # noqa: F401
+        import scheduler.jobs.expedition_event as _expedition_event_module  # noqa: F401
+        import scheduler.jobs.expedition_resolve as _expedition_resolve_module  # noqa: F401
 
         if settings.DISCORD_GUILD_ID:
             guild = discord.Object(id=int(settings.DISCORD_GUILD_ID))
