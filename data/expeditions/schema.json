@@ -1,0 +1,185 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dare2drive/schemas/expeditions/v1.json",
+  "title": "Expedition Template",
+  "type": "object",
+  "required": ["id", "kind", "duration_minutes", "response_window_minutes", "cost_credits", "crew_required"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$"
+    },
+    "kind": {
+      "type": "string",
+      "enum": ["scripted", "rolled"]
+    },
+    "duration_minutes": {"type": "integer", "minimum": 60, "maximum": 1440},
+    "response_window_minutes": {"type": "integer", "minimum": 5, "maximum": 240},
+    "cost_credits": {"type": "integer", "minimum": 0},
+    "crew_required": {
+      "type": "object",
+      "required": ["min"],
+      "properties": {
+        "min": {"type": "integer", "minimum": 0, "maximum": 4},
+        "archetypes_any": {
+          "type": "array",
+          "items": {"type": "string", "enum": ["PILOT", "GUNNER", "ENGINEER", "NAVIGATOR"]}
+        },
+        "archetypes_all": {
+          "type": "array",
+          "items": {"type": "string", "enum": ["PILOT", "GUNNER", "ENGINEER", "NAVIGATOR"]}
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "oneOf": [
+    {"$ref": "#/$defs/scriptedTemplate"},
+    {"$ref": "#/$defs/rolledTemplate"}
+  ],
+  "$defs": {
+    "scriptedTemplate": {
+      "type": "object",
+      "properties": {
+        "kind": {"const": "scripted"},
+        "scenes": {
+          "type": "array",
+          "minItems": 2,
+          "items": {"$ref": "#/$defs/scene"}
+        }
+      },
+      "required": ["scenes"]
+    },
+    "rolledTemplate": {
+      "type": "object",
+      "properties": {
+        "kind": {"const": "rolled"},
+        "event_count": {"type": "integer", "minimum": 1, "maximum": 10},
+        "opening": {"$ref": "#/$defs/scene"},
+        "events": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/scene"}
+        },
+        "closings": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/closingVariant"}
+        }
+      },
+      "required": ["event_count", "opening", "events", "closings"]
+    },
+    "scene": {
+      "type": "object",
+      "required": ["id"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+        "narration": {"type": "string"},
+        "is_closing": {"type": "boolean"},
+        "closings": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/closingVariant"}
+        },
+        "choices": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/choice"}
+        }
+      }
+    },
+    "choice": {
+      "type": "object",
+      "required": ["id", "text", "outcomes"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+        "text": {"type": "string", "minLength": 1},
+        "default": {"type": "boolean"},
+        "requires": {"$ref": "#/$defs/requires"},
+        "roll": {"$ref": "#/$defs/roll"},
+        "outcomes": {
+          "type": "object",
+          "properties": {
+            "result": {"$ref": "#/$defs/outcome"},
+            "success": {"$ref": "#/$defs/outcome"},
+            "failure": {"$ref": "#/$defs/outcome"}
+          },
+          "additionalProperties": false
+        }
+      },
+      "allOf": [
+        {
+          "if": {"required": ["roll"]},
+          "then": {
+            "properties": {
+              "outcomes": {"required": ["success", "failure"]}
+            }
+          },
+          "else": {
+            "properties": {
+              "outcomes": {"required": ["result"]}
+            }
+          }
+        }
+      ]
+    },
+    "roll": {
+      "type": "object",
+      "required": ["stat", "base_p", "base_stat", "per_point"],
+      "properties": {
+        "stat": {"type": "string"},
+        "base_p": {"type": "number", "minimum": 0, "maximum": 1},
+        "base_stat": {"type": "number"},
+        "per_point": {"type": "number"},
+        "clamp_min": {"type": "number", "minimum": 0, "maximum": 1},
+        "clamp_max": {"type": "number", "minimum": 0, "maximum": 1}
+      }
+    },
+    "requires": {
+      "type": "object",
+      "properties": {
+        "archetype": {"type": "string", "enum": ["PILOT", "GUNNER", "ENGINEER", "NAVIGATOR"]},
+        "min_level": {"type": "integer", "minimum": 1},
+        "hull_class": {"type": "string"}
+      },
+      "additionalProperties": false
+    },
+    "outcome": {
+      "type": "object",
+      "required": ["narrative", "effects"],
+      "properties": {
+        "narrative": {"type": "string"},
+        "effects": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/effect"}
+        }
+      }
+    },
+    "effect": {
+      "type": "object",
+      "minProperties": 1,
+      "maxProperties": 1
+    },
+    "closingVariant": {
+      "type": "object",
+      "required": ["when", "body", "effects"],
+      "properties": {
+        "when": {
+          "type": "object",
+          "properties": {
+            "min_successes": {"type": "integer", "minimum": 0},
+            "max_failures": {"type": "integer", "minimum": 0},
+            "has_flag": {"type": "string"},
+            "not_flag": {"type": "string"},
+            "default": {"type": "boolean"}
+          },
+          "additionalProperties": false
+        },
+        "body": {"type": "string"},
+        "effects": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/effect"}
+        }
+      }
+    }
+  }
+}
