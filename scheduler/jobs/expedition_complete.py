@@ -1,0 +1,118 @@
+"""EXPEDITION_COMPLETE handler — closing variant + unlocks."""
+
+from __future__ import annotations
+
+import json
+import uuid
+
+from sqlalchemy import select, update
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from config.logging import get_logger
+from db.models import (
+    Build,
+    BuildActivity,
+    CrewActivity,
+    CrewMember,
+    Expedition,
+    ExpeditionCrewAssignment,
+    ExpeditionState,
+    JobType,
+    ScheduledJob,
+)
+from engine.effect_registry import apply_effect
+from engine.expedition_engine import accumulated_state, select_closing
+from engine.expedition_template import load_template
+from scheduler.dispatch import HandlerResult, NotificationRequest, register
+
+log = get_logger(__name__)
+
+
+async def handle_expedition_complete(session: AsyncSession, job: ScheduledJob) -> HandlerResult:
+    expedition_id = uuid.UUID(job.payload["expedition_id"])
+    template_id = job.payload["template_id"]
+
+    expedition = await session.get(Expedition, expedition_id, with_for_update=True)
+    if expedition is None:
+        log.warning("expedition_complete: %s not found", expedition_id)
+        return HandlerResult()
+    if expedition.state != ExpeditionState.ACTIVE:
+        log.info("expedition_complete: already %s", expedition.state)
+        return HandlerResult()
+
+    template = load_template(template_id)
+    closings = _all_closings(template)
+    state = accumulated_state(expedition)
+    closing = select_closing(closings, state)
+
+    # Apply closing effects (idempotent via apply_reward source_id).
+    for eff in closing.get("effects", []) or []:
+        await apply_effect(session, expedition, scene_id="closing", effect=eff)
+
+    # Build outcome summary.
+    expedition.state = ExpeditionState.COMPLETED
+    expedition.outcome_summary = {
+        "closing_body": closing.get("body", ""),
+        "successes": state["successes"],
+        "failures": state["failures"],
+        "flags": sorted(state["flags"]),
+    }
+
+    # Unlock build.
+    build = await session.get(Build, expedition.build_id, with_for_update=True)
+    if build is not None:
+        build.current_activity = BuildActivity.IDLE
+        build.current_activity_id = None
+
+    # Unlock crew (preserve `injured_until`).
+    assignments = (
+        (
+            await session.execute(
+                select(ExpeditionCrewAssignment.crew_id).where(
+                    ExpeditionCrewAssignment.expedition_id == expedition.id
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if assignments:
+        await session.execute(
+            update(CrewMember)
+            .where(CrewMember.id.in_(assignments))
+            .values(current_activity=CrewActivity.IDLE, current_activity_id=None)
+        )
+
+    body = json.dumps(
+        {
+            "type": "expedition_complete",
+            "expedition_id": str(expedition.id),
+            "narrative": closing.get("body", ""),
+            "summary": expedition.outcome_summary,
+        }
+    )
+    return HandlerResult(
+        notifications=[
+            NotificationRequest(
+                user_id=expedition.user_id,
+                category="expedition_complete",
+                title="Expedition complete",
+                body=body,
+                correlation_id=str(expedition.correlation_id),
+                dedupe_key=f"expedition:{expedition.id}:complete",
+            )
+        ]
+    )
+
+
+def _all_closings(template: dict) -> list[dict]:
+    if template["kind"] == "scripted":
+        out: list[dict] = []
+        for scene in template.get("scenes", []):
+            if scene.get("is_closing"):
+                out.extend(scene.get("closings", []))
+        return out
+    return list(template.get("closings", []))
+
+
+register(JobType.EXPEDITION_COMPLETE, handle_expedition_complete)
