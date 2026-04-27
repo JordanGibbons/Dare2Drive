@@ -1,0 +1,140 @@
+id: marquee_run
+kind: scripted
+duration_minutes: 360
+response_window_minutes: 30
+cost_credits: 250
+crew_required: { min: 2, archetypes_any: [PILOT, GUNNER] }
+scenes:
+  - id: opening
+    narration: |
+      The contract came through dirty channels — a courier with a half-eaten
+      manifest, a name you almost recognized, a number too large for a clean
+      job. You took it anyway. Six hours of black space between you and a
+      payday. Your crew settles into their stations as the dock's running
+      lights fall away.
+
+  - id: distress_beacon
+    narration: |
+      Two hours out, your nav console lights up with a beacon — old code,
+      civilian frequency. A merchant ship dead in the lane, hull cracked
+      down the spine. The crew on board is alive but bleeding atmosphere
+      fast.
+    choices:
+      - id: investigate
+        text: "Decelerate and bring them aboard."
+        roll: { stat: navigator.luck, base_p: 0.55, base_stat: 50, per_point: 0.005 }
+        outcomes:
+          success:
+            narrative: |
+              You match velocities clean. The merchant captain — a graying
+              woman with smoke in her hair — promises a favor in lieu of
+              payment. She means it.
+            effects:
+              - reward_credits: 150
+              - reward_xp: { archetype: NAVIGATOR, amount: 40 }
+              - set_flag: { name: rescued_merchant }
+          failure:
+            narrative: |
+              The maneuver costs you fuel and momentum. You get them aboard,
+              but you've burned an hour and the merchant's gratitude doesn't
+              pay rent.
+            effects:
+              - damage_part: { slot: drive, amount: 0.10 }
+              - set_flag: { name: rescued_merchant }
+      - id: ignore
+        text: "Mark the beacon and keep moving."
+        default: true
+        outcomes:
+          result:
+            narrative: |
+              You log the position for someone else's conscience and slide
+              past. Mira is quiet at the helm.
+            effects:
+              - reward_xp: { archetype: PILOT, amount: 20 }
+
+  - id: pirate_skiff
+    narration: |
+      Four hours out, your scope catches a contact running dark off your
+      starboard quarter. A scarred skiff, the kind that scavenges merchant
+      lanes. Their gun ports are open. You have seconds.
+    choices:
+      - id: outrun
+        text: "Throttle up and outrun them."
+        roll: { stat: pilot.acceleration, base_p: 0.55, base_stat: 50, per_point: 0.005 }
+        outcomes:
+          success:
+            narrative: |
+              Mira pins the throttle. The skiff falls behind, screaming
+              threats on open channels.
+            effects:
+              - reward_credits: 200
+              - reward_xp: { archetype: PILOT, amount: 50 }
+          failure:
+            narrative: |
+              The skiff matches your burn. They open fire before you can
+              clear the field.
+            effects:
+              - damage_part: { slot: hull, amount: 0.15 }
+              - reward_xp: { archetype: PILOT, amount: 20 }
+      - id: board_them
+        text: "Bring them in close. Take their cargo."
+        requires: { archetype: GUNNER }
+        roll: { stat: gunner.combat, base_p: 0.45, base_stat: 50, per_point: 0.006 }
+        outcomes:
+          success:
+            narrative: |
+              Jax leads the boarding party. Three pirates surrender; the hold
+              yields a reactor in surprisingly good condition.
+            effects:
+              - reward_credits: 350
+              - reward_card: { slot: reactor, rarity: rare }
+              - reward_xp: { archetype: GUNNER, amount: 80 }
+          failure:
+            narrative: |
+              The boarding goes sideways. Jax takes a round to the leg
+              getting back. The skiff bolts before you can pursue.
+            effects:
+              - injure_crew: { archetype: GUNNER, duration_hours: 24 }
+              - reward_xp: { archetype: GUNNER, amount: 30 }
+      - id: comply
+        text: "Cut your engines. Pay the toll."
+        default: true
+        outcomes:
+          result:
+            narrative: |
+              You hand over a hundred credits and a salute. They wave you
+              through, laughing.
+            effects:
+              - reward_credits: -100
+
+  - id: closing
+    is_closing: true
+    closings:
+      - when: { has_flag: rescued_merchant, min_successes: 2 }
+        body: |
+          The dock comes up out of the dark like a halo. Your contract pays
+          out. Two days later, a coded message arrives — the merchant
+          captain has filed your signature in places that matter. Whatever
+          else happens this run, you have a friend now.
+        effects:
+          - reward_credits: 500
+          - set_flag: { name: merchant_friend }
+      - when: { min_successes: 2 }
+        body: |
+          The dock comes up out of the dark like a halo. Contract paid.
+          Crew alive. Ship intact. A clean run.
+        effects:
+          - reward_credits: 400
+      - when: { max_failures: 2 }
+        body: |
+          The dock comes up out of the dark, but the run cost you. Repairs
+          will eat half the take. You sit at the helm a long time after
+          docking, watching the lights and thinking about what you'd do
+          differently.
+        effects:
+          - reward_credits: 200
+      - when: { default: true }
+        body: |
+          You make port. Just barely. Tomorrow's another contract.
+        effects:
+          - reward_credits: 100
