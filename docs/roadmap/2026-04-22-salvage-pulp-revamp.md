@@ -350,9 +350,59 @@ Players launch expeditions and get pinged for mid-flight decisions. Choices land
 
 ---
 
+## Phase 2c — Tutorial v2
+
+**Status:** Blocked on Phase 2b. **Phase 3 is blocked on Phase 2c.**
+
+### Goal
+
+Bring the new-player onboarding flow up to date with the post-Phase-2b game. Current tutorial walks players through ship-building only; it pre-dates crew, training/research/stations, and expeditions. New players see a misleading shape of the game.
+
+### What gets covered
+
+- Hire your first crew member (`/dossier` or `/hire`)
+- Inspect a crew member (`/crew_inspect`)
+- Run a training routine (`/training start`)
+- Run a research project (`/research start`)
+- Assign a crew member to a station (`/stations assign`)
+- Launch your first expedition (`/expedition start`) on a marquee scripted template
+
+### Design problems to solve
+
+- **Time gating.** Training is 30+ min, research 60–90 min, expeditions 4–12 hr. Onboarding wants the first 5 min to feel rich. Three options worth weighing in the spec: (a) accelerated tutorial timers (30s instead of 30m), (b) "you've now seen all systems, here are pointers" — end the tutorial at the survey, don't force completion, (c) branching — hands-on for instant stuff, just-tell-them for time-gated stuff.
+- **Multi-day onboarding.** A tutorial that spans real-time hours needs different mechanics from a 5-minute tutorial — funnel decay points multiply.
+- **`/skip_tutorial` UX.** Currently an instant flip. With multi-day tutorial, "skip" is a more serious commitment.
+
+### Tutorial-cohort metrics
+
+Funnel decay points to instrument from day 1:
+
+- Cohort defined by `tutorial_started_at` weekly bucket
+- Decay at: hire-crew step, training-start step, training-completion step, expedition-launch step, expedition-completion step
+- Day 1 / Day 7 retention by cohort
+
+### Files likely touched
+
+- `bot/cogs/tutorial.py` — extend `TutorialStep` enum, `STEP_ALLOWED_COMMANDS`, `advance_tutorial` transitions
+- `data/tutorial.json` — new dialogue beats per step
+- `bot/cogs/hiring.py`, `bot/cogs/fleet.py`, `bot/cogs/expeditions.py` — call `advance_tutorial(...)` after first-time successful invocations
+- `db/migrations/versions/` — new tutorial_step enum values
+- `api/metrics.py` — tutorial cohort funnel metrics
+
+### Scope boundary (OUT of Phase 2c)
+
+- New tutorial mechanics like guided-tour visuals (Phase 5+)
+- A/B testing infrastructure for onboarding (post-launch)
+
+### Deliverable
+
+A new player who runs `/start` is guided through every Phase 0–2b system (ship building, crew, training/research/stations, expeditions) at a pace that respects the time-gating realities of the game. Funnel metrics are visible on the cohort dashboard.
+
+---
+
 ## Phase 3 — Job Board + Channel Events + Villain Takeovers + System Control
 
-**Status:** Blocked on Phase 2b.
+**Status:** Blocked on Phase 2c.
 
 ### Goal
 
