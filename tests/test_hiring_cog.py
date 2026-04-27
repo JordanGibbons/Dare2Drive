@@ -156,7 +156,7 @@ async def test_crew_inspect_command_shows_detail(hiring_user, db_session):
     with patch("bot.cogs.hiring.async_session") as sess_ctx:
         sess_ctx.return_value.__aenter__.return_value = db_session
         sess_ctx.return_value.__aexit__.return_value = None
-        await cog.crew_inspect.callback(cog, interaction, name='Cas "Crow" Harrow')
+        await cog.crew_inspect.callback(cog, interaction, crew='Cas "Crow" Harrow')
 
     interaction.response.send_message.assert_called_once()
     embed = interaction.response.send_message.call_args.kwargs["embed"]

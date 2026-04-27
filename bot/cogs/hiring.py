@@ -18,7 +18,7 @@ from bot.system_gating import get_active_system, system_required_message
 from config.logging import get_logger
 from config.metrics import trace_exemplar
 from config.tracing import traced_command
-from db.models import Build, CrewAssignment, CrewDailyLead, CrewMember, User
+from db.models import Build, CrewActivity, CrewAssignment, CrewDailyLead, CrewMember, User
 from db.session import async_session
 from engine.crew_recruit import (
     InsufficientCreditsError,
@@ -55,14 +55,82 @@ _RARITY_EMOJI = {
 }
 
 
+_ACTIVITY_ICON = {
+    "IDLE": "🟢 IDLE",
+    "TRAIN": "⚙️  TRAIN",
+    "RESEARCH": "🔬 RESEARCH",
+    "ON_STATION": "🛰️ ON_STATION",
+    "ON_EXP": "🚀 ON_EXP",
+    "INJURED": "🩹 INJURED",
+}
+
+
+def _crew_display_state(crew) -> str:
+    """Compute the display label for a crew member's effective activity state."""
+    now = datetime.now(timezone.utc)
+    if crew.injured_until and crew.injured_until > now:
+        return _ACTIVITY_ICON["INJURED"]
+    if crew.current_activity == CrewActivity.ON_EXPEDITION:
+        return _ACTIVITY_ICON["ON_EXP"]
+    if crew.current_activity == CrewActivity.TRAINING:
+        return _ACTIVITY_ICON["TRAIN"]
+    if crew.current_activity == CrewActivity.RESEARCHING:
+        return _ACTIVITY_ICON["RESEARCH"]
+    if crew.current_activity == CrewActivity.ON_STATION:
+        return _ACTIVITY_ICON["ON_STATION"]
+    return _ACTIVITY_ICON["IDLE"]
+
+
+def _crew_state_suffix(crew) -> str:
+    """ETA / recovery hint shown next to the activity label."""
+    now = datetime.now(timezone.utc)
+    if crew.injured_until and crew.injured_until > now:
+        delta = crew.injured_until - now
+        hours = int(delta.total_seconds() / 3600)
+        return f" (recovers in ~{hours}h)"
+    return ""
+
+
+def _qualified_for(crew) -> list[str]:
+    """Return human-readable lines naming what activities/archetypes this crew suits."""
+    lines: list[str] = []
+    # Training routines: read engine.timer_recipes for level thresholds
+    try:
+        from db.models import TimerType
+        from engine.timer_recipes import list_recipes
+
+        for r in list_recipes(TimerType.TRAINING):
+            min_lvl = r.get("min_crew_level", 1)
+            mark = "✓" if crew.level >= min_lvl else "✗"
+            lines.append(f"  • Training: {r['name']} (level ≥ {min_lvl} {mark})")
+    except Exception:
+        pass
+    # Expeditions: any with the matching archetype slot
+    lines.append(f"  • Expeditions: any with {crew.archetype.value.upper()} slot")
+    # Stations: read station types
+    try:
+        from engine.station_types import list_station_types
+
+        suitable = [
+            s for s in list_station_types() if crew.archetype.value in s.get("archetype_any", [])
+        ]
+        if suitable:
+            names = ", ".join(s["id"] for s in suitable)
+            lines.append(f"  • Stations: {names}")
+    except Exception:
+        pass
+    return lines
+
+
 def _format_crew_line(member: CrewMember, assigned: bool) -> str:
     emoji = _ARCHETYPE_EMOJI[member.archetype.value]
     rarity_emoji = _RARITY_EMOJI[member.rarity.value]
     name = f'{member.first_name} "{member.callsign}" {member.last_name}'
     tag = " *(assigned)*" if assigned else ""
-    return (
-        f"{emoji} {rarity_emoji} **{name}** — {member.archetype.value.title()} L{member.level}{tag}"
-    )
+    state = _crew_display_state(member) + _crew_state_suffix(member)
+    arch = member.archetype.value.title()
+    lvl = member.level
+    return f"{state}  {emoji} {rarity_emoji} **{name}** — {arch} L{lvl}{tag}"
 
 
 async def _crew_name_autocomplete(
@@ -319,18 +387,18 @@ class HiringCog(commands.Cog):
         await interaction.response.send_message(embed=embed)
 
     @app_commands.command(name="crew_inspect", description="Inspect a crew member.")
-    @app_commands.describe(name="Crew member name")
-    @app_commands.autocomplete(name=_crew_name_autocomplete)
+    @app_commands.describe(crew="Crew member name")
+    @app_commands.autocomplete(crew=_crew_name_autocomplete)
     @traced_command
-    async def crew_inspect(self, interaction: discord.Interaction, name: str) -> None:
+    async def crew_inspect(self, interaction: discord.Interaction, crew: str) -> None:
         """Universe-wide crew inspection — no system gating."""
         from engine.crew_xp import xp_for_next
 
         user_id = str(interaction.user.id)
         async with async_session() as session:
-            member = await _lookup_crew_by_display(session, user_id, name)
+            member = await _lookup_crew_by_display(session, user_id, crew)
             if member is None:
-                await interaction.response.send_message(f"No crew named `{name}`.", ephemeral=True)
+                await interaction.response.send_message(f"No crew named `{crew}`.", ephemeral=True)
                 return
 
             assigned_q = await session.execute(
@@ -345,6 +413,7 @@ class HiringCog(commands.Cog):
             xp = member.xp
             acquired_at = member.acquired_at
             is_assigned = assignment is not None
+            crew_row = member
 
         mapping = _get_archetype_mapping()[archetype]
         arch_emoji = _ARCHETYPE_EMOJI[archetype]
@@ -376,6 +445,18 @@ class HiringCog(commands.Cog):
             name="Assigned",
             value=("Yes" if is_assigned else "In quarters"),
             inline=True,
+        )
+        state_label = _crew_display_state(crew_row) + _crew_state_suffix(crew_row)
+        embed.add_field(
+            name="Status",
+            value=state_label,
+            inline=False,
+        )
+        qualified_lines = "\n".join(_qualified_for(crew_row))
+        embed.add_field(
+            name="Qualified for (derived from archetype + level)",
+            value=f"**Qualified for:**\n{qualified_lines}" if qualified_lines else "—",
+            inline=False,
         )
         embed.set_footer(text=f"Acquired {acquired_at.strftime('%Y-%m-%d')}")
 
