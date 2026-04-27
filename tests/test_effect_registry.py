@@ -122,6 +122,48 @@ async def test_apply_effect_idempotent_on_double_call(db_session, sample_expedit
 
 
 @pytest.mark.asyncio
+async def test_apply_effect_reward_xp_adds_to_assigned_crew(
+    db_session, sample_expedition_with_pilot
+):
+    """reward_xp increments the assigned crew's xp."""
+    from db.models import CrewMember
+    from engine.effect_registry import apply_effect
+
+    expedition, pilot = sample_expedition_with_pilot
+    initial_xp = pilot.xp or 0
+    await apply_effect(
+        db_session,
+        expedition,
+        scene_id="xp_test",
+        effect={"reward_xp": {"archetype": "PILOT", "amount": 250}},
+    )
+    refreshed = await db_session.get(CrewMember, pilot.id)
+    assert refreshed.xp == initial_xp + 250
+
+
+@pytest.mark.asyncio
+async def test_apply_effect_reward_xp_noop_when_archetype_unassigned(
+    db_session, sample_expedition_with_pilot
+):
+    """reward_xp on an unassigned archetype is a no-op (no error)."""
+    from engine.effect_registry import apply_effect
+
+    expedition, pilot = sample_expedition_with_pilot
+    initial_xp = pilot.xp or 0
+    await apply_effect(
+        db_session,
+        expedition,
+        scene_id="xp_test_noop",
+        effect={"reward_xp": {"archetype": "GUNNER", "amount": 250}},
+    )
+    # No GUNNER assigned → no exception, no XP change for the PILOT.
+    from db.models import CrewMember
+
+    refreshed = await db_session.get(CrewMember, pilot.id)
+    assert refreshed.xp == initial_xp
+
+
+@pytest.mark.asyncio
 async def test_apply_effect_injure_crew_sets_injured_until(
     db_session, sample_expedition_with_pilot
 ):

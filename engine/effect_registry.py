@@ -19,6 +19,7 @@ from db.models import (
     ExpeditionCrewAssignment,
     RewardSourceType,
 )
+from engine.crew_xp import award_xp
 from engine.rewards import apply_reward
 
 if TYPE_CHECKING:
@@ -126,12 +127,20 @@ async def apply_effect(
         crew = await _assigned_crew(session, expedition.id, value["archetype"])
         if crew is None:
             return  # no-op when archetype not assigned
+        amount = int(value["amount"])
+        award_xp(crew, amount)
         await apply_reward(
             session,
             user_id=expedition.user_id,
             source_type=RewardSourceType.EXPEDITION_OUTCOME,
             source_id=source_id + f":xp:{value['archetype']}",
-            delta={"xp": {value["archetype"]: int(value["amount"])}},
+            delta={
+                "crew_xp": {
+                    "crew_id": str(crew.id),
+                    "archetype": value["archetype"],
+                    "amount": amount,
+                },
+            },
         )
 
     elif op_name == "reward_wreck":
