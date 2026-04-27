@@ -113,3 +113,59 @@ async def test_resolve_handler_idempotent_on_re_fire(db_session, sample_expediti
         )
     ).scalar_one()
     assert cnt == 1
+
+
+@pytest.mark.asyncio
+async def test_button_click_vs_auto_resolve_race_only_one_wins(
+    db_session, sample_expedition_with_pilot
+):
+    """Simulate the race: both paths attempt the WHERE state=PENDING update."""
+    from sqlalchemy import update
+
+    from bot.cogs.expeditions import handle_expedition_response
+    from db.models import JobState, JobType, ScheduledJob
+
+    expedition, _ = sample_expedition_with_pilot
+    auto = ScheduledJob(
+        id=uuid.uuid4(),
+        user_id=expedition.user_id,
+        job_type=JobType.EXPEDITION_AUTO_RESOLVE,
+        payload={
+            "expedition_id": str(expedition.id),
+            "scene_id": "pirate_skiff",
+            "template_id": "marquee_run",
+        },
+        scheduled_for=datetime.now(timezone.utc),
+        state=JobState.PENDING,
+    )
+    db_session.add(auto)
+    expedition.scene_log = [
+        {
+            "scene_id": "pirate_skiff",
+            "status": "pending",
+            "fired_at": "2026-04-26T12:00:00Z",
+            "visible_choice_ids": ["outrun", "comply"],
+            "auto_resolve_job_id": str(auto.id),
+        },
+    ]
+    await db_session.flush()
+
+    # Path A — button click:
+    outcome_a = await handle_expedition_response(
+        db_session,
+        expedition_id=expedition.id,
+        scene_id="pirate_skiff",
+        choice_id="comply",
+        invoking_user_id=expedition.user_id,
+    )
+    assert outcome_a["status"] == "accepted"
+
+    # Path B (worker tick, post-A) — same `WHERE state = PENDING` flip:
+    result = await db_session.execute(
+        update(ScheduledJob)
+        .where(ScheduledJob.id == auto.id)
+        .where(ScheduledJob.state == JobState.PENDING)
+        .values(state=JobState.CANCELLED)
+    )
+    # Should be 0 rowcount because A already flipped it.
+    assert (result.rowcount or 0) == 0
