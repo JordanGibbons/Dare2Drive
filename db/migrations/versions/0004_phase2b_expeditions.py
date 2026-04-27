@@ -117,8 +117,8 @@ def upgrade() -> None:
     )
 
     # 5. expedition_crew_assignments table.
-    # crew_archetype enum (name="crew_archetype", with underscore) was introduced
-    # alongside the ORM models in this branch and exists in the DB.
+    # Reuses the existing Phase 1 `crewarchetype` enum (default SQLAlchemy
+    # naming — no underscore — established by 0002_phase1_crew).
     op.create_table(
         "expedition_crew_assignments",
         sa.Column(
@@ -135,7 +135,7 @@ def upgrade() -> None:
         ),
         sa.Column(
             "archetype",
-            postgresql.ENUM(name="crew_archetype", create_type=False),
+            postgresql.ENUM(name="crewarchetype", create_type=False),
             nullable=False,
         ),
         sa.UniqueConstraint("expedition_id", "archetype", name="uq_expedition_archetype_slot"),

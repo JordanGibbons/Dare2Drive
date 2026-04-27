@@ -755,7 +755,7 @@ class ExpeditionCrewAssignment(Base):
         UUID(as_uuid=True), ForeignKey("crew_members.id"), primary_key=True
     )
     archetype: Mapped[CrewArchetype] = mapped_column(
-        Enum(CrewArchetype, values_callable=lambda x: [e.value for e in x], name="crew_archetype"),
+        Enum(CrewArchetype, values_callable=lambda x: [e.value for e in x], name="crewarchetype"),
         nullable=False,
     )
 
