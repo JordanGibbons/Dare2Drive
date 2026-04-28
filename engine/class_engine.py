@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from db.models import HullClass, RaceFormat
+from db.models import CrewArchetype, HullClass, RaceFormat
 from engine.stat_resolver import BuildStats
 
 _THRESHOLDS_PATH = Path(__file__).resolve().parent.parent / "data" / "class_thresholds.json"
@@ -181,8 +181,6 @@ def trending_toward(
 
 
 # ──────────── Phase 2c: hull-class crew slot composition ────────────
-
-from db.models import CrewArchetype  # noqa: E402
 
 HULL_CREW_SLOTS: dict[HullClass, list[CrewArchetype]] = {
     HullClass.SKIRMISHER: [CrewArchetype.PILOT, CrewArchetype.GUNNER],
