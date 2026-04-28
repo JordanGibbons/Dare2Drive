@@ -350,9 +350,64 @@ Players launch expeditions and get pinged for mid-flight decisions. Choices land
 
 ---
 
-## Phase 2c — Tutorial v2
+## Phase 2c — Ship-Crew Binding + Narrative Substitution
 
-**Status:** Blocked on Phase 2b. **Phase 3 is blocked on Phase 2c.**
+**Status:** Blocked on Phase 2b. **Phase 2d is blocked on Phase 2c.** (Inserted 2026-04-27 — was originally Tutorial v2; that has moved to Phase 2d.)
+
+### Goal
+
+Move crew assignment from per-expedition (Phase 2b) to persistent on-ship binding, with hull-class-specific crew slots. Players assign crew once via an interactive `/hangar` view; `/expedition start` drops its crew params and reads the aboard set from the ship. Ship the lightweight narrative-substitution layer in the same phase so templates can reference the crew and the ship name in their prose (`{pilot.callsign} pulls the {ship} alongside the wreck...`).
+
+### What gets covered
+
+- New `build_crew_assignments` table + hull-class slot config (SKIRMISHER → pilot+gunner; HAULER → pilot+engineer+navigator; SCOUT → pilot+navigator)
+- Persistent `HangarView` extending `/hangar <build>` with select menus per crew slot
+- `/expedition start` simplified to `(template, build)`; launch handler derives aboard crew from the ship and validates against the existing `crew_required` semantics
+- Closed-vocabulary narrative tokens (`{pilot}`, `{pilot.callsign}`, `{ship}`, `{ship.hull}`) rendered at scene-fire time in `engine/narrative_render.py`, with generic-noun fallbacks for empty slots
+- Template-loader validator extension to enforce the token allow-list at load time
+
+### Design problems to solve
+
+These were settled during brainstorming (2026-04-27); the spec captures the locked decisions. Re-litigation belongs in a follow-on spec:
+
+- Hull-class slots vs flexible vs capacity-only → **hull-class slots** (justifies hull variety)
+- Slash commands vs interactive view for assignment → **interactive view** (project preference)
+- Strict full-crew launch vs permissive vs template-required → **template-required only** (carries Phase 2b semantics forward)
+- Closed allow-list vs Jinja for narration → **closed allow-list for v1** (Jinja deferred)
+
+### Files likely touched
+
+- `db/migrations/versions/0006_phase2c_build_crew_assignments.py` (new)
+- `engine/narrative_render.py` (new)
+- `engine/class_engine.py` — `HULL_CREW_SLOTS` + `slots_for_hull()`
+- `db/models.py` — `BuildCrewAssignment` ORM model
+- `bot/cogs/hangar.py` — `HangarView` + crew-slot select handlers
+- `bot/cogs/expeditions.py` — drop crew params, read from ship
+- `engine/expedition_template.py` — token allow-list validator
+- `scheduler/jobs/expedition_event.py` / `expedition_resolve.py` / `expedition_complete.py` — call `render()`
+- `bot/main.py` — register persistent `HangarView`
+
+### Scope boundary (OUT of Phase 2c)
+
+- Conditional Jinja-style narration (`{% if has_engineer %}…`) — wait until external authors feel the constraint of the closed allow-list
+- Stat-derived tokens (`{pilot.combat}`) and rolled-value references (`{roll.success}`) — same deferral
+- Templates declaring eligible hulls explicitly (`hull_class_eligible`) — the existing `crew_required` × `HULL_CREW_SLOTS` covers this implicitly
+- Crew swapping mid-expedition — ships are locked while on expedition (existing 2b invariant)
+- Captain/co-pilot hierarchy — Phase 4+
+
+### Deliverable
+
+A player builds a ship, assigns crew via the `/hangar` view (one click per slot), and launches expeditions without re-picking crew every time. Mid-flight DMs reference the actual crew member by callsign and the ship by name where the template author has chosen to use the tokens. The two existing v1 templates work unchanged; new templates can opt in to substitution as the author sees fit.
+
+### Spec
+
+[docs/superpowers/specs/2026-04-27-phase-2c-ship-crew-binding-design.md](../superpowers/specs/2026-04-27-phase-2c-ship-crew-binding-design.md)
+
+---
+
+## Phase 2d — Tutorial v2
+
+**Status:** Blocked on Phase 2c. **Phase 3 is blocked on Phase 2d.**
 
 ### Goal
 
