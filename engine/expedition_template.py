@@ -1,6 +1,7 @@
 """Expedition template loader, JSON Schema + semantic validator, CLI entry point.
 
 Public API:
+    validate_template_dict(doc, source_label) -> None  # validate a dict directly
     load_template_file(path) -> dict   # validate + parse one file
     load_template(template_id) -> dict # by id from data/expeditions/
     validate_all() -> None             # iterate data/expeditions/*.yaml
@@ -11,12 +12,14 @@ Validator runs four passes:
     2. Filename matches id
     3. Choice / closing / pool semantic invariants
     4. Stat namespace + effect vocabulary + archetype + flag cross-refs
+    5. Phase 2c: narrative-token allow-list
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Any, Iterable
@@ -43,6 +46,41 @@ def _load_schema() -> dict[str, Any]:
 
 _SCHEMA = _load_schema()
 
+# Phase 2c: narrative-token allow-list. Closed vocabulary; extensions go here.
+_VALID_TOP_LEVEL_TOKENS: set[str] = {"pilot", "gunner", "engineer", "navigator", "ship"}
+_VALID_CREW_ATTRS: set[str] = {"callsign", "first_name", "last_name", "display"}
+_VALID_SHIP_ATTRS: set[str] = {"name", "hull"}
+
+_TOKEN_RE = re.compile(r"(?<!\{)\{([a-z_]+(?:\.[a-z_]+)?)\}(?!\})")
+
+
+def validate_template_dict(doc: dict[str, Any], source_label: str = "?") -> None:
+    """Validate a template document dict.
+
+    Runs JSON Schema validation, semantic invariants, and the Phase 2c
+    narrative-token allow-list walk.  Raises TemplateValidationError on
+    any issue.  Does NOT perform filename-vs-id checks (file-loading specific).
+
+    Args:
+        doc: Parsed template dict.
+        source_label: Human-readable label for error messages (e.g. a file path).
+    """
+    # 1. JSON Schema
+    try:
+        jsonschema.validate(doc, _SCHEMA)
+    except jsonschema.ValidationError as e:
+        raise TemplateValidationError(f"schema error in {source_label}: {e.message}") from e
+
+    # 2. Semantic checks
+    errors = list(_semantic_errors(doc))
+    if errors:
+        raise TemplateValidationError(
+            f"semantic errors in {source_label}:\n" + "\n".join(f"  - {e}" for e in errors)
+        )
+
+    # ─────── Phase 2c: narrative-token allow-list ───────
+    _walk_narrative_strings_and_validate(doc)
+
 
 def load_template_file(path: Path | str) -> dict[str, Any]:
     """Load + validate a single template file. Raises TemplateValidationError on issues."""
@@ -58,24 +96,14 @@ def load_template_file(path: Path | str) -> dict[str, Any]:
     if not isinstance(doc, dict):
         raise TemplateValidationError(f"top-level YAML must be a mapping in {p}")
 
-    # 1. JSON Schema
-    try:
-        jsonschema.validate(doc, _SCHEMA)
-    except jsonschema.ValidationError as e:
-        raise TemplateValidationError(f"schema error in {p}: {e.message}") from e
-
-    # 2. Filename matches id
+    # Filename matches id (file-loading specific check)
     if doc["id"] != p.stem:
         raise TemplateValidationError(
             f"filename must match id in {p}: file says {p.stem}, doc says {doc['id']}"
         )
 
-    # 3 + 4. Semantic checks
-    errors = list(_semantic_errors(doc))
-    if errors:
-        raise TemplateValidationError(
-            f"semantic errors in {p}:\n" + "\n".join(f"  - {e}" for e in errors)
-        )
+    # JSON Schema + semantic + narrative-token checks
+    validate_template_dict(doc, source_label=str(p))
 
     return doc
 
@@ -89,6 +117,80 @@ def validate_all() -> None:
     """Iterate every data/expeditions/*.yaml and validate. Raises on first failure."""
     for path in sorted(_DATA_DIR.glob("*.yaml")):
         load_template_file(path)
+
+
+def _validate_narrative_tokens_in_text(text: str, where: str) -> None:
+    """Raise TemplateValidationError for any unknown {token} in `text`.
+
+    `where` is a human-readable location for error messages.
+    """
+    for match in _TOKEN_RE.finditer(text):
+        token = match.group(1)
+        slot, _, attr = token.partition(".")
+        if slot not in _VALID_TOP_LEVEL_TOKENS:
+            raise TemplateValidationError(
+                f"unknown narrative token {{{token}}} in {where} "
+                f"(valid slots: {sorted(_VALID_TOP_LEVEL_TOKENS)})"
+            )
+        if attr:
+            allowed = _VALID_SHIP_ATTRS if slot == "ship" else _VALID_CREW_ATTRS
+            if attr not in allowed:
+                raise TemplateValidationError(
+                    f"unknown attribute '.{attr}' on {{{slot}}} in {where} "
+                    f"(valid attrs: {sorted(allowed)})"
+                )
+
+
+def _validate_scene_strings(scene: dict[str, Any], template_id: str) -> None:
+    sid = scene.get("id", "?")
+    if "narration" in scene:
+        _validate_narrative_tokens_in_text(
+            scene["narration"], where=f"scene '{sid}' narration in {template_id}"
+        )
+    for choice in scene.get("choices", []) or []:
+        cid = choice.get("id", "?")
+        if "text" in choice:
+            _validate_narrative_tokens_in_text(
+                choice["text"], where=f"scene '{sid}' choice '{cid}' text in {template_id}"
+            )
+        outcomes = choice.get("outcomes", {})
+        for branch_name, branch in outcomes.items():
+            if isinstance(branch, dict) and "narrative" in branch:
+                _validate_narrative_tokens_in_text(
+                    branch["narrative"],
+                    where=f"scene '{sid}' choice '{cid}' {branch_name} narrative in {template_id}",
+                )
+    if "outcome" in scene and isinstance(scene["outcome"], dict):
+        outcome = scene["outcome"]
+        if "narrative" in outcome:
+            _validate_narrative_tokens_in_text(
+                outcome["narrative"], where=f"scene '{sid}' outcome narrative in {template_id}"
+            )
+
+
+def _walk_narrative_strings_and_validate(template: dict[str, Any]) -> None:
+    """Walk every player-visible string in `template` and validate {tokens}."""
+    # Top-level opening (rolled templates)
+    opening = template.get("opening", {})
+    if isinstance(opening, dict) and "narration" in opening:
+        _validate_narrative_tokens_in_text(
+            opening["narration"], where=f"opening narration of {template.get('id')}"
+        )
+
+    # Scripted scenes
+    for scene in template.get("scenes", []) or []:
+        _validate_scene_strings(scene, template.get("id", "?"))
+
+    # Rolled events pool
+    for event in template.get("events", []) or []:
+        _validate_scene_strings(event, template.get("id", "?"))
+
+    # Closings (both kinds)
+    for closing in template.get("closings", []) or []:
+        if "body" in closing:
+            _validate_narrative_tokens_in_text(
+                closing["body"], where=f"closing of {template.get('id')}"
+            )
 
 
 def _semantic_errors(doc: dict[str, Any]) -> Iterable[str]:
