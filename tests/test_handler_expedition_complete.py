@@ -132,3 +132,50 @@ async def test_complete_handler_body_is_human_readable(db_session, sample_expedi
     body = result.notifications[0].body
     assert not body.lstrip().startswith("{"), f"body looks like JSON: {body[:60]!r}"
     assert "Successes" in body
+
+
+@pytest.mark.asyncio
+async def test_complete_handler_renders_narrative_tokens_in_closing(
+    db_session, sample_expedition_with_pilot, monkeypatch
+):
+    from scheduler.jobs.expedition_complete import handle_expedition_complete
+
+    expedition, pilot = sample_expedition_with_pilot
+    expedition.scene_log = []
+    await db_session.flush()
+
+    fake_template = {
+        "id": "marquee_run",
+        "kind": "scripted",
+        "duration_minutes": 60,
+        "response_window_minutes": 30,
+        "cost_credits": 0,
+        "crew_required": {"min": 1, "archetypes_any": ["PILOT"]},
+        "scenes": [
+            {
+                "id": "closing",
+                "is_closing": True,
+                "narration": "ok",
+                "closings": [
+                    {
+                        "when": {"default": True},
+                        "body": "{pilot.callsign} brings the {ship} home.",
+                        "effects": [],
+                    }
+                ],
+            }
+        ],
+    }
+    monkeypatch.setattr(
+        "scheduler.jobs.expedition_complete.load_template", lambda _id: fake_template
+    )
+
+    job = _make_complete_job(expedition.user_id, expedition.id)
+    db_session.add(job)
+    await db_session.flush()
+
+    result = await handle_expedition_complete(db_session, job)
+    body = result.notifications[0].body
+    assert pilot.callsign in body
+    assert "{pilot" not in body
+    assert "{ship" not in body
