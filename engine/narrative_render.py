@@ -40,15 +40,21 @@ class _RenderMapping:
         self._ctx = context
 
     def __getitem__(self, key: str) -> str:
-        # Bare token: {pilot}, {ship}
         if "." not in key:
             slot = self._ctx.get(key)
             if slot is None:
                 return _GENERIC_NOUN_FALLBACK.get(key, "{" + key + "}")
             default_key = _TOP_LEVEL_DEFAULT_KEY.get(key, "")
             return str(slot.get(default_key, _GENERIC_NOUN_FALLBACK.get(key, "")))
-        # Property access — implemented in Task 5
-        raise KeyError(key)
+        # Property access: {pilot.callsign}, {ship.hull}, etc.
+        slot_name, _, attr = key.partition(".")
+        slot = self._ctx.get(slot_name)
+        if slot is None:
+            return _GENERIC_NOUN_FALLBACK.get(slot_name, "{" + key + "}")
+        value = slot.get(attr)
+        if value is None:
+            return _GENERIC_NOUN_FALLBACK.get(slot_name, "{" + key + "}")
+        return str(value)
 
 
 class _NarrativeFormatter(string.Formatter):

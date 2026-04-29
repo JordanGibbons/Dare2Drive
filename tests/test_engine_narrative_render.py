@@ -37,3 +37,44 @@ def test_render_passes_through_text_with_no_tokens():
 
     out = render("plain text with no tokens", {})
     assert out == "plain text with no tokens"
+
+
+def test_render_property_access_callsign():
+    from engine.narrative_render import render
+
+    context = {
+        "pilot": {
+            "display": 'Mira "Sixgun" Voss',
+            "callsign": "Sixgun",
+            "first_name": "Mira",
+            "last_name": "Voss",
+        },
+    }
+    out = render("{pilot.callsign} climbs in.", context)
+    assert out == "Sixgun climbs in."
+
+
+def test_render_property_access_first_name_and_last_name():
+    from engine.narrative_render import render
+
+    context = {
+        "pilot": {
+            "first_name": "Mira",
+            "last_name": "Voss",
+            "callsign": "Sixgun",
+            "display": "Mira 'Sixgun' Voss",
+        },
+    }
+    out = render(
+        "{pilot.first_name} climbs in. {pilot.last_name} salutes.",
+        context,
+    )
+    assert out == "Mira climbs in. Voss salutes."
+
+
+def test_render_ship_hull_property():
+    from engine.narrative_render import render
+
+    context = {"ship": {"name": "Flagstaff", "hull": "Skirmisher"}}
+    out = render("A {ship.hull} stops at the airlock.", context)
+    assert out == "A Skirmisher stops at the airlock."
