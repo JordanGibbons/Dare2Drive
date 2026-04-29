@@ -29,7 +29,7 @@ def _mock_get_active_system():
 
 @pytest.mark.asyncio
 async def test_start_happy_path(db_session, sample_user, monkeypatch):
-    """Happy path: build IDLE, crew IDLE, no existing expedition → starts."""
+    """Happy path: build IDLE, pilot assigned via CrewAssignment → starts."""
     from sqlalchemy import select
 
     from bot.cogs import expeditions as exp_mod
@@ -38,6 +38,7 @@ async def test_start_happy_path(db_session, sample_user, monkeypatch):
         BuildActivity,
         CrewActivity,
         CrewArchetype,
+        CrewAssignment,
         CrewMember,
         Expedition,
         HullClass,
@@ -67,6 +68,17 @@ async def test_start_happy_path(db_session, sample_user, monkeypatch):
     )
     db_session.add(pilot)
     await db_session.flush()
+
+    # Bind pilot to the build via CrewAssignment
+    db_session.add(
+        CrewAssignment(
+            build_id=build.id,
+            crew_id=pilot.id,
+            archetype=CrewArchetype.PILOT,
+        )
+    )
+    await db_session.flush()
+
     sample_user.currency = 1000
     await db_session.flush()
 
@@ -80,10 +92,6 @@ async def test_start_happy_path(db_session, sample_user, monkeypatch):
         inter,
         template="outer_marker_patrol",
         build=str(build.id),
-        pilot=f'{pilot.first_name} "{pilot.callsign}" {pilot.last_name}',
-        gunner=None,
-        engineer=None,
-        navigator=None,
     )
 
     expeditions = (
@@ -147,10 +155,6 @@ async def test_start_blocked_when_max_concurrent_reached(
         inter,
         template="outer_marker_patrol",
         build=str(uuid.uuid4()),
-        pilot=None,
-        gunner=None,
-        engineer=None,
-        navigator=None,
     )
     inter.response.send_message.assert_called_once()
     msg = inter.response.send_message.call_args.args[0]
@@ -182,19 +186,25 @@ async def test_start_blocked_when_build_locked(db_session, sample_user, monkeypa
         inter,
         template="marquee_run",
         build=str(build.id),
-        pilot=None,
-        gunner=None,
-        engineer=None,
-        navigator=None,
     )
     msg = inter.response.send_message.call_args.args[0]
-    assert "expedition" in msg.lower()
+    assert "busy" in msg.lower() or "can't launch" in msg.lower()
 
 
 @pytest.mark.asyncio
 async def test_start_blocked_when_insufficient_credits(db_session, sample_user, monkeypatch):
+    """Insufficient credits — must have crew assigned to reach the cost check."""
     from bot.cogs import expeditions as exp_mod
-    from db.models import Build, BuildActivity, HullClass
+    from db.models import (
+        Build,
+        BuildActivity,
+        CrewActivity,
+        CrewArchetype,
+        CrewAssignment,
+        CrewMember,
+        HullClass,
+        Rarity,
+    )
     from tests.conftest import SessionWrapper
 
     build = Build(
@@ -205,7 +215,49 @@ async def test_start_blocked_when_insufficient_credits(db_session, sample_user, 
         current_activity=BuildActivity.IDLE,
     )
     db_session.add(build)
+
+    # marquee_run requires min 2 crew with at least one PILOT or GUNNER
+    pilot = CrewMember(
+        id=uuid.uuid4(),
+        user_id=sample_user.discord_id,
+        first_name="Ace",
+        last_name="One",
+        callsign="Alpha",
+        archetype=CrewArchetype.PILOT,
+        rarity=Rarity.COMMON,
+        level=1,
+        current_activity=CrewActivity.IDLE,
+    )
+    gunner = CrewMember(
+        id=uuid.uuid4(),
+        user_id=sample_user.discord_id,
+        first_name="Ace",
+        last_name="Two",
+        callsign="Beta",
+        archetype=CrewArchetype.GUNNER,
+        rarity=Rarity.COMMON,
+        level=1,
+        current_activity=CrewActivity.IDLE,
+    )
+    db_session.add_all([pilot, gunner])
     await db_session.flush()
+
+    db_session.add(
+        CrewAssignment(
+            build_id=build.id,
+            crew_id=pilot.id,
+            archetype=CrewArchetype.PILOT,
+        )
+    )
+    db_session.add(
+        CrewAssignment(
+            build_id=build.id,
+            crew_id=gunner.id,
+            archetype=CrewArchetype.GUNNER,
+        )
+    )
+    await db_session.flush()
+
     sample_user.currency = 50  # marquee_run costs 250
     await db_session.flush()
 
@@ -218,10 +270,43 @@ async def test_start_blocked_when_insufficient_credits(db_session, sample_user, 
         inter,
         template="marquee_run",
         build=str(build.id),
-        pilot=None,
-        gunner=None,
-        engineer=None,
-        navigator=None,
     )
     msg = inter.response.send_message.call_args.args[0]
     assert "credit" in msg.lower()
+
+
+@pytest.mark.asyncio
+async def test_expedition_start_blocks_when_crew_required_unsatisfied(
+    db_session, sample_user, monkeypatch
+):
+    """Slot-walking error: SKIRMISHER with empty pilot slot can't run a template needing PILOT."""
+    from bot.cogs import expeditions as exp_mod
+    from db.models import Build, BuildActivity, HullClass
+    from tests.conftest import SessionWrapper
+
+    build = Build(
+        id=uuid.uuid4(),
+        user_id=sample_user.discord_id,
+        name="Flagstaff",
+        hull_class=HullClass.SKIRMISHER,
+        current_activity=BuildActivity.IDLE,
+    )
+    db_session.add(build)
+    await db_session.flush()
+
+    monkeypatch.setattr(exp_mod, "async_session", lambda: SessionWrapper(db_session))
+    monkeypatch.setattr(exp_mod, "get_active_system", _mock_get_active_system())
+
+    cog = exp_mod.ExpeditionsCog(MagicMock())
+    inter = _make_interaction(sample_user.discord_id)
+    await cog.expedition_start.callback(
+        cog,
+        inter,
+        template="marquee_run",
+        build=str(build.id),
+    )
+    sent = inter.response.send_message.call_args
+    body = sent[0][0]
+    assert "marquee_run" in body or "Marquee Run" in body
+    assert "**PILOT**" in body and "empty" in body
+    assert "/hangar" in body

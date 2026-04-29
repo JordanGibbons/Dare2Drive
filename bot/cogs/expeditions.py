@@ -28,7 +28,7 @@ from db.models import (
     Build,
     BuildActivity,
     CrewActivity,
-    CrewArchetype,
+    CrewAssignment,
     CrewMember,
     Expedition,
     ExpeditionCrewAssignment,
@@ -40,7 +40,6 @@ from db.models import (
 )
 from db.session import async_session
 from engine.expedition_concurrency import (
-    build_has_active_expedition,
     count_active_expeditions_for_user,
     get_max_expeditions,
 )
@@ -277,42 +276,6 @@ async def _build_autocomplete(
     return out
 
 
-def _make_crew_autocomplete(archetype: CrewArchetype):
-    """Factory: returns an autocomplete handler that lists IDLE, non-injured crew of `archetype`."""
-
-    async def _ac(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
-        user_id = str(interaction.user.id)
-        q = current.lower()
-        now = datetime.now(timezone.utc)
-        async with async_session() as session:
-            result = await session.execute(
-                select(CrewMember)
-                .where(CrewMember.user_id == user_id)
-                .where(CrewMember.archetype == archetype)
-                .where(CrewMember.current_activity == CrewActivity.IDLE)
-            )
-            out: list[app_commands.Choice[str]] = []
-            for c in result.scalars().all():
-                if c.injured_until and c.injured_until > now:
-                    continue
-                display = f'{c.first_name} "{c.callsign}" {c.last_name}'
-                if q and q not in display.lower():
-                    continue
-                # value matches what _lookup_crew_by_display() expects
-                out.append(app_commands.Choice(name=display[:100], value=display[:100]))
-                if len(out) >= 25:
-                    break
-        return out
-
-    return _ac
-
-
-_pilot_autocomplete = _make_crew_autocomplete(CrewArchetype.PILOT)
-_gunner_autocomplete = _make_crew_autocomplete(CrewArchetype.GUNNER)
-_engineer_autocomplete = _make_crew_autocomplete(CrewArchetype.ENGINEER)
-_navigator_autocomplete = _make_crew_autocomplete(CrewArchetype.NAVIGATOR)
-
-
 async def _active_expedition_autocomplete(
     interaction: discord.Interaction, current: str
 ) -> list[app_commands.Choice[str]]:
@@ -354,28 +317,16 @@ class ExpeditionsCog(commands.Cog):
     @app_commands.describe(
         template="Pick from the autocomplete list",
         build="Pick a ship from your fleet",
-        pilot="Optional: assigned PILOT",
-        gunner="Optional: assigned GUNNER",
-        engineer="Optional: assigned ENGINEER",
-        navigator="Optional: assigned NAVIGATOR",
     )
     @app_commands.autocomplete(
         template=_template_autocomplete,
         build=_build_autocomplete,
-        pilot=_pilot_autocomplete,
-        gunner=_gunner_autocomplete,
-        engineer=_engineer_autocomplete,
-        navigator=_navigator_autocomplete,
     )
     async def expedition_start(
         self,
         interaction: discord.Interaction,
         template: str,
         build: str,
-        pilot: str | None = None,
-        gunner: str | None = None,
-        engineer: str | None = None,
-        navigator: str | None = None,
     ) -> None:
         # 1. Template exists?
         try:
@@ -405,147 +356,110 @@ class ExpeditionsCog(commands.Cog):
 
             # 2. Concurrency cap
             max_active = await get_max_expeditions(session, user)
-            current = await count_active_expeditions_for_user(session, user.discord_id)
-            if current >= max_active:
+            current_active = await count_active_expeditions_for_user(session, user.discord_id)
+            if current_active >= max_active:
                 await interaction.response.send_message(
-                    f"You're at the max active expedition limit ({current}/{max_active}). "
+                    f"You're at the max active expedition limit ({current_active}/{max_active}). "
                     "Wait for one to complete.",
                     ephemeral=True,
                 )
                 return
 
-            # 3. Cost
-            cost = int(tmpl.get("cost_credits", 0))
-            if user.currency < cost:
-                await interaction.response.send_message(
-                    f"You need {cost} credits — you have {user.currency}.",
-                    ephemeral=True,
-                )
-                return
-
-            # 4. Build owned, IDLE
+            # 3. Build owned, IDLE
             try:
                 build_uuid = uuid.UUID(build)
             except ValueError:
                 await interaction.response.send_message(
-                    "Pick a valid build from the autocomplete list.",
-                    ephemeral=True,
+                    "Pick a ship from the autocomplete list.", ephemeral=True
                 )
                 return
             build_row = await session.get(Build, build_uuid, with_for_update=True)
             if build_row is None or build_row.user_id != user.discord_id:
-                await interaction.response.send_message(
-                    "Build not found in your fleet.",
-                    ephemeral=True,
-                )
+                await interaction.response.send_message("Build not found.", ephemeral=True)
                 return
             if build_row.current_activity != BuildActivity.IDLE:
                 await interaction.response.send_message(
-                    f"Build `{build_row.name}` is already on expedition.",
-                    ephemeral=True,
-                )
-                return
-            if await build_has_active_expedition(session, build_row.id):
-                await interaction.response.send_message(
-                    f"Build `{build_row.name}` already has an active expedition.",
+                    f"`{build_row.name}` is currently busy and can't launch.",
                     ephemeral=True,
                 )
                 return
 
-            # 5. Resolve crew picks
-            crew_picks: list[tuple[CrewArchetype, CrewMember]] = []
-            for arche, display in (
-                (CrewArchetype.PILOT, pilot),
-                (CrewArchetype.GUNNER, gunner),
-                (CrewArchetype.ENGINEER, engineer),
-                (CrewArchetype.NAVIGATOR, navigator),
-            ):
-                if display is None:
-                    continue
-                row = await _lookup_crew_by_display(session, user.discord_id, display)
-                if row is None:
-                    await interaction.response.send_message(
-                        f"Crew member `{display}` not found.",
-                        ephemeral=True,
-                    )
-                    return
-                if row.archetype != arche:
-                    await interaction.response.send_message(
-                        f"`{display}` is a {row.archetype.value}, " f"not a {arche.value}.",
-                        ephemeral=True,
-                    )
-                    return
-                if row.current_activity != CrewActivity.IDLE:
-                    await interaction.response.send_message(
-                        f"`{display}` is currently {row.current_activity.value}.",
-                        ephemeral=True,
-                    )
-                    return
-                if row.injured_until and row.injured_until > datetime.now(timezone.utc):
-                    await interaction.response.send_message(
-                        f"`{display}` is recovering — back later.",
-                        ephemeral=True,
-                    )
-                    return
-                crew_picks.append((arche, row))
+            # 4. Phase 2c: derive aboard set from crew_assignments
+            aboard_rows = (
+                await session.execute(
+                    select(CrewAssignment, CrewMember)
+                    .join(CrewMember, CrewAssignment.crew_id == CrewMember.id)
+                    .where(CrewAssignment.build_id == build_row.id)
+                )
+            ).all()
 
-            # 6. crew_required minimums
-            req = tmpl.get("crew_required", {}) or {}
-            if len(crew_picks) < req.get("min", 0):
+            now = datetime.now(timezone.utc)
+            idle_aboard: list[tuple[CrewAssignment, CrewMember]] = []
+            for assignment, crew in aboard_rows:
+                is_busy = crew.current_activity != CrewActivity.IDLE
+                is_injured = crew.injured_until is not None and crew.injured_until > now
+                if not is_busy and not is_injured:
+                    idle_aboard.append((assignment, crew))
+
+            # 5. Validate against template's crew_required
+            archetypes_aboard = {a.archetype.name for a, _ in idle_aboard}  # uppercase like "PILOT"
+            crew_req = tmpl.get("crew_required", {})
+            min_required = int(crew_req.get("min", 1))
+            archetypes_any = set(crew_req.get("archetypes_any", []))
+
+            satisfies_min = len(idle_aboard) >= min_required
+            satisfies_any = (not archetypes_any) or bool(archetypes_aboard & archetypes_any)
+            if not satisfies_min or not satisfies_any:
+                error_lines = _format_crew_required_error(
+                    template_id=template,
+                    template_label=tmpl.get("id", template),
+                    archetypes_any=archetypes_any,
+                    min_required=min_required,
+                    build_row=build_row,
+                    aboard_rows=aboard_rows,
+                    now=now,
+                )
+                await interaction.response.send_message("\n".join(error_lines), ephemeral=True)
+                return
+
+            # 6. Cost check
+            cost = int(tmpl.get("cost_credits", 0))
+            if user.currency < cost:
                 await interaction.response.send_message(
-                    f"Template `{template}` requires at least {req['min']} crew. "
-                    f"You assigned {len(crew_picks)}.",
+                    f"You need {cost} credits to launch — you have {user.currency}.",
                     ephemeral=True,
                 )
                 return
-            picked_archetypes = {a.value for a, _ in crew_picks}
-            picked_archetypes_upper = {a.upper() for a in picked_archetypes}
-            if "archetypes_any" in req:
-                if not (set(req["archetypes_any"]) & picked_archetypes_upper):
-                    await interaction.response.send_message(
-                        f"Template `{template}` requires at least one of "
-                        f"{req['archetypes_any']}. You assigned {sorted(picked_archetypes_upper)}.",
-                        ephemeral=True,
-                    )
-                    return
-            if "archetypes_all" in req:
-                missing = set(req["archetypes_all"]) - picked_archetypes_upper
-                if missing:
-                    await interaction.response.send_message(
-                        f"Template `{template}` requires all of "
-                        f"{req['archetypes_all']}. Missing: {sorted(missing)}.",
-                        ephemeral=True,
-                    )
-                    return
 
             # 7. Atomic creation
-            now = datetime.now(timezone.utc)
+            now_utc = datetime.now(timezone.utc)
             duration = int(tmpl["duration_minutes"])
-            completes_at = now + timedelta(minutes=duration)
+            completes_at = now_utc + timedelta(minutes=duration)
             expedition = Expedition(
                 id=uuid.uuid4(),
                 user_id=user.discord_id,
                 build_id=build_row.id,
                 template_id=template,
                 state=ExpeditionState.ACTIVE,
-                started_at=now,
+                started_at=now_utc,
                 completes_at=completes_at,
                 correlation_id=uuid.uuid4(),
                 scene_log=[],
             )
             session.add(expedition)
-            await session.flush()
 
-            for arche, row in crew_picks:
+            # Snapshot idle aboard members into ExpeditionCrewAssignment
+            for assignment, crew in idle_aboard:
                 session.add(
                     ExpeditionCrewAssignment(
                         expedition_id=expedition.id,
-                        crew_id=row.id,
-                        archetype=arche,
+                        crew_id=crew.id,
+                        archetype=assignment.archetype,
                     )
                 )
-                row.current_activity = CrewActivity.ON_EXPEDITION
-                row.current_activity_id = expedition.id
+                crew.current_activity = CrewActivity.ON_EXPEDITION
+                crew.current_activity_id = expedition.id
+
             build_row.current_activity = BuildActivity.ON_EXPEDITION
             build_row.current_activity_id = expedition.id
             user.currency -= cost
@@ -559,7 +473,7 @@ class ExpeditionsCog(commands.Cog):
             for i, scene_id in enumerate(scheduled_scenes, start=1):
                 offset_min = spacing * i
                 jitter_min = offset_min * jitter_pct * (rng.random() * 2 - 1)
-                fire_at = now + timedelta(minutes=offset_min + jitter_min)
+                fire_at = now_utc + timedelta(minutes=offset_min + jitter_min)
                 session.add(
                     ScheduledJob(
                         id=uuid.uuid4(),
@@ -710,6 +624,53 @@ class ExpeditionsCog(commands.Cog):
 # ---------------------------------------------------------------------------
 # Helpers shared with /expedition status + respond.
 # ---------------------------------------------------------------------------
+
+
+def _format_crew_required_error(
+    *,
+    template_id: str,
+    template_label: str,
+    archetypes_any: set[str],
+    min_required: int,
+    build_row: Build,
+    aboard_rows: list,
+    now: datetime,
+) -> list[str]:
+    """Return the multi-line `/expedition start` error message walking every slot."""
+    from engine.class_engine import slots_for_hull
+
+    lines: list[str] = []
+    if archetypes_any:
+        sorted_any = sorted(archetypes_any)
+        lines.append(
+            f"**{template_label}** needs at least {min_required} of "
+            f"{{{', '.join(sorted_any)}}}."
+        )
+    else:
+        lines.append(f"**{template_label}** needs at least {min_required} idle aboard crew.")
+    lines.append(f"`{build_row.name}` ({build_row.hull_class.value.title()}):")
+
+    aboard_by_archetype = {a.archetype: c for a, c in aboard_rows}
+    for slot_archetype in slots_for_hull(build_row.hull_class):
+        crew = aboard_by_archetype.get(slot_archetype)
+        if crew is None:
+            lines.append(f"  • **{slot_archetype.name}** — empty")
+        else:
+            display = f'{crew.first_name} "{crew.callsign}" {crew.last_name}'
+            if crew.injured_until is not None and crew.injured_until > now:
+                returns_at = discord.utils.format_dt(crew.injured_until, "R")
+                lines.append(
+                    f"  • **{slot_archetype.name}** — {display} "
+                    f"(injured, recovers {returns_at})"
+                )
+            elif crew.current_activity != CrewActivity.IDLE:
+                lines.append(
+                    f"  • **{slot_archetype.name}** — {display} " f"({crew.current_activity.value})"
+                )
+            else:
+                lines.append(f"  • **{slot_archetype.name}** — {display} (idle)")
+    lines.append("Assign crew via `/hangar` or wait for busy crew to free up.")
+    return lines
 
 
 def _select_scheduled_scenes(tmpl: dict, expedition_id: uuid.UUID) -> list[str]:

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock
 
 import pytest
@@ -72,73 +71,6 @@ async def test_build_autocomplete_lists_idle_builds_only(db_session, sample_user
 
 
 @pytest.mark.asyncio
-async def test_pilot_autocomplete_filters_by_archetype_and_idle(
-    db_session, sample_user, monkeypatch
-):
-    from bot.cogs import expeditions as exp_mod
-    from db.models import CrewActivity, CrewArchetype, CrewMember, Rarity
-    from tests.conftest import SessionWrapper
-
-    pilot_idle = CrewMember(
-        id=uuid.uuid4(),
-        user_id=sample_user.discord_id,
-        first_name="Mira",
-        last_name="Voss",
-        callsign="Sixgun",
-        archetype=CrewArchetype.PILOT,
-        rarity=Rarity.RARE,
-        level=4,
-        current_activity=CrewActivity.IDLE,
-    )
-    pilot_busy = CrewMember(
-        id=uuid.uuid4(),
-        user_id=sample_user.discord_id,
-        first_name="Other",
-        last_name="Pilot",
-        callsign="Vex",
-        archetype=CrewArchetype.PILOT,
-        rarity=Rarity.COMMON,
-        level=1,
-        current_activity=CrewActivity.ON_EXPEDITION,
-    )
-    pilot_injured = CrewMember(
-        id=uuid.uuid4(),
-        user_id=sample_user.discord_id,
-        first_name="Hurt",
-        last_name="Pilot",
-        callsign="Bandage",
-        archetype=CrewArchetype.PILOT,
-        rarity=Rarity.COMMON,
-        level=1,
-        current_activity=CrewActivity.IDLE,
-        injured_until=datetime.now(timezone.utc) + timedelta(hours=24),
-    )
-    gunner_idle = CrewMember(
-        id=uuid.uuid4(),
-        user_id=sample_user.discord_id,
-        first_name="Jax",
-        last_name="Krell",
-        callsign="Blackjack",
-        archetype=CrewArchetype.GUNNER,
-        rarity=Rarity.RARE,
-        level=3,
-        current_activity=CrewActivity.IDLE,
-    )
-    db_session.add_all([pilot_idle, pilot_busy, pilot_injured, gunner_idle])
-    await db_session.flush()
-
-    monkeypatch.setattr(exp_mod, "async_session", lambda: SessionWrapper(db_session))
-    inter = _make_interaction(sample_user.discord_id)
-    out = await exp_mod._pilot_autocomplete(inter, "")
-
-    values = {c.value for c in out}
-    assert 'Mira "Sixgun" Voss' in values
-    assert 'Other "Vex" Pilot' not in values  # ON_EXPEDITION
-    assert 'Hurt "Bandage" Pilot' not in values  # injured
-    assert 'Jax "Blackjack" Krell' not in values  # wrong archetype
-
-
-@pytest.mark.asyncio
 async def test_active_expedition_autocomplete_lists_only_active(
     db_session, sample_expedition_with_pilot, monkeypatch
 ):
@@ -167,7 +99,7 @@ def test_expedition_start_has_autocompletes_wired():
 
     cog = ExpeditionsCog(MagicMock())
     autocompletes = cog.expedition_start._params  # discord.py stores per-param metadata
-    for param_name in ("template", "build", "pilot", "gunner", "engineer", "navigator"):
+    for param_name in ("template", "build"):  # crew params dropped in Phase 2c
         param = autocompletes.get(param_name)
         assert param is not None, f"missing param descriptor for {param_name}"
         assert param.autocomplete is not None, f"{param_name} has no autocomplete handler"
