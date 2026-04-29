@@ -78,3 +78,28 @@ def test_render_ship_hull_property():
     context = {"ship": {"name": "Flagstaff", "hull": "Skirmisher"}}
     out = render("A {ship.hull} stops at the airlock.", context)
     assert out == "A Skirmisher stops at the airlock."
+
+
+def test_render_missing_top_level_slot_falls_back_to_generic_noun():
+    from engine.narrative_render import render
+
+    # Context has no `engineer` (e.g. SKIRMISHER running a template that mentions one)
+    context = {"pilot": {"display": "Mira Voss", "callsign": "Sixgun"}}
+    out = render("{engineer} reroutes power.", context)
+    assert out == "the engineer reroutes power."
+
+
+def test_render_missing_property_falls_back_to_generic_noun():
+    from engine.narrative_render import render
+
+    # Context has no `gunner` slot at all
+    context = {"pilot": {"display": "Mira Voss", "callsign": "Sixgun"}}
+    out = render("{gunner.callsign} swings the turret around.", context)
+    assert out == "the gunner swings the turret around."
+
+
+def test_render_missing_ship_falls_back():
+    from engine.narrative_render import render
+
+    out = render("The {ship} drops out of warp.", {})
+    assert out == "The the ship drops out of warp."  # ugly but consistent
