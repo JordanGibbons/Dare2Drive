@@ -220,3 +220,63 @@ async def test_button_click_vs_auto_resolve_race_only_one_wins(
     )
     # Should be 0 rowcount because A already flipped it.
     assert (result.rowcount or 0) == 0
+
+
+@pytest.mark.asyncio
+async def test_resolve_handler_renders_narrative_tokens_in_body(
+    db_session, sample_expedition_with_pilot, monkeypatch
+):
+    """Outcome narrative with {ship} renders before being formatted."""
+    from scheduler.jobs.expedition_resolve import handle_expedition_resolve
+
+    expedition, pilot = sample_expedition_with_pilot
+    expedition.scene_log = [
+        {
+            "scene_id": "pirate_skiff",
+            "status": "pending",
+            "fired_at": "2026-04-26T12:00:00Z",
+            "visible_choice_ids": ["comply"],
+        },
+    ]
+    await db_session.flush()
+
+    fake_template = {
+        "id": "marquee_run",
+        "kind": "scripted",
+        "duration_minutes": 60,
+        "response_window_minutes": 30,
+        "cost_credits": 0,
+        "crew_required": {"min": 1, "archetypes_any": ["PILOT"]},
+        "scenes": [
+            {
+                "id": "pirate_skiff",
+                "narration": "ok",
+                "choices": [
+                    {
+                        "id": "comply",
+                        "text": "Comply.",
+                        "default": True,
+                        "outcomes": {
+                            "result": {
+                                "narrative": "{pilot.callsign} surrenders the {ship}.",
+                                "effects": [],
+                            }
+                        },
+                    },
+                ],
+            }
+        ],
+    }
+    monkeypatch.setattr(
+        "scheduler.jobs.expedition_resolve.load_template", lambda _id: fake_template
+    )
+
+    job = _make_resolve_job(expedition.user_id, expedition.id, "pirate_skiff", "comply")
+    db_session.add(job)
+    await db_session.flush()
+
+    result = await handle_expedition_resolve(db_session, job)
+    body = result.notifications[0].body
+    assert pilot.callsign in body
+    assert "{pilot" not in body
+    assert "{ship" not in body

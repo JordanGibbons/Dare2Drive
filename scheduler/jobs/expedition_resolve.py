@@ -13,7 +13,9 @@ from config.logging import get_logger
 from db.models import Expedition, ExpeditionState, JobState, JobType, ScheduledJob
 from engine.expedition_engine import resolve_scene
 from engine.expedition_template import load_template
+from engine.narrative_render import render
 from scheduler.dispatch import HandlerResult, NotificationRequest, register
+from scheduler.jobs._render_context import build_render_context
 
 log = get_logger(__name__)
 
@@ -82,8 +84,10 @@ async def handle_expedition_resolve(session: AsyncSession, job: ScheduledJob) ->
         delta = (datetime.now(timezone.utc) - fired_at).total_seconds()
         expedition_event_response_seconds.labels(template_id=template_id).observe(delta)
 
+    ctx = await build_render_context(session, expedition)
+    rendered_narrative = render(resolution["outcome"].get("narrative", ""), ctx)
     body = _format_resolution_body(
-        narrative=resolution["outcome"].get("narrative", ""),
+        narrative=rendered_narrative,
         auto_resolved=auto_resolved,
     )
 
