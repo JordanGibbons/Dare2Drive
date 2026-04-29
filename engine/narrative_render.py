@@ -8,6 +8,8 @@ added in a follow-on. Missing slots fall back to a generic noun.
 
 from __future__ import annotations
 
+import string
+
 # Top-level token → default sub-key the renderer reads from the slot dict
 # when the bare `{<token>}` form is used. Property access (`{token.attr}`)
 # overrides this and reads `attr` directly.
@@ -32,7 +34,7 @@ _GENERIC_NOUN_FALLBACK: dict[str, str] = {
 
 
 class _RenderMapping:
-    """Custom mapping for str.format_map that resolves slot.property tokens."""
+    """Mapping for the formatter that resolves bare and dotted slot tokens."""
 
     def __init__(self, context: dict) -> None:
         self._ctx = context
@@ -49,6 +51,23 @@ class _RenderMapping:
         raise KeyError(key)
 
 
+class _NarrativeFormatter(string.Formatter):
+    """Formatter that hands the entire dotted field name to the mapping.
+
+    Default `string.Formatter` behaviour splits `pilot.callsign` into a base
+    field (`pilot`) followed by attribute access (`.callsign`). For our
+    closed-vocabulary tokens, we want `pilot.callsign` to reach the mapping
+    as a single key so it can be resolved against the slot dict. Overriding
+    `get_field` skips the attribute-walk path.
+    """
+
+    def get_field(self, field_name, args, kwargs):  # type: ignore[override]
+        return self.get_value(field_name, args, kwargs), field_name
+
+
+_FORMATTER = _NarrativeFormatter()
+
+
 def render(text: str, context: dict) -> str:
     """Render a string with {token}/{token.attr} placeholders.
 
@@ -56,4 +75,4 @@ def render(text: str, context: dict) -> str:
         {"pilot": {"display": "...", "callsign": "..."},
          "ship":  {"name": "...", "hull": "..."}}
     """
-    return text.format_map(_RenderMapping(context))
+    return _FORMATTER.vformat(text, (), _RenderMapping(context))
