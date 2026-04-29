@@ -4,7 +4,7 @@
 
 **Goal:** Move crew assignment from per-expedition slash params (Phase 2b) to persistent on-ship binding, with hull-class-specific crew slots. Players assign crew once via an interactive `/hangar` view; `/expedition start` simplifies to `(template, build)` and derives the aboard set from the ship. Same phase ships closed-vocabulary narrative substitution (`{pilot.callsign}`, `{ship}`) rendered at scene-fire time.
 
-**Architecture:** New `build_crew_assignments` table with PK `(build_id, archetype)` and `UNIQUE(crew_id)`. Hull-class crew slot composition lives as a Python constant `HULL_CREW_SLOTS` in `engine/class_engine.py`. New `engine/narrative_render.py` module exposes `render(text, context) -> str` using `str.format_map` with a custom mapping subclass — token allow-list enforced at template-load time by an extension to the existing template validator. `/expedition start` drops its four crew params and reads from `build_crew_assignments`; the engine runtime is unchanged because `ExpeditionCrewAssignment` (Phase 2b) is kept as the in-flight snapshot, populated from the persistent table at launch. Hangar UX is a new `HangarView` (persistent `discord.ui.View`, registered globally at bot startup like `ExpeditionResponseView`) attached to the existing `/hangar <build>` command, with one `Select` per crew slot.
+**Architecture:** Reuses the existing `crew_assignments` table and `CrewAssignment` ORM model from Phase 1, which already enforce one-archetype-slot-per-build (via `UniqueConstraint("build_id", "archetype")`) and one-build-per-crew (via `unique=True` on `crew_id`). No schema work is required — Phase 2c's contribution at the data layer is purely additive on top of this. Hull-class crew slot composition lives as a Python constant `HULL_CREW_SLOTS` in `engine/class_engine.py`. New `engine/narrative_render.py` module exposes `render(text, context) -> str` using `str.format_map` with a custom mapping subclass — token allow-list enforced at template-load time by an extension to the existing template validator. `/expedition start` drops its four crew params and reads from `crew_assignments`; the engine runtime is unchanged because `ExpeditionCrewAssignment` (Phase 2b) is kept as the in-flight snapshot, populated from the persistent table at launch. Hangar UX is a new `HangarView` (persistent `discord.ui.View`, registered globally at bot startup like `ExpeditionResponseView`) attached to the existing `/hangar <build>` command, with one `Select` per crew slot.
 
 **Tech Stack:** Python 3.12, async SQLAlchemy 2.0, Alembic, asyncpg, discord.py 2.x (Select menus + persistent View), pytest + pytest-asyncio. No new top-level dependencies.
 
@@ -20,11 +20,8 @@
 
 | Path | Responsibility |
 |---|---|
-| `db/migrations/versions/0006_phase2c_build_crew_assignments.py` | Alembic migration: 1 new table + 2 indexes |
 | `engine/narrative_render.py` | `render(text, context)` + custom mapping subclass + allow-list constant |
 | `bot/views/hangar_view.py` | `HangarView` persistent View class + `render_hangar_view(session, build, user)` factory + custom_id helpers |
-| `tests/test_phase2c_models.py` | ORM-shape tests for `BuildCrewAssignment` |
-| `tests/test_phase2c_migration.py` | Migration round-trip + constraint presence tests |
 | `tests/test_engine_class_engine_crew_slots.py` | `HULL_CREW_SLOTS` + `slots_for_hull()` tests |
 | `tests/test_engine_narrative_render.py` | `render()` tests covering substitution, property access, fallbacks, brace escape |
 | `tests/test_expedition_template_narrative_validation.py` | Validator extension — token allow-list enforcement |
@@ -35,17 +32,16 @@
 
 | Path | Change |
 |---|---|
-| `db/models.py` | Add `BuildCrewAssignment` ORM model after `ExpeditionCrewAssignment` |
 | `engine/class_engine.py` | Add `HULL_CREW_SLOTS` constant + `slots_for_hull(hull) -> list[CrewArchetype]` helper |
 | `engine/expedition_template.py` | Validator extends to scan renderable strings for unknown `{...}` tokens at load time |
 | `scheduler/jobs/expedition_event.py` | Calls `narrative_render.render()` on scene narration + visible choice text |
 | `scheduler/jobs/expedition_resolve.py` | Calls `render()` on outcome narrative |
 | `scheduler/jobs/expedition_complete.py` | Calls `render()` on closing body |
-| `bot/cogs/expeditions.py` | Drop `pilot/gunner/engineer/navigator` slash params + their autocompletes; launch handler reads `build_crew_assignments`; slot-walking error message |
+| `bot/cogs/expeditions.py` | Drop `pilot/gunner/engineer/navigator` slash params + their autocompletes; launch handler reads `crew_assignments`; slot-walking error message |
 | `bot/cogs/hangar.py` | `/hangar` command renders via `render_hangar_view()` and attaches the View |
-| `bot/cogs/hiring.py` (or wherever `/crew_inspect` lives — see Task 19) | Add "Aboard `<ship name>`" line when crew member appears in `build_crew_assignments` |
+| `bot/cogs/hiring.py` (or wherever `/crew_inspect` lives — see Task 19) | Add "Aboard `<ship name>`" line when crew member appears in `crew_assignments` |
 | `bot/main.py` | `setup_hook` registers persistent `HangarView` |
-| `tests/test_cog_expedition_start.py` | Tests rewritten — set up crew via `build_crew_assignments`, drop slash crew params from launch calls |
+| `tests/test_cog_expedition_start.py` | Tests rewritten — set up crew via `crew_assignments`, drop slash crew params from launch calls |
 | `tests/test_cog_expedition_autocomplete.py` | Drop the four crew-archetype autocomplete tests (those handlers are removed) |
 | `docs/authoring/expeditions.md` | New "Narrative tokens" section with allow-list and an example template |
 
@@ -173,342 +169,33 @@ git commit -m "feat(phase2c): add HULL_CREW_SLOTS config + slots_for_hull helper
 
 ---
 
-## Task 2: Alembic migration for `build_crew_assignments`
+## Task 2: Reuse existing `crew_assignments` table — no migration needed
 
-**Files:**
-- Create: `db/migrations/versions/0006_phase2c_build_crew_assignments.py`
-- Create: `tests/test_phase2c_migration.py`
+**Files:** none.
 
-- [ ] **Step 1: Write failing tests**
+The `crew_assignments` table already exists from Phase 1 (`db/migrations/versions/0002_phase1_crew.py`) and enforces the invariants Phase 2c needs:
 
-Create `tests/test_phase2c_migration.py`:
+- `UniqueConstraint("build_id", "archetype", name="uq_crew_assignments_build_archetype")` — one slot per archetype per ship.
+- `unique=True` on `crew_id` — a crew member is on at most one ship at a time.
+- `crew_id` and `build_id` FKs both `ondelete="CASCADE"`.
+- `archetype` reuses the Phase 1 `crewarchetype` enum.
 
-```python
-"""Phase 2c — migration round-trip + constraint presence tests."""
-
-from __future__ import annotations
-
-import pytest
-from sqlalchemy import inspect, text
-from sqlalchemy.ext.asyncio import create_async_engine
-
-from config.settings import settings
-
-
-@pytest.mark.asyncio
-async def test_build_crew_assignments_table_exists():
-    engine = create_async_engine(settings.DATABASE_URL, echo=False)
-    async with engine.connect() as conn:
-        result = await conn.run_sync(
-            lambda sync_conn: inspect(sync_conn).has_table("build_crew_assignments")
-        )
-        assert result is True
-    await engine.dispose()
-
-
-@pytest.mark.asyncio
-async def test_build_crew_assignments_has_required_columns():
-    engine = create_async_engine(settings.DATABASE_URL, echo=False)
-    async with engine.connect() as conn:
-        cols = await conn.run_sync(
-            lambda sync_conn: {
-                c["name"] for c in inspect(sync_conn).get_columns("build_crew_assignments")
-            }
-        )
-        assert {"build_id", "crew_id", "archetype", "assigned_at"} <= cols
-    await engine.dispose()
-
-
-@pytest.mark.asyncio
-async def test_build_crew_assignments_unique_crew_id():
-    """A crew member is on at most one ship at a time."""
-    engine = create_async_engine(settings.DATABASE_URL, echo=False)
-    async with engine.connect() as conn:
-        result = await conn.execute(
-            text(
-                """
-                SELECT COUNT(*) FROM pg_indexes
-                WHERE tablename = 'build_crew_assignments'
-                  AND indexdef ILIKE '%UNIQUE%'
-                  AND indexdef ILIKE '%crew_id%'
-                """
-            )
-        )
-        count = result.scalar_one()
-        assert count >= 1, "missing UNIQUE(crew_id) index"
-    await engine.dispose()
-
-
-@pytest.mark.asyncio
-async def test_build_crew_assignments_pk_build_archetype():
-    """One slot per archetype per build."""
-    engine = create_async_engine(settings.DATABASE_URL, echo=False)
-    async with engine.connect() as conn:
-        pk_cols = await conn.run_sync(
-            lambda sync_conn: inspect(sync_conn).get_pk_constraint("build_crew_assignments")[
-                "constrained_columns"
-            ]
-        )
-        assert set(pk_cols) == {"build_id", "archetype"}
-    await engine.dispose()
-```
-
-- [ ] **Step 2: Run, confirm fails**
-
-Run: `pytest tests/test_phase2c_migration.py -v --no-cov`
-Expected: 4 FAIL — table doesn't exist yet.
-
-- [ ] **Step 3: Write the migration**
-
-Create `db/migrations/versions/0006_phase2c_build_crew_assignments.py`:
-
-```python
-"""Phase 2c — build_crew_assignments
-
-Revision ID: 0006_phase2c_build_crew
-Revises: 0005_phase2b_crew_stats
-Create Date: 2026-04-27
-"""
-
-from __future__ import annotations
-
-import sqlalchemy as sa
-from alembic import op
-from sqlalchemy.dialects import postgresql
-
-revision = "0006_phase2c_build_crew"
-down_revision = "0005_phase2b_crew_stats"
-branch_labels = None
-depends_on = None
-
-
-def upgrade() -> None:
-    op.create_table(
-        "build_crew_assignments",
-        sa.Column(
-            "build_id",
-            postgresql.UUID(as_uuid=True),
-            sa.ForeignKey("builds.id", ondelete="CASCADE"),
-            nullable=False,
-        ),
-        sa.Column(
-            "crew_id",
-            postgresql.UUID(as_uuid=True),
-            sa.ForeignKey("crew_members.id", ondelete="CASCADE"),
-            nullable=False,
-        ),
-        sa.Column(
-            "archetype",
-            postgresql.ENUM(name="crewarchetype", create_type=False),
-            nullable=False,
-        ),
-        sa.Column(
-            "assigned_at",
-            sa.DateTime(timezone=True),
-            nullable=False,
-            server_default=sa.func.now(),
-        ),
-        sa.PrimaryKeyConstraint("build_id", "archetype"),
-        sa.UniqueConstraint("crew_id", name="uq_build_crew_assignments_crew_id"),
-    )
-    op.create_index(
-        "ix_build_crew_assignments_crew_id",
-        "build_crew_assignments",
-        ["crew_id"],
-    )
-
-
-def downgrade() -> None:
-    op.drop_index("ix_build_crew_assignments_crew_id", table_name="build_crew_assignments")
-    op.drop_table("build_crew_assignments")
-```
-
-- [ ] **Step 4: Run the migration**
-
-Run from repo root:
-
-```bash
-DATABASE_URL=postgresql://dare2drive:dare2drive@localhost:5432/dare2drive python -m alembic upgrade head
-```
-
-Expected output ends with: `Running upgrade 0005_phase2b_crew_stats -> 0006_phase2c_build_crew`.
-
-- [ ] **Step 5: Run tests, confirm passes**
-
-Run: `pytest tests/test_phase2c_migration.py -v --no-cov`
-Expected: 4 PASS.
-
-- [ ] **Step 6: Commit**
-
-```bash
-git add db/migrations/versions/0006_phase2c_build_crew_assignments.py tests/test_phase2c_migration.py
-git commit -m "feat(phase2c): migration 0006 build_crew_assignments table"
-```
+The original Phase 2c plan called for a new `build_crew_assignments` table; this was caught during code review of an earlier draft as a duplicate of existing infrastructure. We retired the new table in favour of the existing one. Skip this task — there is no schema change to make.
 
 ---
 
-## Task 3: `BuildCrewAssignment` ORM model
+## Task 3: Reuse existing `CrewAssignment` ORM model — no new model needed
 
-**Files:**
-- Modify: `db/models.py`
-- Create: `tests/test_phase2c_models.py`
+**Files:** none.
 
-- [ ] **Step 1: Write failing tests**
+`db/models.CrewAssignment` (`db/models.py:495-520`) is the persistent on-ship crew binding for Phase 2c. Existing call sites already use it:
 
-Create `tests/test_phase2c_models.py`:
+- `bot/cogs/hiring.py` (assign / unassign / view crew on ship).
+- `bot/cogs/race.py` (joins to derive aboard set for race events).
 
-```python
-"""Phase 2c — ORM-shape tests for BuildCrewAssignment."""
+Phase 2c will add new call sites (Task 12: expedition launch reads `CrewAssignment` for the active build; Tasks 14–15: `HangarView` writes and reads via `CrewAssignment`; Task 17: `/crew_inspect` shows the aboard ship via a join through `CrewAssignment`). No model changes required — skip this task.
 
-from __future__ import annotations
-
-import uuid
-
-import pytest
-
-
-def test_build_crew_assignment_columns():
-    from db.models import BuildCrewAssignment
-
-    cols = {c.name for c in BuildCrewAssignment.__table__.columns}
-    assert cols >= {"build_id", "crew_id", "archetype", "assigned_at"}
-
-
-def test_build_crew_assignment_pk_is_build_archetype():
-    from db.models import BuildCrewAssignment
-
-    pk_cols = {c.name for c in BuildCrewAssignment.__table__.primary_key.columns}
-    assert pk_cols == {"build_id", "archetype"}
-
-
-def test_build_crew_assignment_unique_crew_id_constraint():
-    from db.models import BuildCrewAssignment
-
-    constraints = BuildCrewAssignment.__table__.constraints
-    unique_single_columns = {
-        tuple(sorted(c.name for c in constraint.columns))
-        for constraint in constraints
-        if constraint.__class__.__name__ == "UniqueConstraint"
-    }
-    assert ("crew_id",) in unique_single_columns
-
-
-@pytest.mark.asyncio
-async def test_build_crew_assignment_unique_crew_id_enforced(db_session, sample_user):
-    """The DB-level UNIQUE(crew_id) trips when the same crew is inserted for two builds."""
-    from db.models import (
-        Build,
-        BuildCrewAssignment,
-        CrewArchetype,
-        CrewMember,
-        HullClass,
-        Rarity,
-    )
-
-    crew = CrewMember(
-        id=uuid.uuid4(),
-        user_id=sample_user.discord_id,
-        first_name="Mira",
-        last_name="Voss",
-        callsign="Sixgun",
-        archetype=CrewArchetype.PILOT,
-        rarity=Rarity.RARE,
-        level=1,
-    )
-    build_a = Build(
-        id=uuid.uuid4(),
-        user_id=sample_user.discord_id,
-        name="Flagstaff",
-        hull_class=HullClass.SKIRMISHER,
-    )
-    build_b = Build(
-        id=uuid.uuid4(),
-        user_id=sample_user.discord_id,
-        name="Wanderer",
-        hull_class=HullClass.HAULER,
-    )
-    db_session.add_all([crew, build_a, build_b])
-    await db_session.flush()
-
-    db_session.add(
-        BuildCrewAssignment(
-            build_id=build_a.id, crew_id=crew.id, archetype=CrewArchetype.PILOT
-        )
-    )
-    await db_session.flush()  # first assignment OK
-
-    db_session.add(
-        BuildCrewAssignment(
-            build_id=build_b.id, crew_id=crew.id, archetype=CrewArchetype.PILOT
-        )
-    )
-    with pytest.raises(Exception) as exc_info:
-        await db_session.flush()
-    assert "uq_build_crew_assignments_crew_id" in str(exc_info.value).lower() or \
-           "unique" in str(exc_info.value).lower()
-```
-
-- [ ] **Step 2: Run, confirm fails**
-
-Run: `pytest tests/test_phase2c_models.py -v --no-cov`
-Expected: 4 FAIL — `BuildCrewAssignment` does not exist.
-
-- [ ] **Step 3: Add the ORM model**
-
-In `db/models.py`, append after the existing `ExpeditionCrewAssignment` class:
-
-```python
-class BuildCrewAssignment(Base):
-    """Persistent crew-on-ship binding (Phase 2c).
-
-    Each row binds a crew member to one slot of one build. PK (build_id, archetype)
-    enforces one slot per archetype per ship; UNIQUE(crew_id) enforces a crew member
-    is on at most one ship at a time.
-    """
-
-    __tablename__ = "build_crew_assignments"
-
-    build_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey("builds.id", ondelete="CASCADE"),
-        primary_key=True,
-    )
-    archetype: Mapped[CrewArchetype] = mapped_column(
-        Enum(
-            CrewArchetype,
-            name="crewarchetype",
-            create_type=False,
-            values_callable=lambda x: [e.value for e in x],
-        ),
-        primary_key=True,
-    )
-    crew_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey("crew_members.id", ondelete="CASCADE"),
-        nullable=False,
-    )
-    assigned_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        server_default=func.now(),
-    )
-
-    __table_args__ = (
-        UniqueConstraint("crew_id", name="uq_build_crew_assignments_crew_id"),
-    )
-```
-
-- [ ] **Step 4: Run, confirm passes**
-
-Run: `pytest tests/test_phase2c_models.py -v --no-cov`
-Expected: 4 PASS.
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add db/models.py tests/test_phase2c_models.py
-git commit -m "feat(phase2c): add BuildCrewAssignment ORM model"
-```
+> **Note for downstream tasks (12, 13, 14, 15, 17, 18):** wherever the prior plan-text references `BuildCrewAssignment` / `build_crew_assignments`, read it as `CrewAssignment` / `crew_assignments`. The existing model has an extra `id` UUID PK column (auto-default `uuid.uuid4`) that the new code does not need to set explicitly. The constraint name for the unique-on-`crew_id` invariant is auto-generated rather than `uq_crew_assignments_crew_id`; downstream tests that catch the IntegrityError should match on the substring `unique` rather than a specific constraint name.
 
 ---
 
@@ -1494,7 +1181,7 @@ The new method signature is:
         ...
 ```
 
-- [ ] **Step 2: Update the launch handler body to derive aboard from `build_crew_assignments`**
+- [ ] **Step 2: Update the launch handler body to derive aboard from `crew_assignments`**
 
 Inside the new `expedition_start` body, replace the section that processed crew slash params with:
 
@@ -1547,17 +1234,17 @@ Inside the new `expedition_start` body, replace the section that processed crew 
                 )
                 return
 
-            # ─────── Phase 2c: derive aboard set from build_crew_assignments ───────
+            # ─────── Phase 2c: derive aboard set from crew_assignments ───────
             aboard_rows = (
                 await session.execute(
-                    select(BuildCrewAssignment, CrewMember)
-                    .join(CrewMember, BuildCrewAssignment.crew_id == CrewMember.id)
-                    .where(BuildCrewAssignment.build_id == build_row.id)
+                    select(CrewAssignment, CrewMember)
+                    .join(CrewMember, CrewAssignment.crew_id == CrewMember.id)
+                    .where(CrewAssignment.build_id == build_row.id)
                 )
             ).all()
 
             now = datetime.now(timezone.utc)
-            idle_aboard: list[tuple[BuildCrewAssignment, CrewMember]] = []
+            idle_aboard: list[tuple[CrewAssignment, CrewMember]] = []
             for assignment, crew in aboard_rows:
                 is_busy = crew.current_activity != CrewActivity.IDLE
                 is_injured = crew.injured_until is not None and crew.injured_until > now
@@ -1737,14 +1424,14 @@ Make sure the import block at the top of `bot/cogs/expeditions.py` includes:
 ```python
 from db.models import (
     # ...existing...
-    BuildCrewAssignment,
+    CrewAssignment,
     CrewActivity,
 )
 ```
 
 - [ ] **Step 3: Update `tests/test_cog_expedition_start.py`**
 
-Existing tests pass crew params via slash. Rewrite them to set up `build_crew_assignments` first, then call `/expedition start` with only `template:` and `build:`. Below is a representative rewrite for one test — apply the same pattern to all tests in the file.
+Existing tests pass crew params via slash. Rewrite them to set up `crew_assignments` first, then call `/expedition start` with only `template:` and `build:`. Below is a representative rewrite for one test — apply the same pattern to all tests in the file.
 
 Replace the existing setup pattern:
 
@@ -1766,10 +1453,10 @@ With:
 
 ```python
 # NEW — set up assignment via the table, call /expedition start without crew params
-from db.models import BuildCrewAssignment
+from db.models import CrewAssignment
 
 db_session.add(
-    BuildCrewAssignment(
+    CrewAssignment(
         build_id=build.id,
         crew_id=pilot.id,
         archetype=CrewArchetype.PILOT,
@@ -2031,7 +1718,7 @@ async def test_render_hangar_view_filled_slot_shows_crew_name(
 ):
     from db.models import (
         Build,
-        BuildCrewAssignment,
+        CrewAssignment,
         CrewArchetype,
         CrewMember,
         HullClass,
@@ -2058,7 +1745,7 @@ async def test_render_hangar_view_filled_slot_shows_crew_name(
     db_session.add_all([crew, build])
     await db_session.flush()
     db_session.add(
-        BuildCrewAssignment(
+        CrewAssignment(
             build_id=build.id, crew_id=crew.id, archetype=CrewArchetype.PILOT
         )
     )
@@ -2108,7 +1795,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from db.models import (
     Build,
     BuildActivity,
-    BuildCrewAssignment,
+    CrewAssignment,
     CrewActivity,
     CrewArchetype,
     CrewMember,
@@ -2128,9 +1815,9 @@ async def render_hangar_view(
     # Load current assignments
     rows = (
         await session.execute(
-            select(BuildCrewAssignment, CrewMember)
-            .join(CrewMember, BuildCrewAssignment.crew_id == CrewMember.id)
-            .where(BuildCrewAssignment.build_id == build.id)
+            select(CrewAssignment, CrewMember)
+            .join(CrewMember, CrewAssignment.crew_id == CrewMember.id)
+            .where(CrewAssignment.build_id == build.id)
         )
     ).all()
     aboard_by_archetype: dict[CrewArchetype, CrewMember] = {
@@ -2199,12 +1886,12 @@ async def _load_eligible_crew_by_archetype(
     session: AsyncSession, user_id: str, this_build_id: uuid.UUID
 ) -> dict[CrewArchetype, list[CrewMember]]:
     """Return crew owned by `user_id` not currently assigned to a DIFFERENT build, grouped by archetype."""
-    # Outer-join build_crew_assignments to find crew with no assignment OR assignment to THIS build
+    # Outer-join crew_assignments to find crew with no assignment OR assignment to THIS build
     rows = (
         await session.execute(
-            select(CrewMember, BuildCrewAssignment.build_id)
+            select(CrewMember, CrewAssignment.build_id)
             .outerjoin(
-                BuildCrewAssignment, CrewMember.id == BuildCrewAssignment.crew_id
+                CrewAssignment, CrewMember.id == CrewAssignment.crew_id
             )
             .where(CrewMember.user_id == user_id)
         )
@@ -2305,7 +1992,7 @@ async def test_hangar_assign_inserts_build_crew_assignment(
     from unittest.mock import AsyncMock, MagicMock
     from db.models import (
         Build,
-        BuildCrewAssignment,
+        CrewAssignment,
         CrewArchetype,
         CrewMember,
         HullClass,
@@ -2353,9 +2040,9 @@ async def test_hangar_assign_inserts_build_crew_assignment(
 
     rows = (
         await db_session.execute(
-            select(BuildCrewAssignment)
-            .where(BuildCrewAssignment.build_id == build.id)
-            .where(BuildCrewAssignment.archetype == CrewArchetype.PILOT)
+            select(CrewAssignment)
+            .where(CrewAssignment.build_id == build.id)
+            .where(CrewAssignment.archetype == CrewArchetype.PILOT)
         )
     ).scalars().all()
     assert len(rows) == 1
@@ -2370,7 +2057,7 @@ async def test_hangar_unassign_removes_build_crew_assignment(
     from sqlalchemy import select
     from db.models import (
         Build,
-        BuildCrewAssignment,
+        CrewAssignment,
         CrewArchetype,
         CrewMember,
         HullClass,
@@ -2398,7 +2085,7 @@ async def test_hangar_unassign_removes_build_crew_assignment(
     db_session.add_all([crew, build])
     await db_session.flush()
     db_session.add(
-        BuildCrewAssignment(
+        CrewAssignment(
             build_id=build.id, crew_id=crew.id, archetype=CrewArchetype.PILOT
         )
     )
@@ -2420,7 +2107,7 @@ async def test_hangar_unassign_removes_build_crew_assignment(
 
     rows = (
         await db_session.execute(
-            select(BuildCrewAssignment).where(BuildCrewAssignment.build_id == build.id)
+            select(CrewAssignment).where(CrewAssignment.build_id == build.id)
         )
     ).scalars().all()
     assert rows == []
@@ -2481,9 +2168,9 @@ class HangarView(discord.ui.View):
 
             if chosen == UNASSIGN_VALUE:
                 await session.execute(
-                    delete(BuildCrewAssignment)
-                    .where(BuildCrewAssignment.build_id == build.id)
-                    .where(BuildCrewAssignment.archetype == archetype)
+                    delete(CrewAssignment)
+                    .where(CrewAssignment.build_id == build.id)
+                    .where(CrewAssignment.archetype == archetype)
                 )
                 msg = f"Unassigned the {archetype.name.title()} slot of `{build.name}`."
             elif chosen in {"none", "locked"}:
@@ -2511,12 +2198,12 @@ class HangarView(discord.ui.View):
                     return False
                 # Upsert: replace any existing assignment for this slot.
                 await session.execute(
-                    delete(BuildCrewAssignment)
-                    .where(BuildCrewAssignment.build_id == build.id)
-                    .where(BuildCrewAssignment.archetype == archetype)
+                    delete(CrewAssignment)
+                    .where(CrewAssignment.build_id == build.id)
+                    .where(CrewAssignment.archetype == archetype)
                 )
                 session.add(
-                    BuildCrewAssignment(
+                    CrewAssignment(
                         build_id=build.id, crew_id=crew.id, archetype=archetype
                     )
                 )
@@ -2667,10 +2354,10 @@ Locate or create `tests/test_cog_crew_inspect.py` (the existing test name may di
 async def test_crew_inspect_shows_aboard_line_when_assigned(
     db_session, sample_user, mock_interaction, monkeypatch
 ):
-    """When the crew member is in build_crew_assignments, show the ship name."""
+    """When the crew member is in crew_assignments, show the ship name."""
     from db.models import (
         Build,
-        BuildCrewAssignment,
+        CrewAssignment,
         CrewArchetype,
         CrewMember,
         HullClass,
@@ -2696,7 +2383,7 @@ async def test_crew_inspect_shows_aboard_line_when_assigned(
     db_session.add_all([crew, build])
     await db_session.flush()
     db_session.add(
-        BuildCrewAssignment(
+        CrewAssignment(
             build_id=build.id, crew_id=crew.id, archetype=CrewArchetype.PILOT
         )
     )
@@ -2733,13 +2420,13 @@ In the crew-inspect cog file, before sending the embed:
 ```python
         # Phase 2c: show "Aboard <ship>" if the crew member is assigned to a build
         from sqlalchemy import select as _select
-        from db.models import Build, BuildCrewAssignment
+        from db.models import Build, CrewAssignment
 
         assignment_row = (
             await session.execute(
-                _select(BuildCrewAssignment, Build)
-                .join(Build, BuildCrewAssignment.build_id == Build.id)
-                .where(BuildCrewAssignment.crew_id == crew.id)
+                _select(CrewAssignment, Build)
+                .join(Build, CrewAssignment.build_id == Build.id)
+                .where(CrewAssignment.crew_id == crew.id)
             )
         ).first()
         if assignment_row is not None:
@@ -2779,7 +2466,7 @@ Create `tests/test_scenarios/test_ship_crew_binding_flow.py`:
 
 Builds the entire flow:
 1. Player has a build + a crew member.
-2. Crew is bound to ship via build_crew_assignments (direct DB write — the
+2. Crew is bound to ship via crew_assignments (direct DB write — the
    /hangar UX is exercised in test_view_hangar.py).
 3. /expedition start launches with no crew params; the ship's crew is
    auto-derived.
@@ -2806,7 +2493,7 @@ async def test_full_lifecycle_with_persistent_assignment_and_rendered_tokens(
     from db.models import (
         Build,
         BuildActivity,
-        BuildCrewAssignment,
+        CrewAssignment,
         CrewActivity,
         CrewArchetype,
         CrewMember,
@@ -2844,7 +2531,7 @@ async def test_full_lifecycle_with_persistent_assignment_and_rendered_tokens(
     db_session.add_all([crew, build])
     await db_session.flush()
     db_session.add(
-        BuildCrewAssignment(
+        CrewAssignment(
             build_id=build.id, crew_id=crew.id, archetype=CrewArchetype.PILOT
         )
     )
@@ -2970,7 +2657,7 @@ async def test_full_lifecycle_with_persistent_assignment_and_rendered_tokens(
 
     binding = (
         await db_session.execute(
-            select(BuildCrewAssignment).where(BuildCrewAssignment.build_id == build.id)
+            select(CrewAssignment).where(CrewAssignment.build_id == build.id)
         )
     ).scalar_one_or_none()
     assert binding is not None
