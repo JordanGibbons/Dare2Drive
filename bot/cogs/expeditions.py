@@ -406,10 +406,12 @@ class ExpeditionsCog(commands.Cog):
             crew_req = tmpl.get("crew_required", {})
             min_required = int(crew_req.get("min", 1))
             archetypes_any = set(crew_req.get("archetypes_any", []))
+            archetypes_all = set(crew_req.get("archetypes_all", []))
 
             satisfies_min = len(idle_aboard) >= min_required
             satisfies_any = (not archetypes_any) or bool(archetypes_aboard & archetypes_any)
-            if not satisfies_min or not satisfies_any:
+            satisfies_all = archetypes_all <= archetypes_aboard
+            if not satisfies_min or not satisfies_any or not satisfies_all:
                 error_lines = _format_crew_required_error(
                     template_id=template,
                     template_label=tmpl.get("id", template),

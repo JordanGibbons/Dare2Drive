@@ -310,3 +310,79 @@ async def test_expedition_start_blocks_when_crew_required_unsatisfied(
     assert "marquee_run" in body or "Marquee Run" in body
     assert "**PILOT**" in body and "empty" in body
     assert "/hangar" in body
+
+
+@pytest.mark.asyncio
+async def test_expedition_start_blocks_when_archetypes_all_unsatisfied(
+    db_session, sample_user, monkeypatch
+):
+    """A template with archetypes_all = [PILOT, GUNNER] blocks if only PILOT is aboard."""
+    from bot.cogs import expeditions as exp_mod
+    from db.models import (
+        Build,
+        BuildActivity,
+        CrewActivity,
+        CrewArchetype,
+        CrewAssignment,
+        CrewMember,
+        HullClass,
+        Rarity,
+    )
+    from tests.conftest import SessionWrapper
+
+    build = Build(
+        id=uuid.uuid4(),
+        user_id=sample_user.discord_id,
+        name="Flagstaff",
+        hull_class=HullClass.SKIRMISHER,
+        current_activity=BuildActivity.IDLE,
+    )
+    pilot = CrewMember(
+        id=uuid.uuid4(),
+        user_id=sample_user.discord_id,
+        first_name="Mira",
+        last_name="Voss",
+        callsign="Sixgun",
+        archetype=CrewArchetype.PILOT,
+        rarity=Rarity.RARE,
+        level=1,
+        current_activity=CrewActivity.IDLE,
+    )
+    db_session.add_all([build, pilot])
+    await db_session.flush()
+    db_session.add(
+        CrewAssignment(
+            build_id=build.id,
+            crew_id=pilot.id,
+            archetype=CrewArchetype.PILOT,
+        )
+    )
+    await db_session.flush()
+
+    fake_template = {
+        "id": "all_hands_drill",
+        "kind": "scripted",
+        "duration_minutes": 60,
+        "response_window_minutes": 30,
+        "cost_credits": 0,
+        "crew_required": {"min": 1, "archetypes_all": ["PILOT", "GUNNER"]},
+        "scenes": [],
+    }
+    monkeypatch.setattr(exp_mod, "load_template", lambda _id: fake_template)
+    monkeypatch.setattr(exp_mod, "async_session", lambda: SessionWrapper(db_session))
+    monkeypatch.setattr(exp_mod, "get_active_system", _mock_get_active_system())
+
+    cog = exp_mod.ExpeditionsCog(MagicMock())
+    inter = _make_interaction(sample_user.discord_id)
+    await cog.expedition_start.callback(
+        cog,
+        inter,
+        template="all_hands_drill",
+        build=str(build.id),
+    )
+    sent = inter.response.send_message.call_args
+    body = sent[0][0]
+    assert "**PILOT**" in body  # PILOT is aboard
+    assert "**GUNNER**" in body  # GUNNER slot is empty — needs to show
+    assert "empty" in body
+    assert "/hangar" in body
