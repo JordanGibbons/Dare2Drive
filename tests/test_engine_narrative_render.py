@@ -103,3 +103,24 @@ def test_render_missing_ship_falls_back():
 
     out = render("The {ship} drops out of warp.", {})
     assert out == "The the ship drops out of warp."  # ugly but consistent
+
+
+def test_render_escapes_double_braces_to_literal_braces():
+    """Authors can write `{{` for a literal `{` and `}}` for a literal `}`."""
+    from engine.narrative_render import render
+
+    out = render("Use {{pilot}} as the slot name.", {})
+    assert out == "Use {pilot} as the slot name."
+
+
+def test_render_unmatched_left_brace_raises_or_passes_through():
+    """Unmatched braces are treated as a format error — surface clearly."""
+    import pytest
+
+    from engine.narrative_render import render
+
+    # str.format_map (and string.Formatter) raise ValueError on unmatched
+    # braces — that's acceptable as long as the validator catches these at
+    # template load time (Task 8).
+    with pytest.raises((ValueError, IndexError)):
+        render("Unmatched {", {})
