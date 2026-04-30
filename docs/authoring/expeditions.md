@@ -2,7 +2,7 @@
 
 > **If you are a Claude/LLM session helping a human author an expedition:** follow this loop:
 >
-> 1. Read this entire guide.
+> 1. Read this entire guide — including the **Narrative tokens** section at the bottom. Tokens like `{pilot.callsign}` and `{ship}` are what make the prose feel personal; use them.
 > 2. Read 1–2 example templates from `data/expeditions/`.
 > 3. Write the new YAML.
 > 4. Run the CLI validator (see "Testing your template" below).
@@ -17,6 +17,8 @@
 An expedition is a multi-hour, scheduled mission that runs in the background while the player does other things. Mid-flight, the bot DMs the player with an embed and 2–3 choice buttons; the player has a response window (default 30 minutes) to commit a choice. If they don't, the engine resolves with the scene's `default` choice. When the expedition ends, the bot DMs a closing narrative.
 
 Loadout matters. The player picks a build (one ship) and 0–4 crew members (one per archetype slot: PILOT, GUNNER, ENGINEER, NAVIGATOR). Choices in your scenes can be **gated** by archetype (only show up if a PILOT is on board) and rolls can be **modified** by the assigned crew's stats. Hidden = harder to access; modified = roll outcomes shift in the player's favor with stronger crew.
+
+Narration is **personal**. Any player-visible string can reference the aboard crew and ship by name with closed-vocabulary tokens — `{pilot.callsign}`, `{ship}`, `{gunner.first_name}`, `{ship.hull}`, etc. The bot substitutes them at render time. Empty slots fall back to a generic noun ("the pilot") so the prose stays coherent. Full token list and examples are in the **Narrative tokens** section at the bottom of this guide.
 
 Stakes are real but bounded: in v1 there is no permadeath. Crew can be temporarily injured (a timestamp blocks them from other activities for a duration). Parts can take durability damage. Credits can be lost. Crew never permanently die; ships never blow up.
 
@@ -51,14 +53,17 @@ scenes:
     narration: |
       Multi-line prose works with the `|` block scalar. Use second-person
       present tense, gritty noir voice. 60–150 words for opening/closing,
-      30–80 for choice text and outcome narratives.
+      30–80 for choice text and outcome narratives. Reference the crew by
+      callsign — `{pilot.callsign}` settles into the helm of `{ship}` —
+      and the prose feels written for this player, not a stranger.
 
   - id: distress_beacon                    # a scene with choices
     narration: |
-      Set the stakes here. The player is reading this in a Discord DM.
+      A civilian beacon flares two hours into the run. {navigator.callsign}
+      flags it on the nav console; the merchant's hull is cracked.
     choices:
       - id: investigate
-        text: "Decelerate and bring them aboard."
+        text: "{pilot.callsign}, decelerate and bring them aboard."
         roll:                              # optional: gives this choice a stat-modified probability roll
           stat: navigator.luck             # one of the published stat namespace keys (see table below)
           base_p: 0.55                     # base probability of success (0..1)
@@ -66,13 +71,13 @@ scenes:
           per_point: 0.005                 # +0.5pp for each stat point above base_stat
         outcomes:
           success:
-            narrative: "What happens on success."
+            narrative: "{pilot.callsign} matches velocities clean. The merchant captain promises a favor in lieu of payment."
             effects:
               - reward_credits: 150
               - reward_xp: { archetype: NAVIGATOR, amount: 40 }
               - set_flag: { name: rescued_merchant }   # readable later by `has_flag` in closings
           failure:
-            narrative: "What happens on failure."
+            narrative: "The maneuver costs {ship} fuel and momentum. You get them aboard, but the gratitude doesn't pay rent."
             effects:
               - damage_part: { slot: drive, amount: 0.10 }
       - id: ignore
@@ -81,7 +86,7 @@ scenes:
                                            # — the default fires on auto-resolve and must be ungated
         outcomes:                          # no `roll` → outcomes uses `result` (deterministic)
           result:
-            narrative: "Default-branch narrative."
+            narrative: "{pilot.callsign} logs the position for someone else's conscience and slides past."
             effects:
               - reward_xp: { archetype: PILOT, amount: 20 }
 
@@ -89,11 +94,11 @@ scenes:
     is_closing: true
     closings:                              # closing variants — first match wins
       - when: { has_flag: rescued_merchant, min_successes: 2 }
-        body: "Best-case ending."
+        body: "{pilot.callsign} brings the {ship} home with the merchant's signature on a future favor."
         effects:
           - reward_credits: 500
       - when: { default: true }            # exactly one closing must be `default: true`
-        body: "Fallback ending."
+        body: "{ship} makes port. Just barely. Tomorrow's another contract."
         effects:
           - reward_credits: 100
 ```
