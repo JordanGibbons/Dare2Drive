@@ -19,7 +19,7 @@ import uuid
 from datetime import datetime, timezone
 
 import discord
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.models import (
@@ -30,6 +30,7 @@ from db.models import (
     CrewMember,
     User,
 )
+from db.session import async_session
 from engine.class_engine import slots_for_hull
 
 CUSTOM_ID_PREFIX = "hangar:slot"
@@ -58,7 +59,77 @@ class HangarView(discord.ui.View):
     def __init__(self) -> None:
         super().__init__(timeout=None)
 
-    # interaction_check + _handle_assignment / _handle_unassignment land in Task 15.
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:  # type: ignore[override]
+        custom_id = (interaction.data or {}).get("custom_id", "") if interaction.data else ""
+        parsed = parse_select_custom_id(custom_id)
+        if parsed is None:
+            return False
+        build_id, archetype_name = parsed
+        try:
+            archetype = CrewArchetype[archetype_name]
+        except KeyError:
+            await interaction.response.send_message("Unknown crew slot.", ephemeral=True)
+            return False
+
+        values = (interaction.data or {}).get("values", [])
+        if not values:
+            return False
+        chosen = values[0]
+
+        async with async_session() as session, session.begin():
+            build = await session.get(Build, build_id, with_for_update=True)
+            if build is None or build.user_id != str(interaction.user.id):
+                await interaction.response.send_message("Build not found.", ephemeral=True)
+                return False
+            if build.current_activity != BuildActivity.IDLE:
+                await interaction.response.send_message(
+                    f"`{build.name}` is currently busy and can't be modified.",
+                    ephemeral=True,
+                )
+                return False
+
+            if chosen == UNASSIGN_VALUE:
+                await session.execute(
+                    delete(CrewAssignment)
+                    .where(CrewAssignment.build_id == build.id)
+                    .where(CrewAssignment.archetype == archetype)
+                )
+                msg = f"Unassigned the {archetype.name.title()} slot of `{build.name}`."
+            elif chosen in {"none", "locked"}:
+                return False
+            else:
+                try:
+                    crew_uuid = uuid.UUID(chosen)
+                except ValueError:
+                    await interaction.response.send_message("Invalid selection.", ephemeral=True)
+                    return False
+                crew = await session.get(CrewMember, crew_uuid)
+                if crew is None or crew.user_id != str(interaction.user.id):
+                    await interaction.response.send_message(
+                        "Crew member not found.", ephemeral=True
+                    )
+                    return False
+                if crew.archetype != archetype:
+                    await interaction.response.send_message(
+                        f"That crew member is a {crew.archetype.name.title()}, "
+                        f"not a {archetype.name.title()}.",
+                        ephemeral=True,
+                    )
+                    return False
+                # Upsert: replace any existing assignment for this slot.
+                await session.execute(
+                    delete(CrewAssignment)
+                    .where(CrewAssignment.build_id == build.id)
+                    .where(CrewAssignment.archetype == archetype)
+                )
+                session.add(CrewAssignment(build_id=build.id, crew_id=crew.id, archetype=archetype))
+                msg = (
+                    f'Assigned {crew.first_name} "{crew.callsign}" {crew.last_name} '
+                    f"as {archetype.name.title()} of `{build.name}`."
+                )
+
+        await interaction.response.send_message(msg, ephemeral=True)
+        return False
 
 
 async def render_hangar_view(

@@ -111,3 +111,135 @@ async def test_render_hangar_view_disables_selects_when_on_expedition(db_session
     embed, view = await render_hangar_view(db_session, build, sample_user)
     selects = [c for c in view.children if isinstance(c, discord.ui.Select)]
     assert all(s.disabled for s in selects)
+
+
+@pytest.mark.asyncio
+async def test_hangar_assign_inserts_build_crew_assignment(db_session, sample_user, monkeypatch):
+    from unittest.mock import AsyncMock, MagicMock
+
+    from bot.views import hangar_view as hv
+    from db.models import (
+        Build,
+        CrewArchetype,
+        CrewAssignment,
+        CrewMember,
+        HullClass,
+        Rarity,
+    )
+    from tests.conftest import SessionWrapper
+
+    crew = CrewMember(
+        id=uuid.uuid4(),
+        user_id=sample_user.discord_id,
+        first_name="Mira",
+        last_name="Voss",
+        callsign="Sixgun",
+        archetype=CrewArchetype.PILOT,
+        rarity=Rarity.RARE,
+        level=4,
+    )
+    build = Build(
+        id=uuid.uuid4(),
+        user_id=sample_user.discord_id,
+        name="Flagstaff",
+        hull_class=HullClass.SKIRMISHER,
+    )
+    db_session.add_all([crew, build])
+    await db_session.flush()
+
+    monkeypatch.setattr(hv, "async_session", lambda: SessionWrapper(db_session))
+
+    interaction = MagicMock()
+    interaction.user.id = sample_user.discord_id
+    interaction.data = {
+        "custom_id": hv.make_select_custom_id(build.id, "PILOT"),
+        "values": [str(crew.id)],
+    }
+    interaction.response.edit_message = AsyncMock()
+    interaction.response.send_message = AsyncMock()
+
+    view = hv.HangarView()
+    handled = await view.interaction_check(interaction)
+    assert handled is False
+
+    from sqlalchemy import select
+
+    rows = (
+        (
+            await db_session.execute(
+                select(CrewAssignment)
+                .where(CrewAssignment.build_id == build.id)
+                .where(CrewAssignment.archetype == CrewArchetype.PILOT)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert len(rows) == 1
+    assert rows[0].crew_id == crew.id
+
+
+@pytest.mark.asyncio
+async def test_hangar_unassign_removes_build_crew_assignment(db_session, sample_user, monkeypatch):
+    from unittest.mock import AsyncMock, MagicMock
+
+    from sqlalchemy import select
+
+    from bot.views import hangar_view as hv
+    from db.models import (
+        Build,
+        CrewArchetype,
+        CrewAssignment,
+        CrewMember,
+        HullClass,
+        Rarity,
+    )
+    from tests.conftest import SessionWrapper
+
+    crew = CrewMember(
+        id=uuid.uuid4(),
+        user_id=sample_user.discord_id,
+        first_name="Mira",
+        last_name="Voss",
+        callsign="Sixgun",
+        archetype=CrewArchetype.PILOT,
+        rarity=Rarity.RARE,
+        level=4,
+    )
+    build = Build(
+        id=uuid.uuid4(),
+        user_id=sample_user.discord_id,
+        name="Flagstaff",
+        hull_class=HullClass.SKIRMISHER,
+    )
+    db_session.add_all([crew, build])
+    await db_session.flush()
+    db_session.add(
+        CrewAssignment(build_id=build.id, crew_id=crew.id, archetype=CrewArchetype.PILOT)
+    )
+    await db_session.flush()
+
+    monkeypatch.setattr(hv, "async_session", lambda: SessionWrapper(db_session))
+
+    interaction = MagicMock()
+    interaction.user.id = sample_user.discord_id
+    interaction.data = {
+        "custom_id": hv.make_select_custom_id(build.id, "PILOT"),
+        "values": [hv.UNASSIGN_VALUE],
+    }
+    interaction.response.edit_message = AsyncMock()
+    interaction.response.send_message = AsyncMock()
+
+    view = hv.HangarView()
+    await view.interaction_check(interaction)
+
+    rows = (
+        (
+            await db_session.execute(
+                select(CrewAssignment).where(CrewAssignment.build_id == build.id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert rows == []
