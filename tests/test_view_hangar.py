@@ -254,3 +254,41 @@ def test_setup_hook_registers_hangar_view():
     source = inspect.getsource(main_mod)
     assert "HangarView" in source, "bot/main.py must reference HangarView"
     assert "add_view" in source, "bot/main.py must call add_view()"
+
+
+def test_setup_hook_always_syncs_globally():
+    """Guild-only sync hides slash commands from DMs. Global sync must be unconditional."""
+    import ast
+    import inspect
+    import textwrap
+
+    from bot import main as main_mod
+
+    source = textwrap.dedent(inspect.getsource(main_mod.Dare2DriveBot.setup_hook))
+    tree = ast.parse(source)
+
+    def is_global_tree_sync(stmt: ast.AST) -> bool:
+        # Top-level `await self.tree.sync()` parses as Expr(Await(Call(...))).
+        if not (isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Await)):
+            return False
+        call = stmt.value.value
+        if not isinstance(call, ast.Call):
+            return False
+        if not (
+            isinstance(call.func, ast.Attribute)
+            and call.func.attr == "sync"
+            and isinstance(call.func.value, ast.Attribute)
+            and call.func.value.attr == "tree"
+        ):
+            return False
+        return not any(kw.arg == "guild" for kw in call.keywords)
+
+    # Find the function body and inspect its top-level statements only — a global
+    # tree.sync() inside an `if`/`else` branch is the bug we're guarding against.
+    func_def = tree.body[0]
+    assert isinstance(func_def, ast.AsyncFunctionDef)
+    top_level_global_syncs = [n for n in func_def.body if is_global_tree_sync(n)]
+    assert top_level_global_syncs, (
+        "setup_hook must call `await self.tree.sync()` at the top level "
+        "(not gated behind DISCORD_GUILD_ID) so commands appear in DMs"
+    )
