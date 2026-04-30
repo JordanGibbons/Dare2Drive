@@ -206,3 +206,171 @@ async def test_consumer_rate_limit_drops_excess(db_session, redis_client, monkey
     await consumer.flush_pending()
 
     assert len(sent) <= 3
+
+
+@pytest.mark.asyncio
+async def test_consumer_attaches_view_when_components_present(
+    db_session, redis_client, monkeypatch
+):
+    """A notification carrying components must be sent with a discord.ui.View
+    whose buttons preserve the custom_ids — this is what the persistent
+    ExpeditionResponseView matches against to handle clicks."""
+    import json
+
+    import discord
+
+    from bot import notifications as notifs
+
+    monkeypatch.setattr(
+        "bot.notifications.async_session",
+        lambda: _SessionContext(db_session),
+    )
+
+    user = User(
+        discord_id="600104",
+        username="cn_d",
+        hull_class=HullClass.HAULER,
+        notification_prefs={"expedition_event": "dm", "_version": 1},
+    )
+    db_session.add(user)
+    await db_session.flush()
+
+    captured: list[dict] = []
+
+    class FakeUser:
+        id = 600104
+
+        async def send(self, content=None, *, view=None, embed=None):
+            captured.append({"content": content, "view": view, "embed": embed})
+
+    class FakeBot:
+        async def fetch_user(self, _id: int):
+            return FakeUser()
+
+    components = [
+        {"custom_id": "expedition:abc:scene1:run", "label": "Run", "style": "primary"},
+        {"custom_id": "expedition:abc:scene1:fight", "label": "Fight", "style": "danger"},
+    ]
+    await redis_client.xadd(
+        "d2d:notifications:test_components",
+        {
+            "user_id": "600104",
+            "category": "expedition_event",
+            "title": "Pirate skiff",
+            "body": "Choose:",
+            "correlation_id": "c",
+            "dedupe_key": "k",
+            "created_at": "now",
+            "components": json.dumps(components),
+        },
+    )
+
+    consumer = notifs.NotificationConsumer(
+        bot=FakeBot(),
+        redis=redis_client,
+        stream_key="d2d:notifications:test_components",
+        consumer_group="g_components",
+        consumer_id="c1",
+        batch_window_seconds=0,
+        start_id="0",
+    )
+    await consumer.ensure_group()
+    await consumer.process_once(block_ms=200)
+    await consumer.flush_pending()
+
+    assert len(captured) == 1
+    sent = captured[0]
+    assert sent["view"] is not None
+    buttons = [c for c in sent["view"].children if isinstance(c, discord.ui.Button)]
+    assert [b.custom_id for b in buttons] == [c["custom_id"] for c in components]
+    assert [b.label for b in buttons] == ["Run", "Fight"]
+    # Style "danger" must round-trip — silent default would mask routing bugs.
+    assert buttons[1].style == discord.ButtonStyle.danger
+
+
+@pytest.mark.asyncio
+async def test_consumer_does_not_batch_components_with_plain_items(
+    db_session, redis_client, monkeypatch
+):
+    """A button-bearing item must arrive as its own DM, separate from any
+    plain items batched at the same time, so buttons stay anchored to the
+    narration that prompted them."""
+    import json
+
+    from bot import notifications as notifs
+
+    monkeypatch.setattr(
+        "bot.notifications.async_session",
+        lambda: _SessionContext(db_session),
+    )
+
+    user = User(
+        discord_id="600105",
+        username="cn_e",
+        hull_class=HullClass.HAULER,
+        notification_prefs={
+            "expedition_event": "dm",
+            "timer_completion": "dm",
+            "_version": 1,
+        },
+    )
+    db_session.add(user)
+    await db_session.flush()
+
+    captured: list[dict] = []
+
+    class FakeBot:
+        async def fetch_user(self, _id: int):
+            class FU:
+                id = 600105
+
+                async def send(self, content=None, *, view=None, embed=None):
+                    captured.append({"content": content, "has_view": view is not None})
+
+            return FU()
+
+    await redis_client.xadd(
+        "d2d:notifications:test_no_batch",
+        {
+            "user_id": "600105",
+            "category": "expedition_event",
+            "title": "Scene fired",
+            "body": "Pick one:",
+            "correlation_id": "c",
+            "dedupe_key": "k1",
+            "created_at": "now",
+            "components": json.dumps(
+                [{"custom_id": "expedition:a:s:c", "label": "Go", "style": "primary"}]
+            ),
+        },
+    )
+    await redis_client.xadd(
+        "d2d:notifications:test_no_batch",
+        {
+            "user_id": "600105",
+            "category": "timer_completion",
+            "title": "Training done",
+            "body": "Crew gained XP",
+            "correlation_id": "c",
+            "dedupe_key": "k2",
+            "created_at": "now",
+        },
+    )
+
+    consumer = notifs.NotificationConsumer(
+        bot=FakeBot(),
+        redis=redis_client,
+        stream_key="d2d:notifications:test_no_batch",
+        consumer_group="g_no_batch",
+        consumer_id="c1",
+        batch_window_seconds=0,
+        start_id="0",
+    )
+    await consumer.ensure_group()
+    await consumer.process_once(block_ms=200)
+    await consumer.flush_pending()
+
+    assert len(captured) == 2
+    # Exactly one of the DMs has the View; the other is plain text.
+    assert sum(1 for c in captured if c["has_view"]) == 1
+    assert sum(1 for c in captured if not c["has_view"]) == 1

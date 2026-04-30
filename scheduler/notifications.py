@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import asdict
 from datetime import datetime, timezone
 
@@ -28,6 +29,13 @@ def get_redis_client() -> redis_async.Redis:
 
 def _to_stream_fields(n: NotificationRequest) -> dict[str, str]:
     d = asdict(n)
+    # Redis stream values must be strings; JSON-encode the components list so
+    # the consumer can rebuild discord.ui.Button instances from it.
+    components = d.pop("components", None)
+    if components:
+        d["components"] = json.dumps(components)
+    else:
+        d.pop("components", None)
     d["created_at"] = datetime.now(timezone.utc).isoformat()
     return d
 

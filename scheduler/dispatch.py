@@ -19,6 +19,20 @@ tracer = trace.get_tracer(__name__)
 
 
 @dataclass
+class NotificationButton:
+    """Discord-agnostic description of a button to attach to a DM.
+
+    The bot-side notification consumer materializes these into discord.ui.Button
+    instances. `custom_id` must be parseable by a persistent View registered on
+    the bot (see ExpeditionResponseView).
+    """
+
+    custom_id: str
+    label: str
+    style: str = "primary"  # one of: primary, secondary, success, danger
+
+
+@dataclass
 class NotificationRequest:
     user_id: str
     category: str
@@ -26,6 +40,10 @@ class NotificationRequest:
     body: str
     correlation_id: str
     dedupe_key: str
+    # Optional buttons. When present, the consumer sends this notification as
+    # its own DM (no batching) so the buttons stay associated with the
+    # narration that prompted them.
+    components: list[NotificationButton] | None = None
 
 
 @dataclass

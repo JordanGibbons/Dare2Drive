@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import time
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import discord
 import redis.asyncio as redis_async
@@ -22,6 +23,14 @@ DEFAULT_STREAM_KEY = "d2d:notifications"
 DEFAULT_CONSUMER_GROUP = "d2d-bot"
 
 
+_BUTTON_STYLES: dict[str, discord.ButtonStyle] = {
+    "primary": discord.ButtonStyle.primary,
+    "secondary": discord.ButtonStyle.secondary,
+    "success": discord.ButtonStyle.success,
+    "danger": discord.ButtonStyle.danger,
+}
+
+
 @dataclass
 class _PendingItem:
     user_id: str
@@ -30,6 +39,7 @@ class _PendingItem:
     body: str
     entry_id: str
     received_at: float
+    components: list[dict] = field(default_factory=list)
 
 
 class NotificationConsumer:
@@ -112,6 +122,17 @@ class NotificationConsumer:
                 if not user_id:
                     await self.redis.xack(self.stream_key, self.consumer_group, entry_id)
                     continue
+                components_raw = fields.get("components")
+                components: list[dict] = []
+                if components_raw:
+                    try:
+                        decoded = json.loads(components_raw)
+                        if isinstance(decoded, list):
+                            components = decoded
+                    except (json.JSONDecodeError, TypeError):
+                        log.warning(
+                            "notification components JSON decode failed entry_id=%s", entry_id
+                        )
                 self._buffer[user_id].append(
                     _PendingItem(
                         user_id=user_id,
@@ -120,6 +141,7 @@ class NotificationConsumer:
                         body=fields.get("body", ""),
                         entry_id=entry_id,
                         received_at=time.monotonic(),
+                        components=components,
                     )
                 )
 
@@ -178,20 +200,66 @@ class NotificationConsumer:
             log.exception("fetch_user failed user_id=%s", user_id)
             return
 
-        # Merge titles/bodies into one DM.
-        merged = "\n\n".join(f"**{it.title}**\n{it.body}" for it in to_send)
+        # Items with buttons can't be merged with siblings — the buttons must
+        # stay anchored to the narration that prompted them. Send them as
+        # standalone DMs and batch the rest.
+        with_components = [it for it in to_send if it.components]
+        plain = [it for it in to_send if not it.components]
+
+        for it in with_components:
+            view = _build_view(it.components)
+            content = f"**{it.title}**\n{it.body}"
+            await self._send_one(discord_user, user_id, content, [it], hour_bucket, view=view)
+
+        if plain:
+            merged = "\n\n".join(f"**{it.title}**\n{it.body}" for it in plain)
+            await self._send_one(discord_user, user_id, merged, plain, hour_bucket)
+
+    async def _send_one(
+        self,
+        discord_user: discord.User,
+        user_id: str,
+        content: str,
+        items: list[_PendingItem],
+        hour_bucket: int,
+        *,
+        view: discord.ui.View | None = None,
+    ) -> None:
         try:
-            await discord_user.send(merged)
-            for it in to_send:
+            if view is not None:
+                await discord_user.send(content, view=view)
+            else:
+                await discord_user.send(content)
+            for it in items:
                 await self.redis.xack(self.stream_key, self.consumer_group, it.entry_id)
                 notifications_total.labels(category=it.category, result="delivered").inc()
-            self._rate_buckets[(user_id, hour_bucket)] += len(to_send)
+            self._rate_buckets[(user_id, hour_bucket)] += len(items)
         except discord.Forbidden:
-            for it in to_send:
+            for it in items:
                 await self.redis.xack(self.stream_key, self.consumer_group, it.entry_id)
                 notifications_total.labels(category=it.category, result="dm_closed").inc()
         except Exception:
             log.exception("DM send failed user_id=%s", user_id)
-            for it in to_send:
+            for it in items:
                 notifications_total.labels(category=it.category, result="failed").inc()
             # don't XACK transient failures — let XPENDING reclaim later.
+
+
+def _build_view(components: list[dict]) -> discord.ui.View:
+    """Build a non-timing-out View carrying the buttons.
+
+    Click routing happens via the persistent ExpeditionResponseView registered
+    on the bot (matched by custom_id), so the View we attach here is just a
+    transport for the buttons.
+    """
+    view = discord.ui.View(timeout=None)
+    for c in components[:5]:
+        style = _BUTTON_STYLES.get(str(c.get("style", "primary")), discord.ButtonStyle.primary)
+        view.add_item(
+            discord.ui.Button(
+                style=style,
+                label=str(c.get("label", ""))[:80],
+                custom_id=str(c.get("custom_id", "")),
+            )
+        )
+    return view

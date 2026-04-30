@@ -23,6 +23,7 @@ from db.models import (
     JobType,
     ScheduledJob,
 )
+from engine.expedition_custom_id import build_custom_id
 from engine.expedition_engine import (
     _assigned_archetypes,
     _filter_visible_choices,
@@ -30,7 +31,7 @@ from engine.expedition_engine import (
 )
 from engine.expedition_template import load_template
 from engine.narrative_render import render
-from scheduler.dispatch import HandlerResult, NotificationRequest, register
+from scheduler.dispatch import HandlerResult, NotificationButton, NotificationRequest, register
 from scheduler.jobs._render_context import build_render_context
 
 log = get_logger(__name__)
@@ -122,6 +123,15 @@ async def handle_expedition_event(session: AsyncSession, job: ScheduledJob) -> H
         response_window_minutes=int(response_window),
     )
 
+    components = [
+        NotificationButton(
+            custom_id=build_custom_id(expedition.id, scene_id, c["id"]),
+            label=c["text"][:80],
+            style="primary",
+        )
+        for c in rendered_visible[:5]
+    ]
+
     expedition_events_fired_total.labels(
         template_id=template_id,
         scene_id=scene_id,
@@ -139,6 +149,7 @@ async def handle_expedition_event(session: AsyncSession, job: ScheduledJob) -> H
                 body=body,
                 correlation_id=str(expedition.correlation_id),
                 dedupe_key=f"expedition:{expedition.id}:scene:{scene_id}",
+                components=components or None,
             )
         ]
     )
