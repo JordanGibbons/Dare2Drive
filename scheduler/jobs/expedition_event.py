@@ -158,18 +158,17 @@ async def handle_expedition_event(session: AsyncSession, job: ScheduledJob) -> H
 def _format_event_body(
     *, narration: str, choices: list[dict], scene_id: str, response_window_minutes: int
 ) -> str:
-    """Player-facing event message — narration, choices, and slash-command hint."""
+    """Player-facing event message — narration plus a fallback hint.
+
+    Choices ride along as button components on the DM (see expedition_event
+    handler), so we don't enumerate them in the body. The slash-command hint
+    stays as a fallback for clients that don't render components.
+    """
     lines = [narration.strip()]
     if choices:
         lines.append("")
-        lines.append("**Choices:**")
-        for c in choices:
-            lines.append(f"• `{c['id']}` — {c['text']}")
-    lines.append("")
-    lines.append(
-        f"Use `/expedition respond` (scene `{scene_id}`) to commit a choice. "
-        f"Auto-resolves in {response_window_minutes} minutes."
-    )
+        lines.append(f"Click a choice below — or use `/expedition respond` (scene `{scene_id}`).")
+    lines.append(f"Auto-resolves in {response_window_minutes} minutes.")
     return "\n".join(lines)
 
 
