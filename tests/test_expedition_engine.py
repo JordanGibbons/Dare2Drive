@@ -149,9 +149,16 @@ def test_select_closing_not_flag_match():
 
 
 @pytest.mark.asyncio
-async def test_resolve_scene_with_roll_records_outcome(db_session, sample_expedition_with_pilot):
+async def test_resolve_scene_with_roll_records_outcome(
+    db_session, sample_expedition_with_pilot, monkeypatch
+):
     """Successful roll should produce success branch + correct ledger write."""
+    from engine import expedition_engine
     from engine.expedition_engine import resolve_scene
+
+    # Pin the RNG to a value that always falls under base_p; the test asserts
+    # the success branch is wired correctly, not that 0.99 wins by luck.
+    monkeypatch.setattr(expedition_engine, "_seeded_random", lambda *_: 0.0)
 
     expedition, _ = sample_expedition_with_pilot
     scene = {
