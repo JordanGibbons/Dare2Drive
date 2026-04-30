@@ -1,0 +1,232 @@
+id: the_long_eye
+kind: scripted
+duration_minutes: 300
+response_window_minutes: 30
+cost_credits: 175
+crew_required: { min: 2, archetypes_any: [NAVIGATOR, ENGINEER] }
+scenes:
+  - id: opening
+    narration: |
+      The Long Eye Relay sits at the lip of nothing — a single automated
+      antenna farm bolted to a flake of rock at the system's outer edge,
+      built when the colony was new, abandoned when the budgets dried
+      up. For the last ninety-one days it has been broadcasting, on a
+      band reserved for corporate distress, the same eleven-second loop.
+      A woman, naming herself, asking if anyone is listening. The relay
+      has no crew. {pilot.callsign} pushes {ship} out toward it, and
+      nobody on the bridge volunteers a guess about what's been talking.
+
+  - id: the_loop
+    narration: |
+      You arrive in scope range and the loop is louder than it should
+      be — the relay's transmitter is running at peak draw, no power
+      regulation. {navigator.callsign} pulls the audio clean. The woman
+      names herself Kira Vesh. She was logged off this relay forty
+      years before any of you were born.
+    choices:
+      - id: respond
+        text: "Open the channel. Answer her."
+        roll: { stat: navigator.luck, base_p: 0.50, base_stat: 50, per_point: 0.005 }
+        outcomes:
+          success:
+            narrative: |
+              The loop stops mid-syllable. Three seconds of silence.
+              Then a different voice — older, dry — says thank you,
+              captain, and goes quiet. The relay's power draw drops
+              to nominal.
+            effects:
+              - reward_xp: { archetype: NAVIGATOR, amount: 70 }
+              - set_flag: { name: she_was_answered }
+          failure:
+            narrative: |
+              The loop doesn't break. It layers, instead — a second
+              recording of Kira Vesh, then a third, then dozens, all
+              speaking under each other. {navigator.callsign} cuts
+              the feed.
+            effects:
+              - damage_part: { slot: reactor, amount: 0.05 }
+      - id: listen_longer
+        text: "Don't transmit. Just listen, and let the recorders run."
+        default: true
+        outcomes:
+          result:
+            narrative: |
+              You let the loop play for forty minutes.
+              {navigator.callsign} catches a faint sub-carrier under
+              the broadcast — coordinates, somewhere deeper out. Worth
+              knowing.
+            effects:
+              - reward_xp: { archetype: NAVIGATOR, amount: 30 }
+              - set_flag: { name: caught_subcarrier }
+
+  - id: the_logs
+    narration: |
+      {ship} matches the relay's slow tumble. From up close the antenna
+      farm looks worse than the survey suggested — half the dishes
+      pointed nowhere, paint stripped to bare alloy by sixty winters of
+      micrometeor wash. There is one access hatch with a working keypad
+      and a maintenance log wired into the structure.
+    choices:
+      - id: pull_logs
+        text: "Pull the maintenance recorder. Find out what's been driving it."
+        requires: { archetype: ENGINEER }
+        roll: { stat: engineer.repair, base_p: 0.55, base_stat: 50, per_point: 0.005 }
+        outcomes:
+          success:
+            narrative: |
+              {engineer.callsign} jacks into the maintenance port and
+              pulls four decades of logs. The relay's main board has
+              been issuing self-repair commands to itself, in a hand
+              that signs Kira Vesh, every Tuesday at 0317 ship-time,
+              for ninety-one days.
+            effects:
+              - reward_credits: 250
+              - reward_xp: { archetype: ENGINEER, amount: 70 }
+              - set_flag: { name: read_the_logs }
+          failure:
+            narrative: |
+              The keypad accepts {engineer.callsign}'s override and the
+              hatch opens on a maintenance bay full of dead air and
+              corroded rack hardware. The recorder is gone. The
+              mounting bolts have been removed from the inside.
+            effects:
+              - reward_xp: { archetype: ENGINEER, amount: 25 }
+      - id: full_sweep
+        text: "Run a deep sensor sweep on the structure."
+        roll: { stat: navigator.perception, base_p: 0.50, base_stat: 50, per_point: 0.005 }
+        outcomes:
+          success:
+            narrative: |
+              {navigator.callsign} maps every cubic meter of the relay.
+              There is one heat signature, faint and small, in a
+              service corridor not on any of the schematics. It hasn't
+              moved while you've been watching.
+            effects:
+              - reward_xp: { archetype: NAVIGATOR, amount: 60 }
+              - set_flag: { name: heat_signature }
+          failure:
+            narrative: |
+              Sensor returns come back garbled — the relay is bleeding
+              electromagnetic noise across half the spectrum.
+              {navigator.callsign} gives up and recommends just leaving.
+            effects: []
+      - id: dont_board
+        text: "Don't touch it. Hold position and consider the contract complete."
+        default: true
+        outcomes:
+          result:
+            narrative: |
+              {pilot.callsign} pulls {ship} off to a clean kilometer's
+              standoff. Whatever's wrong with the Long Eye, it's the
+              next contractor's problem. The salvage office still pays
+              for the survey.
+            effects:
+              - reward_credits: 150
+              - reward_xp: { archetype: PILOT, amount: 25 }
+
+  - id: the_decision
+    narration: |
+      Whatever you have learned, the loop is still running. The relay
+      will keep broadcasting Kira Vesh's name into the dark for as long
+      as its fission heart has fuel — fifty years, maybe a hundred.
+      {pilot.callsign} looks at the rest of you. The contract did not
+      specify what to do with what you found.
+    choices:
+      - id: kill_power
+        text: "Cut the reactor. End the broadcast for good."
+        requires: { archetype: ENGINEER }
+        roll: { stat: engineer.repair, base_p: 0.45, base_stat: 50, per_point: 0.005 }
+        outcomes:
+          success:
+            narrative: |
+              {engineer.callsign} walks the long bay alone and trips
+              the fission lockout. The relay's lights die in a slow
+              wave. When you pull away, the antenna farm is just a
+              piece of rock again. Whatever was speaking, was.
+            effects:
+              - reward_credits: 400
+              - reward_card: { slot: reactor, rarity: rare }
+              - reward_xp: { archetype: ENGINEER, amount: 90 }
+              - set_flag: { name: silenced_the_eye }
+          failure:
+            narrative: |
+              The lockout doesn't take. {engineer.callsign} backs out
+              of the bay with the lights flickering behind them and
+              the broadcast louder, somehow, than it was on approach.
+            effects:
+              - injure_crew: { archetype: ENGINEER, duration_hours: 12 }
+      - id: forward_signal
+        text: "Bounce the broadcast inward. Let someone with budget answer her."
+        roll: { stat: navigator.luck, base_p: 0.55, base_stat: 50, per_point: 0.005 }
+        outcomes:
+          success:
+            narrative: |
+              {navigator.callsign} sets up a relay forward of the Long
+              Eye and patches the loop to a corporate distress board.
+              Within an hour, three different agencies are paying for
+              priority on the recording. Some of those credits land
+              in your account.
+            effects:
+              - reward_credits: 300
+              - reward_xp: { archetype: NAVIGATOR, amount: 70 }
+              - set_flag: { name: forwarded_kira }
+          failure:
+            narrative: |
+              The bounce works — for forty minutes. Then every relay
+              between the Long Eye and the inner ring drops the signal
+              at the same instant. Nobody pays for what nobody hears.
+            effects:
+              - reward_xp: { archetype: NAVIGATOR, amount: 20 }
+      - id: walk_away
+        text: "Leave it running. Take the survey fee. Forget her name."
+        default: true
+        outcomes:
+          result:
+            narrative: |
+              {pilot.callsign} burns inward without looking back. The
+              loop will keep running. Kira Vesh will keep asking. Some
+              broadcasts aren't meant for you to answer.
+            effects:
+              - reward_credits: 150
+              - reward_xp: { archetype: PILOT, amount: 30 }
+
+  - id: closing
+    is_closing: true
+    closings:
+      - when: { has_flag: silenced_the_eye, min_successes: 2 }
+        body: |
+          {ship} comes home with the relay's reactor core in the hold
+          and a survey report nobody at salvage will read past the third
+          paragraph. {pilot.callsign} sleeps without dreams, the first
+          time this month. The Long Eye is dark. It will stay that way.
+        effects:
+          - reward_credits: 600
+      - when: { has_flag: forwarded_kira }
+        body: |
+          The corporate desks are still fighting over Kira Vesh's loop
+          when {ship} docks. {navigator.callsign} cashes the early-bird
+          payment and refuses the press request. Whoever she was, she's
+          everybody's problem now.
+        effects:
+          - reward_credits: 400
+      - when: { has_flag: heat_signature }
+        body: |
+          You make port. Somewhere on a service corridor that isn't on
+          any schematic, a heat signature you didn't investigate is
+          still where you left it. {pilot.callsign} files the survey
+          and wonders, longer than is healthy, what it is.
+        effects:
+          - reward_credits: 250
+      - when: { has_flag: she_was_answered }
+        body: |
+          The relay's broadcast stopped the moment you replied and has
+          not resumed in the four days since. The salvage office calls
+          it a system fault. {navigator.callsign} doesn't correct them.
+        effects:
+          - reward_credits: 350
+      - when: { default: true }
+        body: |
+          {ship} makes port. The contract is closed. The Long Eye is
+          still broadcasting, behind you, in the dark.
+        effects:
+          - reward_credits: 175
