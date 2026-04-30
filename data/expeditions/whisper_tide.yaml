@@ -1,0 +1,391 @@
+id: whisper_tide
+kind: rolled
+duration_minutes: 240
+response_window_minutes: 30
+cost_credits: 100
+event_count: 2
+crew_required: { min: 1, archetypes_any: [PILOT, NAVIGATOR] }
+opening:
+  id: opening
+  narration: |
+    The Whisper Tide is what the patrol board calls the long debris
+    drift on the inside of the gas giant — a graveyard of every wreck
+    the system's ever lost, slow-tumbling in a single weak orbit. The
+    pay is good because the comms get strange in there. {pilot.callsign}
+    eases {ship} over the threshold buoy. The radio goes quiet, then
+    goes wrong.
+
+events:
+  - id: counting_voice
+    narration: |
+      Twenty minutes in, a voice starts counting on patrol channel —
+      slow, steady, in the negatives. -341. -342. -343.
+      {navigator.callsign} runs a triangulation. The signal is coming
+      from inside the Tide. The voice is your own.
+    choices:
+      - id: trace
+        text: "Trace it. {navigator.callsign}, find the source."
+        roll: { stat: navigator.perception, base_p: 0.50, base_stat: 50, per_point: 0.005 }
+        outcomes:
+          success:
+            narrative: |
+              The signal narrows to a derelict patrol skiff, crew long
+              gone. The recorder has a year of your callsign on it, in
+              your voice, counting toward something. You take the
+              recorder. You don't listen to it.
+            effects:
+              - reward_credits: 200
+              - reward_xp: { archetype: NAVIGATOR, amount: 60 }
+              - set_flag: { name: heard_yourself }
+          failure:
+            narrative: |
+              The trace dies whenever you close range. {navigator.callsign}
+              gives up at -612 and pulls the headset off, hands shaking.
+            effects:
+              - reward_xp: { archetype: NAVIGATOR, amount: 20 }
+      - id: mute
+        text: "Mute the channel. Keep flying."
+        default: true
+        outcomes:
+          result:
+            narrative: |
+              {pilot.callsign} flips patrol off the speaker and runs on
+              text-only. The cabin is quieter than is comfortable.
+            effects:
+              - reward_xp: { archetype: PILOT, amount: 15 }
+
+  - id: mirror_drift
+    narration: |
+      A contact resolves a kilometer off your starboard quarter — same
+      tonnage as {ship}, same drive signature, same callsign. When
+      {pilot.callsign} adjusts attitude, the contact adjusts with you.
+      Frame for frame.
+    choices:
+      - id: hail_mirror
+        text: "Hail it. Demand identification."
+        roll: { stat: navigator.luck, base_p: 0.40, base_stat: 50, per_point: 0.005 }
+        outcomes:
+          success:
+            narrative: |
+              The contact answers in {pilot.callsign}'s voice, three
+              seconds delayed, and recites the manifest of {ship}'s
+              last run word for word. Then it cuts off and is gone
+              from the scope.
+            effects:
+              - reward_xp: { archetype: NAVIGATOR, amount: 50 }
+              - set_flag: { name: saw_double }
+          failure:
+            narrative: |
+              The contact answers in {pilot.callsign}'s voice and keeps
+              answering, layering, until the comm channel is full of
+              {pilot.callsign}s. {navigator.callsign} kills the radio.
+            effects:
+              - damage_part: { slot: reactor, amount: 0.05 }
+      - id: break_off
+        text: "Break formation. Don't look at it."
+        default: true
+        outcomes:
+          result:
+            narrative: |
+              {pilot.callsign} burns hard off-axis. The contact does not
+              follow. The contact also does not stop matching your old
+              course, dwindling on the scope behind you.
+            effects:
+              - reward_xp: { archetype: PILOT, amount: 25 }
+
+  - id: empty_lifeboat
+    narration: |
+      A standard civilian lifeboat tumbles past {ship}, beacon green,
+      hatch unlocked from the inside. It's warm. There's a thermos of
+      coffee still hot on the floor. There has been no civilian traffic
+      in this sector for nine months.
+    choices:
+      - id: scavenge
+        text: "Strip what you can. Log the registry."
+        requires: { archetype: ENGINEER }
+        roll: { stat: engineer.repair, base_p: 0.60, base_stat: 50, per_point: 0.005 }
+        outcomes:
+          success:
+            narrative: |
+              {engineer.callsign} pulls a clean reactor cell and an
+              emergency drive coupler. The registry traces back to a
+              ship lost in the Tide forty years ago.
+            effects:
+              - reward_card: { slot: reactor, rarity: uncommon }
+              - reward_xp: { archetype: ENGINEER, amount: 50 }
+          failure:
+            narrative: |
+              The boat's systems start cycling on their own as you work.
+              {engineer.callsign} backs out empty-handed. The hatch
+              closes behind them.
+            effects:
+              - reward_xp: { archetype: ENGINEER, amount: 15 }
+      - id: tow_in
+        text: "Rig a tow. Bring it in for the recovery board."
+        roll: { stat: pilot.handling, base_p: 0.50, base_stat: 50, per_point: 0.005 }
+        outcomes:
+          success:
+            narrative: |
+              The tow runs clean for forty minutes. The recovery board
+              pays standard rate and asks no questions about the
+              registry date.
+            effects:
+              - reward_credits: 175
+              - reward_xp: { archetype: PILOT, amount: 40 }
+          failure:
+            narrative: |
+              The lifeboat's mass keeps shifting on the tow line, like
+              someone's moving inside. {pilot.callsign} cuts it loose
+              halfway home and doesn't argue when the rest of the crew
+              agrees.
+            effects:
+              - damage_part: { slot: drive, amount: 0.05 }
+      - id: leave_boat
+        text: "Mark its drift and move on."
+        default: true
+        outcomes:
+          result:
+            narrative: |
+              {navigator.callsign} files the find. The board will send
+              someone out who isn't you. {ship} keeps her heading.
+            effects:
+              - reward_xp: { archetype: NAVIGATOR, amount: 10 }
+
+  - id: ferryman
+    narration: |
+      A wreck slides across {ship}'s bow at low velocity — and behind
+      it, tethered by old steel cable, comes another. And another. A
+      line of eight dead ships, towing in convoy, with no engine running
+      at the head of the chain.
+    choices:
+      - id: cut_chain
+        text: "Match speed and cut the lead cable."
+        requires: { archetype: GUNNER }
+        roll: { stat: gunner.combat, base_p: 0.45, base_stat: 50, per_point: 0.006 }
+        outcomes:
+          success:
+            narrative: |
+              {gunner.callsign} puts a single shot through the lead
+              cable. The wrecks scatter slow. The lead position — empty —
+              keeps moving on the same heading.
+            effects:
+              - reward_xp: { archetype: GUNNER, amount: 70 }
+              - set_flag: { name: cut_the_chain }
+          failure:
+            narrative: |
+              The shot misses. The chain accelerates. {gunner.callsign}
+              swears something quiet and reverent.
+            effects:
+              - damage_part: { slot: hull, amount: 0.06 }
+      - id: salvage_tail
+        text: "Pace the convoy. Pull what you can off the rear wrecks."
+        roll: { stat: engineer.repair, base_p: 0.50, base_stat: 50, per_point: 0.005 }
+        outcomes:
+          success:
+            narrative: |
+              {engineer.callsign} works the tail wreck for an hour and
+              comes back with a clean drive and a name plate that doesn't
+              match any registry. Worth real credits.
+            effects:
+              - reward_card: { slot: drive, rarity: uncommon }
+              - reward_credits: 250
+              - reward_xp: { archetype: ENGINEER, amount: 60 }
+          failure:
+            narrative: |
+              The tail wreck is welded shut from the inside.
+              {engineer.callsign} gets nothing for an hour's work but a
+              feeling.
+            effects: []
+      - id: yield
+        text: "Hold position. Let the convoy pass."
+        default: true
+        outcomes:
+          result:
+            narrative: |
+              {pilot.callsign} kills the engines. The chain slides past
+              for nineteen minutes. Nobody on the bridge speaks.
+            effects:
+              - reward_xp: { archetype: PILOT, amount: 20 }
+
+  - id: frozen_passenger
+    narration: |
+      An EVA suit drifts past the viewport — sealed, intact, dark visor.
+      The chest light is still pulsing. {navigator.callsign} flags it.
+      The suit's helmet is turned, deliberately, to face {ship} as it
+      passes.
+    choices:
+      - id: recover
+        text: "Recover the suit. Whoever this was, they get a name back."
+        outcomes:
+          result:
+            narrative: |
+              You bring the suit aboard. The occupant is preserved by
+              the cold, peaceful, decades old. The estate registry pays
+              a finder's fee for the dog tags. {pilot.callsign} signs
+              the form and doesn't look at the body.
+            effects:
+              - reward_credits: 300
+              - reward_xp: { archetype: NAVIGATOR, amount: 30 }
+      - id: salute
+        text: "Salute and pass."
+        default: true
+        outcomes:
+          result:
+            narrative: |
+              You hold the salute longer than you mean to. The suit
+              tumbles out of view. The chest light is still pulsing
+              when it goes.
+            effects:
+              - reward_xp: { archetype: PILOT, amount: 15 }
+
+  - id: backwards_buoy
+    narration: |
+      A patrol marker buoy is broadcasting clean — but the message is
+      reversed. Played backward, it's a standard sector update from
+      next Tuesday. {navigator.callsign} confirms the timestamp twice.
+    choices:
+      - id: download_log
+        text: "Download the buoy's full log. Whatever's in it."
+        roll: { stat: navigator.perception, base_p: 0.55, base_stat: 50, per_point: 0.005 }
+        outcomes:
+          success:
+            narrative: |
+              {navigator.callsign} pulls four hours of sector advisories
+              from a future that hasn't been ratified yet. Two of them
+              are worth real money to the right office.
+            effects:
+              - reward_credits: 350
+              - reward_xp: { archetype: NAVIGATOR, amount: 60 }
+              - set_flag: { name: tomorrow_in_the_logs }
+          failure:
+            narrative: |
+              The log corrupts as you pull it. What lands on {ship}'s
+              drives is hours of static and one entry that just says
+              your name.
+            effects:
+              - reward_xp: { archetype: NAVIGATOR, amount: 20 }
+      - id: report_buoy
+        text: "Report the malfunction and continue patrol."
+        default: true
+        outcomes:
+          result:
+            narrative: |
+              You file the ticket. Sector security pays a small bonus
+              for diligence. The buoy keeps broadcasting next Tuesday.
+            effects:
+              - reward_credits: 75
+
+  - id: the_following
+    narration: |
+      A contact has been holding station four kilometers off {ship}'s
+      stern for the last hour. It matches every velocity change. It
+      does not close. It does not break off. {pilot.callsign} has
+      stopped pretending it isn't there.
+    choices:
+      - id: turn_into_it
+        text: "Reverse course. Burn straight at it."
+        roll: { stat: pilot.acceleration, base_p: 0.50, base_stat: 50, per_point: 0.005 }
+        outcomes:
+          success:
+            narrative: |
+              {pilot.callsign} spins {ship} on her axis and burns hard.
+              The contact holds. At one kilometer it blanks off the
+              scope as if it had never been. {pilot.callsign} keeps
+              burning for ten more minutes anyway.
+            effects:
+              - reward_xp: { archetype: PILOT, amount: 60 }
+              - set_flag: { name: faced_it_down }
+          failure:
+            narrative: |
+              You burn at it for thirty minutes. The contact does not
+              close. It does not retreat. The fuel costs are real.
+            effects:
+              - damage_part: { slot: drive, amount: 0.04 }
+      - id: ignore_following
+        text: "Hold heading. Pretend it isn't there."
+        default: true
+        outcomes:
+          result:
+            narrative: |
+              {pilot.callsign} runs the patrol heading clean for the
+              next hour. The contact stays four kilometers back the
+              entire way. It is still there when you cross the
+              threshold buoy going home. Then it isn't.
+            effects:
+              - reward_xp: { archetype: PILOT, amount: 25 }
+
+  - id: chapel_static
+    narration: |
+      An old emergency band lights up with a recording — a chapel
+      service, organ and all, broadcast from coordinates that match
+      empty space. Someone, sometime, put this on a ten-thousand-year
+      loop and pointed it at the Tide.
+    choices:
+      - id: silence_it
+        text: "Triangulate the source. Put a transponder kill on it."
+        requires: { archetype: ENGINEER }
+        roll: { stat: engineer.repair, base_p: 0.50, base_stat: 50, per_point: 0.005 }
+        outcomes:
+          success:
+            narrative: |
+              {engineer.callsign} finds the relay drone — the size of a
+              fist, ancient, cold — and shuts it down with a single
+              command. The band goes quiet for the first time in a
+              century.
+            effects:
+              - reward_credits: 200
+              - reward_xp: { archetype: ENGINEER, amount: 60 }
+              - set_flag: { name: silenced_chapel }
+          failure:
+            narrative: |
+              The kill command bounces. The recording loops back twice
+              as loud and {engineer.callsign} pulls the headset off
+              fast. You leave it.
+            effects: []
+      - id: let_it_play
+        text: "Let it play. Log the frequency. Move on."
+        default: true
+        outcomes:
+          result:
+            narrative: |
+              {navigator.callsign} files the broadcast for the
+              archivists. The organ is still going when {ship} clears
+              range.
+            effects:
+              - reward_xp: { archetype: NAVIGATOR, amount: 15 }
+
+closings:
+  - when: { has_flag: heard_yourself, min_successes: 2 }
+    body: |
+      The patrol clock runs out. {pilot.callsign} brings {ship} home
+      under a sky that feels too quiet. The recorder is in the hold.
+      It hasn't started counting again. Not yet.
+    effects:
+      - reward_credits: 250
+  - when: { has_flag: silenced_chapel }
+    body: |
+      You file your logs and dock. Patrol command pays the standard fee
+      plus a quiet bonus for the dead drone. The Tide is one voice
+      quieter tonight.
+    effects:
+      - reward_credits: 250
+  - when: { has_flag: cut_the_chain }
+    body: |
+      The chain is broken. The wrecks will drift apart for a hundred
+      years. Whatever was leading them is still leading.
+      {pilot.callsign} doesn't take Tide patrols for a while.
+    effects:
+      - reward_credits: 200
+  - when: { min_successes: 2 }
+    body: |
+      {ship} crosses the threshold buoy outbound and the comms come
+      back in one clean breath. Standard pay. Crew alive.
+      {pilot.callsign} stays at the helm a long while after docking.
+    effects:
+      - reward_credits: 200
+  - when: { default: true }
+    body: |
+      Patrol completed. The Tide is behind you. The radio is itself
+      again. That's worth something.
+    effects:
+      - reward_credits: 125
