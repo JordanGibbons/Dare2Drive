@@ -43,6 +43,11 @@ from engine.expedition_concurrency import (
     count_active_expeditions_for_user,
     get_max_expeditions,
 )
+from engine.expedition_custom_id import (
+    CUSTOM_ID_PREFIX,
+    build_custom_id,
+    parse_custom_id,
+)
 from engine.expedition_template import (
     TemplateValidationError,
     load_template,
@@ -50,27 +55,8 @@ from engine.expedition_template import (
 
 log = get_logger(__name__)
 
-
-# ---------------------------------------------------------------------------
-# Custom ID parsing
-# ---------------------------------------------------------------------------
-
-CUSTOM_ID_PREFIX = "expedition"
-
-
-def build_custom_id(expedition_id: uuid.UUID, scene_id: str, choice_id: str) -> str:
-    return f"{CUSTOM_ID_PREFIX}:{expedition_id}:{scene_id}:{choice_id}"
-
-
-def parse_custom_id(custom_id: str) -> tuple[uuid.UUID, str, str] | None:
-    parts = custom_id.split(":", 3)
-    if len(parts) != 4 or parts[0] != CUSTOM_ID_PREFIX:
-        return None
-    try:
-        eid = uuid.UUID(parts[1])
-    except ValueError:
-        return None
-    return (eid, parts[2], parts[3])
+# Re-exports for backwards compat with any external import sites.
+__all__ = ["CUSTOM_ID_PREFIX", "build_custom_id", "parse_custom_id"]
 
 
 class ResponseOutcome(TypedDict):

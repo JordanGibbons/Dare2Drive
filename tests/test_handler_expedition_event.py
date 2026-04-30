@@ -275,3 +275,42 @@ async def test_event_handler_renders_narrative_tokens_in_body(
     assert pilot.callsign in body
     assert "{pilot" not in body
     assert "{ship" not in body
+
+
+@pytest.mark.asyncio
+async def test_expedition_event_handler_emits_button_components(
+    db_session, sample_expedition_with_pilot
+):
+    """The notification must carry button components built from visible choices,
+    each custom_id parseable by the persistent ExpeditionResponseView."""
+    from db.models import JobState, JobType, ScheduledJob
+    from engine.expedition_custom_id import parse_custom_id
+    from scheduler.jobs.expedition_event import handle_expedition_event
+
+    expedition, _ = sample_expedition_with_pilot
+    job = ScheduledJob(
+        id=uuid.uuid4(),
+        user_id=expedition.user_id,
+        job_type=JobType.EXPEDITION_EVENT,
+        payload={
+            "expedition_id": str(expedition.id),
+            "scene_id": "pirate_skiff",
+            "template_id": "marquee_run",
+        },
+        scheduled_for=datetime.now(timezone.utc),
+        state=JobState.CLAIMED,
+    )
+    db_session.add(job)
+    await db_session.flush()
+
+    result = await handle_expedition_event(db_session, job)
+    notif = result.notifications[0]
+    assert notif.components, "expedition_event must attach button components"
+    assert len(notif.components) <= 5  # Discord row limit
+    for btn in notif.components:
+        parsed = parse_custom_id(btn.custom_id)
+        assert parsed is not None, f"unparseable custom_id: {btn.custom_id}"
+        eid, scene, _choice = parsed
+        assert eid == expedition.id
+        assert scene == "pirate_skiff"
+        assert btn.label  # never empty
