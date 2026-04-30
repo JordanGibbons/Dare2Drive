@@ -1,0 +1,177 @@
+id: derelict_cathedral
+kind: scripted
+duration_minutes: 360
+response_window_minutes: 30
+cost_credits: 200
+crew_required: { min: 2, archetypes_any: [PILOT, ENGINEER] }
+scenes:
+  - id: opening
+    narration: |
+      The notice came through a salvage broker who wouldn't meet your
+      eyes: the colony ship Veyra Hesper, lost a hundred and twelve years
+      ago in the dust between stars, has its running lights on again.
+      Just last week. No transponder. No distress. {pilot.callsign} plots
+      the burn and {ship} slips out of dock under a sky the color of a
+      bruise. Six hours out into the dark. Nobody else bid on the
+      contract.
+
+  - id: approach
+    narration: |
+      The Hesper resolves on long-range like a cathedral on its side —
+      kilometers of cold hull, every viewport lit a faint dirty amber.
+      {navigator.callsign} can't find a docking handshake. Whatever's
+      drawing power down there, it isn't talking back.
+    choices:
+      - id: hard_dock
+        text: "Bring {ship} alongside the forward airlock and force a seal."
+        roll: { stat: pilot.handling, base_p: 0.55, base_stat: 50, per_point: 0.005 }
+        outcomes:
+          success:
+            narrative: |
+              {pilot.callsign} kisses the hull so gentle the seal latches
+              before the proximity alarm even chirps. The Hesper accepts
+              you like she was waiting.
+            effects:
+              - reward_xp: { archetype: PILOT, amount: 50 }
+              - set_flag: { name: clean_dock }
+          failure:
+            narrative: |
+              The seal grabs but {ship} scrapes a rib of the Hesper's
+              outer skin going in. Something inside the colony ship
+              answers with a long, low groan that isn't structural.
+            effects:
+              - damage_part: { slot: hull, amount: 0.10 }
+      - id: cargo_breach
+        text: "Cut a service hatch on the dorsal cargo line — quieter, slower."
+        requires: { archetype: ENGINEER }
+        roll: { stat: engineer.repair, base_p: 0.55, base_stat: 50, per_point: 0.005 }
+        outcomes:
+          success:
+            narrative: |
+              {engineer.callsign} works the cutter for forty minutes. The
+              hatch peels back on a corridor where the air is still and
+              warm and smells faintly of wet copper.
+            effects:
+              - reward_xp: { archetype: ENGINEER, amount: 60 }
+              - set_flag: { name: quiet_entry }
+          failure:
+            narrative: |
+              The cut goes long. Something inside the Hesper notices —
+              every viewport on her starboard flank brightens at once,
+              then dims. {engineer.callsign} doesn't say a word.
+            effects:
+              - damage_part: { slot: hull, amount: 0.05 }
+      - id: scope_only
+        text: "Don't board. Run the scope, log her drift, take the salvage fee."
+        default: true
+        outcomes:
+          result:
+            narrative: |
+              You hold {ship} at a kilometer's range and let the
+              instruments do the work. {navigator.callsign} fills six
+              storage drives with readings nobody will believe.
+            effects:
+              - reward_credits: 150
+              - reward_xp: { archetype: NAVIGATOR, amount: 30 }
+              - set_flag: { name: stayed_outside }
+
+  - id: the_choir
+    narration: |
+      Three hours aboard, the Hesper's broken intercom finds a frequency
+      and starts singing. A choir — maybe a hundred voices, maybe more,
+      old liturgy in a colony dialect nobody speaks anymore.
+      {gunner.callsign} doesn't put the rifle down. The voices are coming
+      from the chapel deck. So is something else.
+    choices:
+      - id: walk_in
+        text: "Walk in. Whatever's down there, look it in the face."
+        requires: { archetype: GUNNER }
+        roll: { stat: gunner.combat, base_p: 0.45, base_stat: 50, per_point: 0.006 }
+        outcomes:
+          success:
+            narrative: |
+              {gunner.callsign} clears the chapel doorway with the rifle
+              up. The singing stops. The pews are empty. On the altar
+              sits a small steel reliquary, still warm, full of credits
+              the colony had no business minting.
+            effects:
+              - reward_credits: 600
+              - reward_card: { slot: reactor, rarity: rare }
+              - reward_xp: { archetype: GUNNER, amount: 90 }
+              - set_flag: { name: faced_choir }
+          failure:
+            narrative: |
+              Something in the chapel doesn't like company.
+              {gunner.callsign} comes back with a long burn down one arm
+              and no memory of the last six minutes. The singing doesn't
+              stop until you are off the deck.
+            effects:
+              - injure_crew: { archetype: GUNNER, duration_hours: 24 }
+              - reward_xp: { archetype: GUNNER, amount: 30 }
+      - id: tap_signal
+        text: "Don't go down. Tap the intercom and record."
+        roll: { stat: navigator.perception, base_p: 0.55, base_stat: 50, per_point: 0.005 }
+        outcomes:
+          success:
+            narrative: |
+              {navigator.callsign} pulls a clean recording from the
+              chapel feed and tags it with the Hesper's last navigation
+              log — archives in three different ports will pay for the
+              pair.
+            effects:
+              - reward_credits: 250
+              - reward_xp: { archetype: NAVIGATOR, amount: 60 }
+              - set_flag: { name: recorded_choir }
+          failure:
+            narrative: |
+              The recording comes back blank. The intercom captures only
+              the sound of {ship}'s own air recyclers, hours of them, as
+              if you were the only thing aboard the whole time.
+            effects:
+              - reward_xp: { archetype: NAVIGATOR, amount: 20 }
+      - id: leave_chapel
+        text: "Seal the deck. Get back to {ship}."
+        default: true
+        outcomes:
+          result:
+            narrative: |
+              You weld the bulkhead behind you and don't look back.
+              {pilot.callsign} keeps the airlock cycling in the
+              background, ready to run.
+            effects:
+              - reward_xp: { archetype: PILOT, amount: 25 }
+
+  - id: closing
+    is_closing: true
+    closings:
+      - when: { has_flag: faced_choir, min_successes: 2 }
+        body: |
+          {ship} comes home with the reliquary in the hold and three
+          hundred years of someone else's faith on the manifest.
+          {pilot.callsign} files the salvage paperwork and doesn't sleep
+          well for a week. Some contracts you finish. This one finishes
+          with you.
+        effects:
+          - reward_credits: 800
+          - reward_card: { slot: drive, rarity: rare }
+      - when: { has_flag: recorded_choir }
+        body: |
+          The recordings sell to a deep-archive cooperative in the inner
+          ring without a single question. {navigator.callsign} takes a
+          long shower at dock and tells nobody what was on the back end
+          of the file.
+        effects:
+          - reward_credits: 450
+      - when: { has_flag: stayed_outside }
+        body: |
+          You log the Hesper's drift, collect the survey fee, and forget
+          her. The viewports were still lit when you turned for home.
+          {pilot.callsign} doesn't take that broker's calls anymore.
+        effects:
+          - reward_credits: 250
+      - when: { default: true }
+        body: |
+          {ship} makes port. The Hesper is behind you. That'll have to
+          be enough.
+        effects:
+          - reward_credits: 150

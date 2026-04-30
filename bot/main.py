@@ -176,6 +176,9 @@ class Dare2DriveBot(commands.Bot):
         import scheduler.jobs.expedition_event as _expedition_event_module  # noqa: F401
         import scheduler.jobs.expedition_resolve as _expedition_resolve_module  # noqa: F401
 
+        # Optional guild-scoped sync for instant propagation in dev. Guild-only
+        # commands do NOT appear in DM context, so we always follow up with a
+        # global sync so /expedition respond et al. work in DMs.
         if settings.DISCORD_GUILD_ID:
             guild = discord.Object(id=int(settings.DISCORD_GUILD_ID))
             self.tree.copy_global_to(guild=guild)
@@ -188,9 +191,9 @@ class Dare2DriveBot(commands.Bot):
                     "Invite the bot using the OAuth2 URL with the 'applications.commands' scope.",
                     settings.DISCORD_GUILD_ID,
                 )
-        else:
-            await self.tree.sync()
-            log.info("Synced commands globally")
+
+        await self.tree.sync()
+        log.info("Synced commands globally")
 
     async def close(self) -> None:
         # Stop notification consumer cleanly.
