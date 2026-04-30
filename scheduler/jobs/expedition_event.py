@@ -29,7 +29,9 @@ from engine.expedition_engine import (
     _ship_hull_class,
 )
 from engine.expedition_template import load_template
+from engine.narrative_render import render
 from scheduler.dispatch import HandlerResult, NotificationRequest, register
+from scheduler.jobs._render_context import build_render_context
 
 log = get_logger(__name__)
 
@@ -108,9 +110,14 @@ async def handle_expedition_event(session: AsyncSession, job: ScheduledJob) -> H
     session.add(auto_job)
     await session.flush()
 
+    # ─────── Phase 2c: render narrative tokens ───────
+    ctx = await build_render_context(session, expedition)
+    rendered_narration = render(scene.get("narration", ""), ctx)
+    rendered_visible = [{**c, "text": render(c["text"], ctx)} for c in visible]
+
     body = _format_event_body(
-        narration=scene.get("narration", ""),
-        choices=visible,
+        narration=rendered_narration,
+        choices=rendered_visible,
         scene_id=scene_id,
         response_window_minutes=int(response_window),
     )

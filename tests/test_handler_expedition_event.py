@@ -212,3 +212,66 @@ async def test_expedition_event_handler_body_is_human_readable(
     # Should mention the slash command players use to respond
     assert "/expedition respond" in body
     assert "pirate_skiff" in body
+
+
+@pytest.mark.asyncio
+async def test_event_handler_renders_narrative_tokens_in_body(
+    db_session, sample_expedition_with_pilot, monkeypatch
+):
+    """Narration with {pilot.callsign} and {ship} renders in the DM body."""
+    from db.models import JobState, JobType, ScheduledJob
+    from scheduler.jobs.expedition_event import handle_expedition_event
+
+    expedition, pilot = sample_expedition_with_pilot
+
+    # Monkey-patch the template loader so this test owns its scene narration.
+    # Patch the name in the handler's module (direct-import binding).
+    import scheduler.jobs.expedition_event as event_mod
+
+    fake_template = {
+        "id": "marquee_run",
+        "kind": "scripted",
+        "duration_minutes": 60,
+        "response_window_minutes": 30,
+        "cost_credits": 0,
+        "crew_required": {"min": 1, "archetypes_any": ["PILOT"]},
+        "scenes": [
+            {
+                "id": "pirate_skiff",
+                "narration": "{pilot.callsign} aboard the {ship} sights pirates.",
+                "choices": [
+                    {
+                        "id": "outrun",
+                        "text": "{pilot.callsign} burns hard.",
+                        "default": True,
+                        "outcomes": {"result": {"narrative": "ok", "effects": []}},
+                    },
+                ],
+            }
+        ],
+    }
+    monkeypatch.setattr(event_mod, "load_template", lambda _id: fake_template)
+
+    job = ScheduledJob(
+        id=uuid.uuid4(),
+        user_id=expedition.user_id,
+        job_type=JobType.EXPEDITION_EVENT,
+        payload={
+            "expedition_id": str(expedition.id),
+            "scene_id": "pirate_skiff",
+            "template_id": "marquee_run",
+        },
+        scheduled_for=datetime.now(timezone.utc),
+        state=JobState.CLAIMED,
+    )
+    db_session.add(job)
+    await db_session.flush()
+
+    result = await handle_expedition_event(db_session, job)
+    body = result.notifications[0].body
+
+    # The literal `{pilot.callsign}` token must be replaced; the actual pilot's
+    # callsign comes from the `sample_expedition_with_pilot` fixture.
+    assert pilot.callsign in body
+    assert "{pilot" not in body
+    assert "{ship" not in body

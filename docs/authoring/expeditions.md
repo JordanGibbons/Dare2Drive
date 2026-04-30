@@ -215,3 +215,54 @@ python -m scripts.build_authoring_docs
 ```
 
 Then commit the regenerated `docs/authoring/expeditions.md` as part of the same PR. CI gate `tests/test_authoring_docs_drift.py` fails otherwise.
+
+---
+
+## Narrative tokens (Phase 2c)
+
+Templates can reference the aboard crew and ship by name in any player-visible string (`narration`, choice `text`, outcome `narrative`, closing `body`) using `{token}` syntax. The token vocabulary is **closed** — anything outside the allow-list will fail template validation at load time.
+
+### Allow-list
+
+| Token | Resolves to | Example |
+| --- | --- | --- |
+| `{pilot}` / `{gunner}` / `{engineer}` / `{navigator}` | display name `'First "Callsign" Last'` | `Mira "Sixgun" Voss` |
+| `{<archetype>.callsign}` | callsign only | `Sixgun` |
+| `{<archetype>.first_name}` / `{<archetype>.last_name}` | name parts | `Mira` / `Voss` |
+| `{ship}` | ship name | `Flagstaff` |
+| `{ship.hull}` | hull class display name | `Skirmisher` |
+
+### Empty-slot fallback
+
+When a slot is empty (the ship has no crew of that archetype assigned, OR the assigned crew is busy/injured), the token resolves to a generic noun:
+
+- `{pilot}` → `the pilot`
+- `{gunner.callsign}` → `the gunner`
+- `{ship}` → `the ship` (rare — every expedition has a build)
+
+This means narration like `{pilot.callsign} pulls the {ship} alongside the wreck` reads coherently even when the player launches without a pilot: `the pilot pulls the the ship alongside the wreck` — ugly, but a clear visual signal something is missing.
+
+### Authoring tips
+
+1. Lean on `.callsign` for terse, voice-driven narration (`"Sixgun, get on the guns."`).
+2. Use full names sparingly — they're long and break the action verb of a sentence.
+3. Don't prefix `{ship}` with `"the "` if you can avoid it — the fallback `the ship` will read awkwardly.
+4. To use a literal `{` or `}` in narration, double the brace: `{{` and `}}`.
+
+### Example
+
+```yaml
+- id: drifting_wreck
+  narration: |
+    {pilot.callsign} is checking the long-range scope when the contact pings —
+    something cold and tumbling. {gunner.callsign} drifts over to the side
+    guns, "just in case." Could be salvage. Could be bait.
+  choices:
+    - id: salvage
+      text: "Match velocities and crack it open."
+      ...
+```
+
+A SKIRMISHER (with both pilot and gunner slots filled) renders as: *"Sixgun is checking the long-range scope when the contact pings — Blackjack drifts over to the side guns…"*
+
+The same template launched with an empty gunner slot renders as: *"Sixgun is checking the long-range scope when the contact pings — the gunner drifts over to the side guns…"* — the player sees they could have done better with a gunner aboard.

@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from db.models import HullClass, RaceFormat
+from db.models import CrewArchetype, HullClass, RaceFormat
 from engine.stat_resolver import BuildStats
 
 _THRESHOLDS_PATH = Path(__file__).resolve().parent.parent / "data" / "class_thresholds.json"
@@ -178,3 +178,24 @@ def trending_toward(
 
     results.sort(key=lambda x: x[1], reverse=True)
     return results
+
+
+# ──────────── Phase 2c: hull-class crew slot composition ────────────
+
+HULL_CREW_SLOTS: dict[HullClass, list[CrewArchetype]] = {
+    HullClass.SKIRMISHER: [CrewArchetype.PILOT, CrewArchetype.GUNNER],
+    HullClass.HAULER: [
+        CrewArchetype.PILOT,
+        CrewArchetype.ENGINEER,
+        CrewArchetype.NAVIGATOR,
+    ],
+    HullClass.SCOUT: [CrewArchetype.PILOT, CrewArchetype.NAVIGATOR],
+}
+
+
+def slots_for_hull(hull: HullClass) -> list[CrewArchetype]:
+    """Return the canonical archetype slot list for a hull class.
+
+    The returned list's order is the canonical display order for embed/UI rendering.
+    """
+    return HULL_CREW_SLOTS[hull]

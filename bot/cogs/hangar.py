@@ -381,29 +381,37 @@ class HangarCog(commands.Cog):
             if b.ship_title_id:
                 title = await session.get(ShipTitle, b.ship_title_id)
 
-        build_hc = b.hull_class or user.hull_class
-        race_format = title.race_format if title else None
-        subclass = _subclass_label(race_format, build_hc)
+            build_hc = b.hull_class or user.hull_class
+            race_format = title.race_format if title else None
+            subclass = _subclass_label(race_format, build_hc)
 
-        if title:
-            display_name = title.custom_name or title.auto_name
-            release_str = f"{title.release_serial:03d}"
-            header = f'**"{display_name}"** · #{release_str}\n**Type:** {subclass}'
-        else:
-            filled = sum(1 for v in b.slots.values() if v is not None)
-            header = f"**Type:** {subclass}\n**Slots:** {filled}/7 filled"
+            if title:
+                display_name = title.custom_name or title.auto_name
+                release_str = f"{title.release_serial:03d}"
+                header = f'**"{display_name}"** · #{release_str}\n**Type:** {subclass}'
+            else:
+                filled = sum(1 for v in b.slots.values() if v is not None)
+                header = f"**Type:** {subclass}\n**Slots:** {filled}/7 filled"
 
-        embed = discord.Embed(
-            title=f"🔧 {interaction.user.display_name}'s Hangar",
-            description=f"{header}\n\n" + "\n".join(slot_lines),
-            color=RARITY_COLORS.get(best_rarity, 0x3B82F6),
-        )
-        embed.add_field(name="Creds", value=str(user.currency), inline=True)
-        embed.add_field(name="XP", value=str(user.xp), inline=True)
-        if title:
-            embed.set_footer(text="🔒 Core parts locked · /build disassemble to rebuild")
+            embed = discord.Embed(
+                title=f"🔧 {interaction.user.display_name}'s Hangar",
+                description=f"{header}\n\n" + "\n".join(slot_lines),
+                color=RARITY_COLORS.get(best_rarity, 0x3B82F6),
+            )
+            embed.add_field(name="Creds", value=str(user.currency), inline=True)
+            embed.add_field(name="XP", value=str(user.xp), inline=True)
+            if title:
+                embed.set_footer(text="🔒 Core parts locked · /build disassemble to rebuild")
 
-        await interaction.response.send_message(embed=embed)
+            # Phase 2c: attach hangar view (crew assignment + interactive selects)
+            from bot.views.hangar_view import render_hangar_view
+
+            crew_embed, view = await render_hangar_view(session, b, user)
+            crew_text = (crew_embed.description or "").removeprefix("**Crew**\n").strip()
+            if crew_text:
+                embed.add_field(name="Crew", value=crew_text, inline=False)
+
+        await interaction.response.send_message(embed=embed, view=view)
 
         # Tutorial progression
         from bot.cogs.tutorial import advance_tutorial

@@ -24,7 +24,9 @@ from db.models import (
 from engine.effect_registry import apply_effect
 from engine.expedition_engine import accumulated_state, select_closing
 from engine.expedition_template import load_template
+from engine.narrative_render import render
 from scheduler.dispatch import HandlerResult, NotificationRequest, register
+from scheduler.jobs._render_context import build_render_context
 
 log = get_logger(__name__)
 
@@ -100,8 +102,10 @@ async def handle_expedition_complete(session: AsyncSession, job: ScheduledJob) -
     ).inc()
     expedition_active.dec()
 
+    ctx = await build_render_context(session, expedition)
+    rendered_closing = render(closing.get("body", ""), ctx)
     body = _format_complete_body(
-        narrative=closing.get("body", ""),
+        narrative=rendered_closing,
         summary=expedition.outcome_summary,
     )
 

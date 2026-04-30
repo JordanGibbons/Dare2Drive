@@ -401,10 +401,15 @@ class HiringCog(commands.Cog):
                 await interaction.response.send_message(f"No crew named `{crew}`.", ephemeral=True)
                 return
 
-            assigned_q = await session.execute(
-                select(CrewAssignment).where(CrewAssignment.crew_id == member.id)
-            )
-            assignment = assigned_q.scalar_one_or_none()
+            assignment_row = (
+                await session.execute(
+                    select(CrewAssignment, Build)
+                    .join(Build, CrewAssignment.build_id == Build.id)
+                    .where(CrewAssignment.crew_id == member.id)
+                )
+            ).first()
+            is_assigned = assignment_row is not None
+            assigned_ship: Build | None = assignment_row[1] if assignment_row is not None else None
 
             archetype = member.archetype.value
             rarity = member.rarity.value
@@ -412,7 +417,6 @@ class HiringCog(commands.Cog):
             level = member.level
             xp = member.xp
             acquired_at = member.acquired_at
-            is_assigned = assignment is not None
             crew_row = member
 
         mapping = _get_archetype_mapping()[archetype]
@@ -459,6 +463,14 @@ class HiringCog(commands.Cog):
             inline=False,
         )
         embed.set_footer(text=f"Acquired {acquired_at.strftime('%Y-%m-%d')}")
+
+        # Phase 2c: show "Aboard <ship>" if the crew member is assigned to a build
+        if assigned_ship is not None:
+            embed.add_field(
+                name="Aboard",
+                value=f"`{assigned_ship.name}` ({assigned_ship.hull_class.value.title()})",
+                inline=False,
+            )
 
         await interaction.response.send_message(embed=embed)
 
