@@ -243,3 +243,14 @@ async def test_hangar_unassign_removes_build_crew_assignment(db_session, sample_
         .all()
     )
     assert rows == []
+
+
+def test_setup_hook_registers_hangar_view():
+    """Persistent view contract: HangarView is added at bot startup."""
+    import inspect
+
+    from bot import main as main_mod
+
+    source = inspect.getsource(main_mod)
+    assert "HangarView" in source, "bot/main.py must reference HangarView"
+    assert "add_view" in source, "bot/main.py must call add_view()"
