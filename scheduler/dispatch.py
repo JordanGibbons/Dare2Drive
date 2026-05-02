@@ -23,13 +23,22 @@ class NotificationButton:
     """Discord-agnostic description of a button to attach to a DM.
 
     The bot-side notification consumer materializes these into discord.ui.Button
-    instances. `custom_id` must be parseable by a persistent View registered on
-    the bot (see ExpeditionResponseView).
+    instances. `custom_id` must match the regex template of a DynamicItem
+    registered on the bot (see ExpeditionChoiceButton).
     """
 
     custom_id: str
     label: str
     style: str = "primary"  # one of: primary, secondary, success, danger
+
+
+@dataclass
+class NotificationEmbedField:
+    """A single field in a Discord embed (e.g., a labeled choice line)."""
+
+    name: str
+    value: str
+    inline: bool = False
 
 
 @dataclass
@@ -44,6 +53,11 @@ class NotificationRequest:
     # its own DM (no batching) so the buttons stay associated with the
     # narration that prompted them.
     components: list[NotificationButton] | None = None
+    # Optional embed fields. When present alongside `components`, the consumer
+    # renders the DM as a discord.Embed with title/description/fields rather
+    # than plain markdown — used by expedition events to lay out lettered
+    # choices next to A/B/C buttons.
+    embed_fields: list[NotificationEmbedField] | None = None
 
 
 @dataclass

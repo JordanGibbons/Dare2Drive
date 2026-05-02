@@ -289,6 +289,98 @@ async def test_consumer_attaches_view_when_components_present(
 
 
 @pytest.mark.asyncio
+async def test_consumer_renders_embed_when_embed_fields_present(
+    db_session, redis_client, monkeypatch
+):
+    """A notification with both `components` and `embed_fields` must arrive as
+    a discord.Embed (title + description + fields), with the buttons attached
+    via View. Plain text content must NOT also be sent — Discord shows
+    duplicate text otherwise."""
+    import json
+
+    import discord
+
+    from bot import notifications as notifs
+
+    monkeypatch.setattr(
+        "bot.notifications.async_session",
+        lambda: _SessionContext(db_session),
+    )
+
+    user = User(
+        discord_id="600106",
+        username="cn_f",
+        hull_class=HullClass.HAULER,
+        notification_prefs={"expedition_event": "dm", "_version": 1},
+    )
+    db_session.add(user)
+    await db_session.flush()
+
+    captured: list[dict] = []
+
+    class FakeUser:
+        id = 600106
+
+        async def send(self, content=None, *, view=None, embed=None):
+            captured.append({"content": content, "view": view, "embed": embed})
+
+    class FakeBot:
+        async def fetch_user(self, _id: int):
+            return FakeUser()
+
+    components = [
+        {"custom_id": "expedition:abc:s1:c1", "label": "A", "style": "primary"},
+        {"custom_id": "expedition:abc:s1:c2", "label": "B", "style": "primary"},
+    ]
+    embed_fields = [
+        {"name": "A.", "value": "Run for it.", "inline": False},
+        {"name": "B.", "value": "Stand and fight.", "inline": False},
+    ]
+    await redis_client.xadd(
+        "d2d:notifications:test_embed",
+        {
+            "user_id": "600106",
+            "category": "expedition_event",
+            "title": "Expedition event — pirate_skiff",
+            "body": "A skiff slides out of the asteroids.",
+            "correlation_id": "c",
+            "dedupe_key": "k",
+            "created_at": "now",
+            "components": json.dumps(components),
+            "embed_fields": json.dumps(embed_fields),
+        },
+    )
+
+    consumer = notifs.NotificationConsumer(
+        bot=FakeBot(),
+        redis=redis_client,
+        stream_key="d2d:notifications:test_embed",
+        consumer_group="g_embed",
+        consumer_id="c1",
+        batch_window_seconds=0,
+        start_id="0",
+    )
+    await consumer.ensure_group()
+    await consumer.process_once(block_ms=200)
+    await consumer.flush_pending()
+
+    assert len(captured) == 1
+    sent = captured[0]
+    assert sent["embed"] is not None, "must render as embed when embed_fields present"
+    assert sent["content"] in (None, ""), "must not duplicate body as plain content"
+    assert sent["view"] is not None
+    embed = sent["embed"]
+    assert embed.title == "Expedition event — pirate_skiff"
+    assert "asteroids" in (embed.description or "")
+    assert [(f.name, f.value) for f in embed.fields] == [
+        ("A.", "Run for it."),
+        ("B.", "Stand and fight."),
+    ]
+    buttons = [c for c in sent["view"].children if isinstance(c, discord.ui.Button)]
+    assert [b.label for b in buttons] == ["A", "B"]
+
+
+@pytest.mark.asyncio
 async def test_consumer_does_not_batch_components_with_plain_items(
     db_session, redis_client, monkeypatch
 ):

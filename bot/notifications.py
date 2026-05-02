@@ -31,6 +31,17 @@ _BUTTON_STYLES: dict[str, discord.ButtonStyle] = {
 }
 
 
+def _decode_json_list(raw: str | None, entry_id: str, field_name: str) -> list[dict]:
+    if not raw:
+        return []
+    try:
+        decoded = json.loads(raw)
+    except (json.JSONDecodeError, TypeError):
+        log.warning("notification %s JSON decode failed entry_id=%s", field_name, entry_id)
+        return []
+    return decoded if isinstance(decoded, list) else []
+
+
 @dataclass
 class _PendingItem:
     user_id: str
@@ -40,6 +51,7 @@ class _PendingItem:
     entry_id: str
     received_at: float
     components: list[dict] = field(default_factory=list)
+    embed_fields: list[dict] = field(default_factory=list)
 
 
 class NotificationConsumer:
@@ -122,17 +134,10 @@ class NotificationConsumer:
                 if not user_id:
                     await self.redis.xack(self.stream_key, self.consumer_group, entry_id)
                     continue
-                components_raw = fields.get("components")
-                components: list[dict] = []
-                if components_raw:
-                    try:
-                        decoded = json.loads(components_raw)
-                        if isinstance(decoded, list):
-                            components = decoded
-                    except (json.JSONDecodeError, TypeError):
-                        log.warning(
-                            "notification components JSON decode failed entry_id=%s", entry_id
-                        )
+                components = _decode_json_list(fields.get("components"), entry_id, "components")
+                embed_fields = _decode_json_list(
+                    fields.get("embed_fields"), entry_id, "embed_fields"
+                )
                 self._buffer[user_id].append(
                     _PendingItem(
                         user_id=user_id,
@@ -142,6 +147,7 @@ class NotificationConsumer:
                         entry_id=entry_id,
                         received_at=time.monotonic(),
                         components=components,
+                        embed_fields=embed_fields,
                     )
                 )
 
@@ -208,8 +214,17 @@ class NotificationConsumer:
 
         for it in with_components:
             view = _build_view(it.components)
-            content = f"**{it.title}**\n{it.body}"
-            await self._send_one(discord_user, user_id, content, [it], hour_bucket, view=view)
+            embed = _build_embed(it) if it.embed_fields else None
+            content = None if embed is not None else f"**{it.title}**\n{it.body}"
+            await self._send_one(
+                discord_user,
+                user_id,
+                content,
+                [it],
+                hour_bucket,
+                view=view,
+                embed=embed,
+            )
 
         if plain:
             merged = "\n\n".join(f"**{it.title}**\n{it.body}" for it in plain)
@@ -219,17 +234,20 @@ class NotificationConsumer:
         self,
         discord_user: discord.User,
         user_id: str,
-        content: str,
+        content: str | None,
         items: list[_PendingItem],
         hour_bucket: int,
         *,
         view: discord.ui.View | None = None,
+        embed: discord.Embed | None = None,
     ) -> None:
         try:
+            kwargs: dict = {}
             if view is not None:
-                await discord_user.send(content, view=view)
-            else:
-                await discord_user.send(content)
+                kwargs["view"] = view
+            if embed is not None:
+                kwargs["embed"] = embed
+            await discord_user.send(content, **kwargs)
             for it in items:
                 await self.redis.xack(self.stream_key, self.consumer_group, it.entry_id)
                 notifications_total.labels(category=it.category, result="delivered").inc()
@@ -245,12 +263,28 @@ class NotificationConsumer:
             # don't XACK transient failures — let XPENDING reclaim later.
 
 
+def _build_embed(item: _PendingItem) -> discord.Embed:
+    """Render an embed with title, narration as description, and labeled fields.
+
+    Used for component-bearing notifications (e.g. expedition events) where a
+    visual hierarchy of narration → labeled choices is clearer than markdown.
+    """
+    embed = discord.Embed(title=item.title, description=item.body)
+    for f in item.embed_fields[:25]:  # Discord embed cap
+        embed.add_field(
+            name=str(f.get("name", ""))[:256],
+            value=str(f.get("value", ""))[:1024],
+            inline=bool(f.get("inline", False)),
+        )
+    return embed
+
+
 def _build_view(components: list[dict]) -> discord.ui.View:
     """Build a non-timing-out View carrying the buttons.
 
-    Click routing happens via the persistent ExpeditionResponseView registered
-    on the bot (matched by custom_id), so the View we attach here is just a
-    transport for the buttons.
+    Click routing happens via the ExpeditionChoiceButton DynamicItem class
+    registered on the bot (matched by custom_id template), so the View we
+    attach here is just a transport for the buttons.
     """
     view = discord.ui.View(timeout=None)
     for c in components[:5]:

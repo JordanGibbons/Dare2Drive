@@ -23,6 +23,72 @@ def test_parse_custom_id_rejects_non_expedition_prefix():
     assert parse_custom_id("training:abc:run") is None
 
 
+def test_expedition_choice_button_template_matches_built_custom_ids():
+    """The DynamicItem template regex must match the same custom_ids that
+    build_custom_id produces — otherwise clicks won't dispatch."""
+    from bot.cogs.expeditions import ExpeditionChoiceButton, build_custom_id
+
+    eid = uuid.uuid4()
+    cid = build_custom_id(eid, "scene_a", "outrun")
+    match = ExpeditionChoiceButton.__discord_ui_compiled_template__.fullmatch(cid)
+    assert match is not None, f"DynamicItem template does not match {cid!r}"
+    assert match["expedition_id"] == str(eid)
+    assert match["scene_id"] == "scene_a"
+    assert match["choice_id"] == "outrun"
+
+
+def test_expedition_choice_button_template_rejects_other_prefixes():
+    from bot.cogs.expeditions import ExpeditionChoiceButton
+
+    assert (
+        ExpeditionChoiceButton.__discord_ui_compiled_template__.fullmatch(
+            "hangar:slot:12345678-1234-5678-1234-567812345678:PILOT"
+        )
+        is None
+    )
+
+
+@pytest.mark.asyncio
+async def test_expedition_choice_button_from_custom_id_round_trip():
+    """from_custom_id must reconstruct an ExpeditionChoiceButton with the
+    parsed expedition_id/scene_id/choice_id — this is the path discord.py
+    uses to deliver clicks after a bot restart."""
+    from unittest.mock import MagicMock
+
+    from bot.cogs.expeditions import ExpeditionChoiceButton, build_custom_id
+
+    eid = uuid.uuid4()
+    cid = build_custom_id(eid, "scene_a", "outrun")
+    match = ExpeditionChoiceButton.__discord_ui_compiled_template__.fullmatch(cid)
+    assert match is not None
+
+    # Stub the inbound item so from_custom_id can pull its label.
+    fake_item = MagicMock()
+    fake_item.label = "A"
+    instance = await ExpeditionChoiceButton.from_custom_id(MagicMock(), fake_item, match)
+    assert instance.expedition_id == eid
+    assert instance.scene_id == "scene_a"
+    assert instance.choice_id == "outrun"
+
+
+def test_expedition_cog_registers_dynamic_item_at_setup():
+    """Regression for the silent-click bug: setup() must call add_dynamic_items,
+    not add_view — a persistent View with no children doesn't route
+    parameterized custom_ids through discord.py's dispatch."""
+    import inspect
+
+    from bot.cogs import expeditions as cog_mod
+
+    source = inspect.getsource(cog_mod.setup)
+    assert (
+        "add_dynamic_items" in source
+    ), "expeditions setup must call bot.add_dynamic_items(ExpeditionChoiceButton)"
+    assert "ExpeditionChoiceButton" in source
+    assert (
+        "add_view(ExpeditionResponseView" not in source
+    ), "old persistent-view registration must be gone — it doesn't route clicks"
+
+
 @pytest.mark.asyncio
 async def test_handle_response_cancels_auto_resolve_and_enqueues_resolve(
     db_session, sample_expedition_with_pilot

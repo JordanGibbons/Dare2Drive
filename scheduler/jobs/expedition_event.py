@@ -31,8 +31,19 @@ from engine.expedition_engine import (
 )
 from engine.expedition_template import load_template
 from engine.narrative_render import render
-from scheduler.dispatch import HandlerResult, NotificationButton, NotificationRequest, register
+from scheduler.dispatch import (
+    HandlerResult,
+    NotificationButton,
+    NotificationEmbedField,
+    NotificationRequest,
+    register,
+)
 from scheduler.jobs._render_context import build_render_context
+
+# Fixed letter labels — players click 'A', 'B', etc. on a button row, the full
+# choice text appears as embed fields next to those letters. Cap at 5 because
+# Discord allows at most 5 buttons per ActionRow.
+_CHOICE_LETTERS = ["A", "B", "C", "D", "E"]
 
 log = get_logger(__name__)
 
@@ -116,20 +127,31 @@ async def handle_expedition_event(session: AsyncSession, job: ScheduledJob) -> H
     rendered_narration = render(scene.get("narration", ""), ctx)
     rendered_visible = [{**c, "text": render(c["text"], ctx)} for c in visible]
 
+    capped_visible = rendered_visible[: len(_CHOICE_LETTERS)]
+
     body = _format_event_body(
         narration=rendered_narration,
-        choices=rendered_visible,
         scene_id=scene_id,
         response_window_minutes=int(response_window),
+        has_choices=bool(capped_visible),
     )
 
     components = [
         NotificationButton(
             custom_id=build_custom_id(expedition.id, scene_id, c["id"]),
-            label=c["text"][:80],
+            label=letter,
             style="primary",
         )
-        for c in rendered_visible[:5]
+        for letter, c in zip(_CHOICE_LETTERS, capped_visible)
+    ]
+
+    embed_fields = [
+        NotificationEmbedField(
+            name=f"{letter}.",
+            value=c["text"][:1024],
+            inline=False,
+        )
+        for letter, c in zip(_CHOICE_LETTERS, capped_visible)
     ]
 
     expedition_events_fired_total.labels(
@@ -150,25 +172,32 @@ async def handle_expedition_event(session: AsyncSession, job: ScheduledJob) -> H
                 correlation_id=str(expedition.correlation_id),
                 dedupe_key=f"expedition:{expedition.id}:scene:{scene_id}",
                 components=components or None,
+                embed_fields=embed_fields or None,
             )
         ]
     )
 
 
 def _format_event_body(
-    *, narration: str, choices: list[dict], scene_id: str, response_window_minutes: int
+    *,
+    narration: str,
+    scene_id: str,
+    response_window_minutes: int,
+    has_choices: bool,
 ) -> str:
-    """Player-facing event message — narration plus a fallback hint.
+    """Embed description: narration plus a single hint line.
 
-    Choices ride along as button components on the DM (see expedition_event
-    handler), so we don't enumerate them in the body. The slash-command hint
-    stays as a fallback for clients that don't render components.
+    Each choice is rendered as a labeled embed field (A./B./C./...) by the
+    consumer; players click an A/B/C button to commit. The slash-command hint
+    is the fallback for clients that don't render components.
     """
     lines = [narration.strip()]
-    if choices:
+    if has_choices:
         lines.append("")
-        lines.append(f"Click a choice below — or use `/expedition respond` (scene `{scene_id}`).")
-    lines.append(f"Auto-resolves in {response_window_minutes} minutes.")
+        lines.append(
+            f"Click a letter — or use `/expedition respond` (scene `{scene_id}`). "
+            f"Auto-resolves in {response_window_minutes} minutes."
+        )
     return "\n".join(lines)
 
 

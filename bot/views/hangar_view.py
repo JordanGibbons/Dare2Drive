@@ -1,9 +1,13 @@
-"""Persistent HangarView for the /hangar <build> command.
+"""HangarView + HangarSlotSelect for the /hangar <build> command.
 
-The View has one Select per crew slot. Selecting a crew option assigns that
-crew to the slot; selecting the special 'Unassign' option clears the slot.
-The View is registered globally at bot startup via `bot.add_view(HangarView())`
-so button/select interactions survive restarts.
+Each crew slot is a `HangarSlotSelect` — a `discord.ui.DynamicItem` whose
+custom_id encodes the build_id and archetype. The bot registers the
+DynamicItem class once at startup; discord.py routes any incoming interaction
+whose custom_id matches the template to `HangarSlotSelect.callback`,
+surviving restarts.
+
+The `HangarView` class is just a transient container — `render_hangar_view`
+builds a fresh one per render and attaches the dynamic-item selects.
 
 custom_id format:
     hangar:slot:<build_id>:<archetype_name>
@@ -54,82 +58,116 @@ def parse_select_custom_id(custom_id: str) -> tuple[uuid.UUID, str] | None:
 
 
 class HangarView(discord.ui.View):
-    """Persistent View that handles all /hangar crew-slot Select interactions."""
+    """Transient container for HangarSlotSelect dynamic items."""
 
     def __init__(self) -> None:
         super().__init__(timeout=None)
 
-    async def interaction_check(self, interaction: discord.Interaction) -> bool:  # type: ignore[override]
-        custom_id = (interaction.data or {}).get("custom_id", "") if interaction.data else ""
-        parsed = parse_select_custom_id(custom_id)
-        if parsed is None:
-            return False
-        build_id, archetype_name = parsed
-        try:
-            archetype = CrewArchetype[archetype_name]
-        except KeyError:
-            await interaction.response.send_message("Unknown crew slot.", ephemeral=True)
-            return False
 
+class HangarSlotSelect(
+    discord.ui.DynamicItem[discord.ui.Select],
+    template=(r"hangar:slot:" r"(?P<build_id>[0-9a-fA-F-]{36}):" r"(?P<archetype>[A-Z]+)"),
+):
+    """A crew-slot Select whose custom_id encodes (build_id, archetype).
+
+    Click routing is handled by discord.py's DynamicItem dispatch — `callback`
+    runs on every interaction whose custom_id matches the template, surviving
+    bot restarts.
+    """
+
+    def __init__(
+        self,
+        build_id: uuid.UUID,
+        archetype: CrewArchetype,
+        *,
+        options: list[discord.SelectOption],
+        placeholder: str | None = None,
+        disabled: bool = False,
+    ) -> None:
+        super().__init__(
+            discord.ui.Select(
+                custom_id=make_select_custom_id(build_id, archetype.name),
+                options=options,
+                placeholder=placeholder or archetype.name,
+                disabled=disabled,
+                min_values=1,
+                max_values=1,
+            )
+        )
+        self.build_id = build_id
+        self.archetype = archetype
+
+    @classmethod
+    async def from_custom_id(cls, interaction, item, match, /):  # type: ignore[override]
+        # The framework only uses this instance for callback dispatch — actual
+        # selection values come from interaction.data, not the wrapped item.
+        return cls(
+            build_id=uuid.UUID(match["build_id"]),
+            archetype=CrewArchetype[match["archetype"]],
+            options=[discord.SelectOption(label="(stub)", value="stub")],
+        )
+
+    async def callback(self, interaction: discord.Interaction) -> None:  # type: ignore[override]
         values = (interaction.data or {}).get("values", [])
         if not values:
-            return False
+            return
         chosen = values[0]
 
         async with async_session() as session, session.begin():
-            build = await session.get(Build, build_id, with_for_update=True)
+            build = await session.get(Build, self.build_id, with_for_update=True)
             if build is None or build.user_id != str(interaction.user.id):
                 await interaction.response.send_message("Build not found.", ephemeral=True)
-                return False
+                return
             if build.current_activity != BuildActivity.IDLE:
                 await interaction.response.send_message(
                     f"`{build.name}` is currently busy and can't be modified.",
                     ephemeral=True,
                 )
-                return False
+                return
 
             if chosen == UNASSIGN_VALUE:
                 await session.execute(
                     delete(CrewAssignment)
                     .where(CrewAssignment.build_id == build.id)
-                    .where(CrewAssignment.archetype == archetype)
+                    .where(CrewAssignment.archetype == self.archetype)
                 )
-                msg = f"Unassigned the {archetype.name.title()} slot of `{build.name}`."
+                msg = f"Unassigned the {self.archetype.name.title()} slot of `{build.name}`."
             elif chosen in {"none", "locked"}:
-                return False
+                return
             else:
                 try:
                     crew_uuid = uuid.UUID(chosen)
                 except ValueError:
                     await interaction.response.send_message("Invalid selection.", ephemeral=True)
-                    return False
+                    return
                 crew = await session.get(CrewMember, crew_uuid)
                 if crew is None or crew.user_id != str(interaction.user.id):
                     await interaction.response.send_message(
                         "Crew member not found.", ephemeral=True
                     )
-                    return False
-                if crew.archetype != archetype:
+                    return
+                if crew.archetype != self.archetype:
                     await interaction.response.send_message(
                         f"That crew member is a {crew.archetype.name.title()}, "
-                        f"not a {archetype.name.title()}.",
+                        f"not a {self.archetype.name.title()}.",
                         ephemeral=True,
                     )
-                    return False
+                    return
                 # Upsert: replace any existing assignment for this slot.
                 await session.execute(
                     delete(CrewAssignment)
                     .where(CrewAssignment.build_id == build.id)
-                    .where(CrewAssignment.archetype == archetype)
+                    .where(CrewAssignment.archetype == self.archetype)
                 )
-                session.add(CrewAssignment(build_id=build.id, crew_id=crew.id, archetype=archetype))
+                session.add(
+                    CrewAssignment(build_id=build.id, crew_id=crew.id, archetype=self.archetype)
+                )
                 msg = (
                     f'Assigned {crew.first_name} "{crew.callsign}" {crew.last_name} '
-                    f"as {archetype.name.title()} of `{build.name}`."
+                    f"as {self.archetype.name.title()} of `{build.name}`."
                 )
 
         await interaction.response.send_message(msg, ephemeral=True)
-        return False
 
 
 async def render_hangar_view(
@@ -172,7 +210,7 @@ async def render_hangar_view(
             name="Status", value=f"Locked — {build.current_activity.value}", inline=False
         )
 
-    # Build view: one Select per slot
+    # Build view: one HangarSlotSelect per slot
     view = HangarView()
     if not is_locked:
         eligible_by_archetype = await _load_eligible_crew_by_archetype(
@@ -180,24 +218,25 @@ async def render_hangar_view(
         )
         for slot in slots_for_hull(build.hull_class):
             current_crew = aboard_by_archetype.get(slot)
-            select_component = _build_slot_select(
-                build.id, slot, current_crew, eligible_by_archetype.get(slot, [])
+            view.add_item(
+                _build_slot_select(
+                    build.id, slot, current_crew, eligible_by_archetype.get(slot, [])
+                )
             )
-            view.add_item(select_component)
     else:
         # Disabled placeholder selects so the View shape stays consistent
         for slot in slots_for_hull(build.hull_class):
-            placeholder = discord.ui.Select(
-                custom_id=make_select_custom_id(build.id, slot.name),
-                placeholder=f"{slot.name}: ship locked",
-                options=[
-                    discord.SelectOption(label="(ship is busy)", value="locked", default=True)
-                ],
-                disabled=True,
-                min_values=1,
-                max_values=1,
+            view.add_item(
+                HangarSlotSelect(
+                    build.id,
+                    slot,
+                    options=[
+                        discord.SelectOption(label="(ship is busy)", value="locked", default=True)
+                    ],
+                    placeholder=f"{slot.name}: ship locked",
+                    disabled=True,
+                )
             )
-            view.add_item(placeholder)
 
     return embed, view
 
@@ -233,7 +272,7 @@ def _build_slot_select(
     archetype: CrewArchetype,
     current_crew: CrewMember | None,
     eligible: list[CrewMember],
-) -> discord.ui.Select:
+) -> HangarSlotSelect:
     options: list[discord.SelectOption] = []
     if not eligible:
         options.append(
@@ -243,14 +282,7 @@ def _build_slot_select(
                 default=True,
             )
         )
-        return discord.ui.Select(
-            custom_id=make_select_custom_id(build_id, archetype.name),
-            placeholder=archetype.name,
-            options=options,
-            disabled=True,
-            min_values=1,
-            max_values=1,
-        )
+        return HangarSlotSelect(build_id, archetype, options=options, disabled=True)
 
     # Discord caps Select options at 25; with the Unassign option we leave room for 24 crew
     for crew in eligible[:24]:
@@ -275,10 +307,4 @@ def _build_slot_select(
             )
         )
 
-    return discord.ui.Select(
-        custom_id=make_select_custom_id(build_id, archetype.name),
-        placeholder=archetype.name,
-        options=options,
-        min_values=1,
-        max_values=1,
-    )
+    return HangarSlotSelect(build_id, archetype, options=options)

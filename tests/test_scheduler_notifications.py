@@ -61,6 +61,35 @@ async def test_emit_notification_serializes_components(redis_client):
 
 
 @pytest.mark.asyncio
+async def test_emit_notification_serializes_embed_fields(redis_client):
+    """Embed fields round-trip through the stream as JSON, parallel to components."""
+    import json
+
+    from scheduler.dispatch import NotificationEmbedField
+    from scheduler.notifications import NotificationRequest, emit_notification
+
+    n = NotificationRequest(
+        user_id="902",
+        category="expedition_event",
+        title="t",
+        body="b",
+        correlation_id="c",
+        dedupe_key="k",
+        embed_fields=[
+            NotificationEmbedField(name="A.", value="Run for it."),
+            NotificationEmbedField(name="B.", value="Fight.", inline=True),
+        ],
+    )
+    await emit_notification(n, client=redis_client, stream_key="d2d:notifications:embed_fields")
+    entries = await redis_client.xrange("d2d:notifications:embed_fields", count=10)
+    decoded = json.loads(entries[0][1]["embed_fields"])
+    assert decoded == [
+        {"name": "A.", "value": "Run for it.", "inline": False},
+        {"name": "B.", "value": "Fight.", "inline": True},
+    ]
+
+
+@pytest.mark.asyncio
 async def test_emit_notification_omits_components_when_absent(redis_client):
     """Notifications without buttons must not write a `components` field at all."""
     from scheduler.notifications import NotificationRequest, emit_notification
