@@ -407,7 +407,7 @@ A player builds a ship, assigns crew via the `/hangar` view (one click per slot)
 
 ## Phase 2d — Tutorial v2
 
-**Status:** Blocked on Phase 2c. **Phase 3 is blocked on Phase 2d.**
+**Status:** Deferred until after Phase 3 (decision 2026-05-01). Originally blocked Phase 3, but the day-to-day gameplay loop is currently thin — most of what exists is "select and wait" — and tutorializing a game that isn't engaging yet bakes the wrong shape into onboarding. Phase 3 lands the actual gameplay layer (lighthouses, resources, home base, events). The tutorial gets rebuilt against that shape afterward, when there's a game worth introducing players to.
 
 ### Goal
 
@@ -455,83 +455,272 @@ A new player who runs `/start` is guided through every Phase 0–2b system (ship
 
 ---
 
-## Phase 3 — Job Board + Channel Events + Villain Takeovers + System Control
+## Phase 3 — Gameplay Layer (decomposed into 3a–e)
 
-**Status:** Blocked on Phase 2c.
+**Status:** Phase 3 was originally scoped as a single shipping unit covering jobs, channel events, villain takeovers, and system control. During Phase 3 brainstorming (2026-05-01) the work was split into five independently-shippable sub-phases. The originally-planned Phase 3 content survives as **Phase 3e**; the new sub-phases land foundations that the original Phase 3 had implicitly assumed.
+
+The split reflects a shift in priority: the day-to-day game loop is currently thin (most of what exists is select-and-wait), and Phase 3 is now explicitly *the gameplay layer* — fleet operations players will actually engage with daily — not just background events.
+
+Phase 3 sub-phases, in dependency order:
+
+- **3a — Narrative Setting.** Canonical galaxy reference doc. (Done.)
+- **3b — Lighthouses + System Character.** Replaces the abstract "system control" with the Lighthouse model from the setting. Star types and planets per system. Warden mechanic.
+- **3c — Resource Loop.** Players exploit planets/system features for resources. Resources fuel home base, Lighthouse upgrades, and crew training. The day-to-day "what do I do today" loop.
+- **3d — Home Base.** Unified DM-side hub for fleet ops; consolidates `/hangar`, `/fleet`, `/training`, `/research`, `/stations`, `/expedition` into a single navigation surface.
+- **3e — Events: Weather + Channel + Villains.** Original Phase 3 content, reframed under the setting. Cosmic storms affect system yields; channel events spawn in enabled channels; villain takeovers attack Lighthouses.
+
+Phase 4 (PvP) remains blocked on Phase 3 as a whole.
+
+---
+
+## Phase 3a — Narrative Setting
+
+**Status:** **Done** (2026-05-01). Output: [`docs/lore/setting.md`](../lore/setting.md).
 
 ### Goal
 
-Bot drives server-wide engagement. A rotating job board, scheduled events that appear in system channels, rare villain takeovers with real consequences, and a persistent **system control** layer that rewards long-term investment in specific systems.
+Lock the cosmology, tone, factions, inhabitants, psychics, the Other Side, and the Lighthouse network in one canonical reference. Every Phase 3 sub-spec (and Phase 4+) leans on it instead of re-litigating world-building decisions.
+
+### Deliverable
+
+[`docs/lore/setting.md`](../lore/setting.md) — ten-section setting doc covering: one-line pitch; tone and creative pillars; the Cascade (the K3 → K4 attempt and its failure); today's galaxy (inner-systems nations + middle-band corps + outer-rim frontier); the Crossroads-Beacon (the official server's in-fiction home); inhabitants (humans + aliens + K3 echoes); psychics and the cults; the Other Side (named recurring antagonist minds + alien-physics terrain); the Lighthouse network; the player's place; deferred-to-spec list.
+
+### Reuse pointers
+
+- Setting doc names placeholder antagonists (the Sleeper, the Drowned Choir, the Conductor) and explicit categories (cults, corps, nations, weather-cults). Phase 3e specs can rename the placeholders without re-litigating the categories.
+
+---
+
+## Phase 3b — Lighthouses + System Character
+
+**Status:** Blocked on Phase 3a (done).
+
+### Goal
+
+Replace the abstract "system control" concept with the canonical Lighthouse model from the setting. Each system gets a star type, planets/system features, and a Lighthouse object with an upgrade tree. Players can claim Wardenship of unclaimed Lighthouses.
 
 ### Mechanics
 
-- **Job board** (`/jobs`): rotating pool of contracts. Each job is a parameterized expedition or encounter template with rewards (credits, dossier leads, XP, rare parts, unique crew). Jobs expire. Some jobs are system-local, some sector-wide, some universe-wide.
-- **Channel events:** bot posts a timed event to an enabled system channel (e.g., "Pirate convoy spotted — 2 hr window"). Multiple players participate. Results aggregate for shared rewards.
-- **Villain takeovers:** rare scheduled events. A named villain seizes one or more systems (can span multiple sectors for universe-level takeovers). Players across affected servers rally fleets. Resolution window is ~24–72 hours.
-  - If villain wins: system/sector debuff applied (e.g., credit yields -20%, encounter stats -5%) for a duration.
-  - If villain seizes a player-controlled system and wins: the controller **loses control** on top of the debuff.
-  - If players win: shared reward, possible unique crew drop, defeated villain added to rotation for future callbacks.
-- **System control:** one player can hold control of a system at a time. Control is fiction-flavored as "kingpin / harbormaster / warden" — the controller's banner appears in the channel.
-  - **Claim:** completing a special Control Contract (from the job board) while no current controller exists grants control. Contracts are harder than normal jobs and have a cooldown after any control change.
-  - **Benefits** (starting list — tune in spec): small % tribute on credit rewards earned by other players in the system, priority access to rare system-local jobs, cosmetic banner/flair, bonus share of villain-defeat rewards in controlled systems.
-  - **Defense in Phase 3:** PvE only. Villain takeovers are the primary contest. Also: if the controller goes inactive for a threshold duration (e.g., 14 days no encounters in that system), control lapses and the system becomes claimable again.
-  - **Defense in Phase 4:** player-vs-player challenges open the control up to PvP contestation (see Phase 4).
-  - **Multi-system:** a player may hold control of multiple systems simultaneously — more holdings mean more tribute but also more defense burden.
+- **Star type per system.** Single / binary / trinary / etc., with color and age. Drives system character — what planets exist, what weather is common, what resources are likely.
+- **Planet / system-feature taxonomy.** Per system, generated deterministically at activation time from a seed. Varies by star type. Becomes the gameplay surface 3c hangs resources on.
+- **Lighthouse object.** One per system. State machine: dormant → active → contested. Upgrade slots accept K3 tech.
+- **Warden mechanic.** Folds the original roadmap's `SectorControl` into the new fiction. Players claim Wardenship of unclaimed active Lighthouses by completing Authority-vetted contracts. Wardens earn tribute and prioritize upgrade installation.
+- **Inactivity lapse.** Wardens who abandon their system lose the seat (carried over from the original Phase 3 plan).
+
+### New entities
+
+- **`Lighthouse`** — `id`, `system_id` (unique), `state` enum, `warden_user_id` nullable, `last_activated_at`, `seed` for deterministic system character.
+- **`LighthouseUpgrade`** — installed upgrade record. Catalog itself stubbed in 3b, expanded in 3e.
+- **System character** — added as columns or JSONB on the existing `System` model: `star_type`, `planets` taxonomy.
+
+### Files likely touched
+
+- `db/models.py`, `db/migrations/versions/`
+- `engine/lighthouse_engine.py` — claim, upgrade, defense logic
+- `engine/system_generator.py` — deterministic system character from seed
+- `bot/cogs/lighthouse.py` — `/lighthouse info`, `/lighthouse claim`, `/lighthouse upgrade install`
+- `data/upgrades/` — upgrade catalog stub (categories + a few sample upgrades; full catalog deferred to 3e)
+
+### Reuse pointers
+
+- Existing `System` model from Phase 0 — extend, don't replace.
+- Phase 2a scheduler — claim contracts and inactivity-lapse checks are scheduled jobs.
+- Phase 2b expedition engine — claim contracts are a parameterized expedition kind.
+
+### Scope boundary (OUT of Phase 3b)
+
+- Active resource gathering (Phase 3c)
+- Home base UI consolidation (Phase 3d)
+- Weather, channel events, villains (Phase 3e)
+- PvP Warden challenges (Phase 4)
+
+### Deliverable
+
+A player can locate an unclaimed Lighthouse on the rim, complete a claim contract, and become its Warden. Every system has discoverable star/planet character. Lighthouse upgrades can be installed (with a stub catalog).
+
+### Verification
+
+- A new system's character is deterministic given its seed
+- Claim contract success → Warden assigned + ControlHistory row written
+- Inactivity lapse fires correctly after the threshold
+- Multi-system Wardenship works (one player can hold multiple Lighthouses)
+
+---
+
+## Phase 3c — Resource Loop
+
+**Status:** Blocked on Phase 3b.
+
+### Goal
+
+Players exploit planets and system features for resources. Resources fuel home base, Lighthouse upgrades, and crew training. This is the day-to-day "what do I do today" loop currently missing from the game.
+
+### Mechanics
+
+- **Resource categories** — coarse-grained list (ore, salvage, biotech, exotic-physics samples — final list in spec).
+- **Resource extraction** — a fleet/crew assignment to a planet in a system. Yields accumulate over time and are claimed at completion. Builds on the Phase 2a accrual model.
+- **Resource expeditions** — a new expedition kind whose payload is resources rather than narrative outcomes.
+- **Storage** — per-player resource stockpile. Soft caps to be tuned in spec.
+
+### New entities
+
+- **`Resource`** — definition table (category, name, base value).
+- **`ResourceStock`** — per-player inventory.
+- **`ResourceExtraction`** — active or scheduled extraction operations on planets.
+- **`ResourceLedger`** — audit trail of grants and consumption.
+
+### Files likely touched
+
+- `db/models.py`, `db/migrations/versions/`
+- `engine/resource_engine.py` — extraction yields, consumption, ledger writes
+- `bot/cogs/resources.py` — `/resources stock`, `/resources extract`, `/resources claim`
+- `scheduler/jobs/resource_extraction.py` — periodic yield computation
+
+### Reuse pointers
+
+- Phase 2a scheduler + accrual model — extractions are scheduled jobs with periodic yield ticks.
+- Phase 2b expedition engine — resource expeditions are a new template kind.
+
+### Scope boundary (OUT of Phase 3c)
+
+- Specific upgrade-cost balancing (Phase 3b sets schema; Phase 3c provides feedstock; final balancing in 3e)
+- Home base UI (Phase 3d)
+- Player-to-player resource trading (Phase 4 or post-launch)
+
+### Deliverable
+
+Players assign fleets to extract resources from planets. Resources accumulate. Resources can be spent on Lighthouse upgrades and crew training.
+
+### Verification
+
+- Extraction yields scale with planet richness, crew assignment, ship build
+- Two simultaneous extractions on different planets accrue independently
+- Resource consumption (e.g., on a Lighthouse upgrade) writes a ledger row
+- Cross-server: resources follow the player to any system
+
+---
+
+## Phase 3d — Home Base
+
+**Status:** Blocked on Phase 3c (so resources, the most content-rich room, are populated when home base ships).
+
+### Goal
+
+Consolidate fleet operations into a unified DM-side surface — the player's home base. Today `/hangar`, `/fleet`, `/training`, `/research`, `/stations`, `/expedition`, and `/resources` (Phase 3c) are scattered slash commands. Home base reframes them as rooms inside one persistent navigation view.
+
+### Mechanics
+
+- `/base` opens a discord.py View with sub-views per room.
+- **Rooms (starting list — refine in spec):** Hangar (ships), Crew Quarters, Training Grounds, Research Lab, Stations, Expedition Ops, Resource Stockpile, Lighthouse Console (visible only if Warden of at least one system).
+- Each room is a thin adapter over the existing implementation cogs — no new gameplay verbs land here.
+- Older slash commands remain functional; `/base` is the recommended interface.
+
+### New entities
+
+- Possibly none. If a `HomeBaseConfig` per player makes sense for room-order preferences, add it; otherwise everything is derived from existing state.
+
+### Files likely touched
+
+- `bot/views/home_base_view.py` — main View
+- `bot/views/rooms/` — one View per room
+- Existing fleet-side cogs — minor refactors so each room can reuse the underlying logic without going through the slash-command path
+
+### Reuse pointers
+
+- Phase 2c HangarView + DynamicItem pattern — same approach for every room.
+
+### Scope boundary (OUT of Phase 3d)
+
+- New gameplay verbs (those live in 3b/3c/3e)
+- Combat depth (Phase 4)
+- Mobile-optimized layout work (post-launch tuning)
+
+### Deliverable
+
+`/base` opens a unified view. Every existing fleet operation is reachable from a room. The Lighthouse Console room appears for Wardens.
+
+### Verification
+
+- Every existing slash command's primary action is reachable inside the home base view
+- Switching rooms preserves View state (no message churn)
+- Persistent dispatch (DynamicItem) routes clicks correctly across bot restarts
+
+---
+
+## Phase 3e — Events: Weather + Channel + Villains
+
+**Status:** Blocked on Phase 3b (villain attacks target Lighthouses) and Phase 3c (weather modifies resource yields).
+
+### Goal
+
+Bot drives server-wide engagement under the canonical setting. Cosmic storms pass through systems and bend yields. The bot posts timed events to enabled system channels. Rare named villains target Lighthouses — a successful attack degrades the system, may strip its Warden, and is felt across multiple servers if the villain's scope is universe-wide. A rotating job board surfaces it all as actionable contracts.
+
+### Mechanics
+
+- **Weather events.** Storms passing through a system on schedules drawn from the system's character (3b). Weather affects resource extraction yields (3c), expedition odds, and visibility. Each weather kind is rooted in one of the over-there minds (setting §7). Weather-cult cosmetic flair can mark systems where their patron's storms are common.
+- **Job board** (`/jobs`): rotating pool of contracts. Each job is a parameterized expedition or encounter template with rewards (credits, dossier leads, XP, rare parts, unique crew, resources, Lighthouse upgrade tokens). Jobs expire. Some are system-local, some sector-wide, some universe-wide. Authority-vetted contracts include the claim contracts that 3b uses for Wardenship; the job board UI is where they surface.
+- **Channel events.** Bot posts a timed event to an enabled system channel (e.g., "Pirate convoy spotted — 2 hr window"). Multiple players participate; results aggregate for shared rewards.
+- **Villain takeovers.** Rare scheduled events. A named villain (drawn from the over-there minds in setting §7, or their incursions) seizes one or more systems by attacking the Lighthouse. Resolution window 24–72 hours.
+  - If players win: shared reward, possible unique crew drop, the villain returns to rotation for callbacks.
+  - If the villain wins: the Lighthouse takes consequences. Exact failure mode (network sever, debuff settling in, upgrade reversal, Warden strip — combinations possible) tuned in this spec against 3b's state machine.
+- **Cross-cutting:** debuffs and weather both layer into `engine/stat_resolver.py` as additional modifier sources.
 
 ### New entities
 
 - **`Job`** — `id`, `title`, `scope` (system/sector/universe), `expedition_template_id` or `encounter_template_id`, `reward` JSONB, `expires_at`, `system_id` nullable, `sector_id` nullable.
 - **`JobAcceptance`** — player takes a job; links to a scheduled expedition/encounter.
 - **`ChannelEvent`** — timed event posted to a system. `system_id`, `spawned_at`, `expires_at`, `event_type`, `payload`, aggregated `participant_results`.
-- **`VillainEvent`** — `id`, `villain_id`, `scope` (system/sector/universe), `affected_system_ids`, `started_at`, `ends_at`, `resolution` enum, `collective_progress` (damage vs. villain HP).
-- **`Villain`** — catalog of recurring villains. `id`, `name`, `tier`, `archetype`, `portrait_key`, `debuff_template` JSONB.
+- **`WeatherEvent`** — active storm in a system. `system_id`, `kind`, `started_at`, `ends_at`, `intensity`, `over_there_mind` (which mind this kind is rooted in).
+- **`VillainEvent`** — `id`, `villain_id`, `scope`, `target_lighthouse_ids`, `started_at`, `ends_at`, `resolution` enum, `collective_progress` (damage vs. villain HP).
+- **`Villain`** — catalog of recurring villains. `id`, `name`, `tier`, `archetype`, `portrait_key`, `over_there_mind`, `debuff_template` JSONB.
 - **`ActiveDebuff`** — `system_id` or `sector_id`, `debuff_template_id`, `applied_at`, `expires_at`.
-- **`SectorControl`** — `system_id` (unique), `controller_user_id`, `claimed_at`, `last_active_at`, `tribute_rate`, `lapses_at` (nullable — inactivity-based expiry).
-- **`ControlHistory`** — audit log of control changes. `system_id`, `previous_controller_id`, `new_controller_id` (nullable = lapsed/villain-stripped), `changed_at`, `reason` enum (claimed/lapsed/villain/challenge).
+
+(Note: `SectorControl` and `ControlHistory` from the original single-phase Phase 3 plan now live in 3b under the Lighthouse Warden model.)
 
 ### Files likely touched
 
 - `bot/cogs/jobs.py` — `/jobs list`, `/jobs accept`, `/jobs status`
 - `bot/cogs/events.py` — channel event command handlers
 - `bot/cogs/villains.py` — villain status, participation
-- `bot/cogs/control.py` — `/system info`, `/system claim`, `/system tribute` (view)
-- `engine/system_control.py` — claim validation, tribute calculation, lapse check
-- `scheduler/jobs/control_lapse_checker.py` — periodic job that expires inactive control
+- `bot/cogs/weather.py` — `/weather` view per system
+- `engine/weather_engine.py` — storm scheduling per system character, yield modifiers
+- `engine/villain_engine.py` — aggregate player damage, determine resolution
 - `scheduler/jobs/job_rotator.py` — rotates job board hourly/daily
 - `scheduler/jobs/event_spawner.py` — spawns channel events per system config
 - `scheduler/jobs/villain_scheduler.py` — triggers villain takeovers
-- `engine/villain_engine.py` — aggregate player damage, determine resolution
-- `engine/stat_resolver.py` — apply `ActiveDebuff` modifiers when player is in a debuffed system/sector
+- `scheduler/jobs/weather_scheduler.py` — spawns/expires weather events per system
+- `engine/stat_resolver.py` — apply `ActiveDebuff` and active weather modifiers at resolve time
 - `data/villains/` — villain catalog
 - `data/jobs/templates.json` — job template pool
+- `data/weather/` — weather catalog (kinds, durations, modifier ranges)
 - `bot/cogs/admin.py` — extend `/system` config for event frequency, villain opt-out
 
 ### Reuse pointers
 
-- **Scheduler from Phase 2** — all spawning uses the durable scheduler
-- **Expedition engine from Phase 2** — jobs are parameterized expeditions/encounters
-- **Stat resolver** — debuffs plug in as another modifier layer
+- Phase 2a scheduler — all spawning uses the durable scheduler.
+- Phase 2b expedition engine — jobs are parameterized expeditions/encounters.
+- Phase 3b Lighthouse model — villain takeovers target Lighthouses; defense outcomes write to the Lighthouse state machine.
+- Stat resolver — weather and debuffs are additional modifier layers.
 
-### Scope boundary (OUT of Phase 3)
+### Scope boundary (OUT of Phase 3e)
 
-- PvP between players (Phase 4) — jobs and events here are PvE
-- **PvP control challenges** (Phase 4) — Phase 3 system control is PvE only; villains and inactivity are the sole threats
-- Guild/alliance mechanics (future) — Phase 3 models control as single-player only; the schema should not preclude future group ownership but no group logic is built
-- Real-time battle experience (Phase 5)
+- PvP between players (Phase 4) — jobs and events here are PvE.
+- PvP Warden challenges (Phase 4) — 3e contests Wardens via villains; 3b owns inactivity-lapse; player-vs-player Warden challenges land in Phase 4.
+- Guild/alliance mechanics (future) — schema should not preclude group ownership; no group logic is built.
+- Real-time battle experience (Phase 5).
 
 ### Deliverable
 
-Players see a living job board. Systems feel alive with scheduled events. Villain takeovers are memorable server-wide moments that change gameplay for a bounded time. Systems have named kingpins whose banners appear in channel, creating identity and long-term stakes.
+Players see a living job board including the claim contracts 3b uses for Wardenship. Systems feel alive — weather rolls through, channel events spawn, occasionally a villain attacks a Lighthouse and the affected servers rally. Wardens have something to defend.
 
 ### Verification
 
 - Job board rotation: jobs expire on time, new ones appear, counts are correct
 - Channel event lifecycle: spawn → participate → resolve → rewards paid
-- Villain takeover: simulate both win and loss, confirm debuff applied + expired correctly
-- Villain strips player control when seizing a controlled system and winning
+- Weather: a storm kind correctly modifies the yields/odds it's supposed to in its target system
+- Villain takeover: simulate both win and loss, confirm Lighthouse state transitions and debuffs applied + expired correctly
+- Villain strips a Warden when winning a Warden-held Lighthouse
 - Cross-server: a universe-scale villain affects multiple test servers simultaneously
-- System claim: completing a Control Contract on an uncontrolled system grants control; tribute flows correctly on subsequent other-player credit rewards
-- Lapse: simulate controller inactivity past threshold → control lapses, history row written
 
 ---
 
