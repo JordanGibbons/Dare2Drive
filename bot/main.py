@@ -164,11 +164,11 @@ class Dare2DriveBot(commands.Bot):
         )
         log.info("notification_consumer_started")
 
-        # Phase 2c — register persistent HangarView so crew select interactions
-        # survive bot restarts.
-        from bot.views.hangar_view import HangarView
+        # Phase 2c — register HangarSlotSelect dynamic item so /hangar
+        # crew-slot select interactions route correctly across restarts.
+        from bot.views.hangar_view import HangarSlotSelect
 
-        self.add_view(HangarView())
+        self.add_dynamic_items(HangarSlotSelect)
 
         # Phase 2b expedition handlers (registers via side-effect import)
         import scheduler.jobs.expedition_auto_resolve as _expedition_auto_resolve_module  # noqa: F401

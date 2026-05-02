@@ -141,38 +141,67 @@ def _infer_template_id(expedition: Expedition) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Persistent button view
+# Persistent click routing via DynamicItem
 # ---------------------------------------------------------------------------
+#
+# Why DynamicItem instead of a persistent View: discord.py's persistent-view
+# dispatch requires every routable custom_id to be registered (via children
+# on a View instance passed to bot.add_view). Our custom_ids are
+# parameterized per expedition (`expedition:<uuid>:<scene>:<choice>`), so we
+# can't predeclare them. DynamicItem matches incoming custom_ids by regex
+# template, so a single registration covers every click.
 
 
-class ExpeditionResponseView(discord.ui.View):
-    """A persistent View that handles all expedition button clicks.
+class ExpeditionChoiceButton(
+    discord.ui.DynamicItem[discord.ui.Button],
+    template=(
+        rf"{CUSTOM_ID_PREFIX}:"
+        r"(?P<expedition_id>[0-9a-fA-F-]{36}):"
+        r"(?P<scene_id>[a-z0-9_]+):"
+        r"(?P<choice_id>[a-z0-9_]+)"
+    ),
+):
+    def __init__(
+        self,
+        *,
+        expedition_id: uuid.UUID,
+        scene_id: str,
+        choice_id: str,
+        label: str = "",
+        style: discord.ButtonStyle = discord.ButtonStyle.primary,
+    ) -> None:
+        super().__init__(
+            discord.ui.Button(
+                label=label[:80] or "?",
+                custom_id=build_custom_id(expedition_id, scene_id, choice_id),
+                style=style,
+            )
+        )
+        self.expedition_id = expedition_id
+        self.scene_id = scene_id
+        self.choice_id = choice_id
 
-    Registered once at bot startup via `bot.add_view(ExpeditionResponseView())`.
-    """
+    @classmethod
+    async def from_custom_id(cls, interaction, item, match, /):  # type: ignore[override]
+        return cls(
+            expedition_id=uuid.UUID(match["expedition_id"]),
+            scene_id=match["scene_id"],
+            choice_id=match["choice_id"],
+            label=item.label or "",
+        )
 
-    def __init__(self) -> None:
-        super().__init__(timeout=None)
-
-    async def interaction_check(self, interaction: discord.Interaction) -> bool:
-        custom_id = (interaction.data or {}).get("custom_id", "") if interaction.data else ""
-        parsed = parse_custom_id(custom_id)
-        if parsed is None:
-            return False
-        expedition_id, scene_id, choice_id = parsed
-
+    async def callback(self, interaction: discord.Interaction) -> None:  # type: ignore[override]
         async with async_session() as session, session.begin():
             outcome = await handle_expedition_response(
                 session,
-                expedition_id=expedition_id,
-                scene_id=scene_id,
-                choice_id=choice_id,
+                expedition_id=self.expedition_id,
+                scene_id=self.scene_id,
+                choice_id=self.choice_id,
                 invoking_user_id=str(interaction.user.id),
             )
-
-        msg = _user_facing_message(outcome, choice_id)
-        await interaction.response.send_message(msg, ephemeral=True)
-        return False
+        await interaction.response.send_message(
+            _user_facing_message(outcome, self.choice_id), ephemeral=True
+        )
 
 
 def _user_facing_message(outcome: ResponseOutcome, choice_id: str) -> str:
@@ -188,23 +217,6 @@ def _user_facing_message(outcome: ResponseOutcome, choice_id: str) -> str:
     if s == "not_found":
         return "Expedition not found."
     return f"Couldn't process your response: {outcome.get('detail', s)}"
-
-
-def build_button_components(
-    expedition_id: uuid.UUID,
-    scene_id: str,
-    choices: list[dict[str, str]],
-) -> list[discord.ui.Button]:
-    """Build a list of Buttons for an event DM."""
-    out: list[discord.ui.Button] = []
-    for c in choices[:5]:
-        btn = discord.ui.Button(
-            style=discord.ButtonStyle.primary,
-            label=c["text"][:80],
-            custom_id=build_custom_id(expedition_id, scene_id, c["id"]),
-        )
-        out.append(btn)
-    return out
 
 
 # ---------------------------------------------------------------------------
@@ -730,5 +742,5 @@ async def setup(bot: commands.Bot) -> None:
         log.info("expeditions cog skipped — EXPEDITIONS_ENABLED is False")
         return
     await bot.add_cog(ExpeditionsCog(bot))
-    bot.add_view(ExpeditionResponseView())
-    log.info("expeditions cog loaded + persistent view registered")
+    bot.add_dynamic_items(ExpeditionChoiceButton)
+    log.info("expeditions cog loaded + dynamic-item routing registered")

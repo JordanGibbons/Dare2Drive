@@ -46,10 +46,12 @@ async def test_render_hangar_view_returns_embed_and_view(db_session, sample_user
     db_session.add(build)
     await db_session.flush()
 
+    from bot.views.hangar_view import HangarSlotSelect
+
     embed, view = await render_hangar_view(db_session, build, sample_user)
     assert "Flagstaff" in embed.description or "Flagstaff" in embed.title
-    # Skirmisher = 2 crew slots (PILOT, GUNNER) → 2 Select children
-    selects = [c for c in view.children if isinstance(c, discord.ui.Select)]
+    # Skirmisher = 2 crew slots (PILOT, GUNNER) → 2 HangarSlotSelect dynamic items
+    selects = [c for c in view.children if isinstance(c, HangarSlotSelect)]
     assert len(selects) == 2
 
 
@@ -108,9 +110,14 @@ async def test_render_hangar_view_disables_selects_when_on_expedition(db_session
     db_session.add(build)
     await db_session.flush()
 
+    from bot.views.hangar_view import HangarSlotSelect
+
     embed, view = await render_hangar_view(db_session, build, sample_user)
-    selects = [c for c in view.children if isinstance(c, discord.ui.Select)]
-    assert all(s.disabled for s in selects)
+    selects = [c for c in view.children if isinstance(c, HangarSlotSelect)]
+    assert selects, "expected disabled slot selects to be present"
+    # Each DynamicItem wraps a discord.ui.Select; the disabled flag lives on
+    # the wrapped item.
+    assert all(s.item.disabled for s in selects)
 
 
 @pytest.mark.asyncio
@@ -158,9 +165,12 @@ async def test_hangar_assign_inserts_build_crew_assignment(db_session, sample_us
     interaction.response.edit_message = AsyncMock()
     interaction.response.send_message = AsyncMock()
 
-    view = hv.HangarView()
-    handled = await view.interaction_check(interaction)
-    assert handled is False
+    select_item = hv.HangarSlotSelect(
+        build.id,
+        CrewArchetype.PILOT,
+        options=[discord.SelectOption(label="(stub)", value="stub")],
+    )
+    await select_item.callback(interaction)
 
     from sqlalchemy import select
 
@@ -230,8 +240,12 @@ async def test_hangar_unassign_removes_build_crew_assignment(db_session, sample_
     interaction.response.edit_message = AsyncMock()
     interaction.response.send_message = AsyncMock()
 
-    view = hv.HangarView()
-    await view.interaction_check(interaction)
+    select_item = hv.HangarSlotSelect(
+        build.id,
+        CrewArchetype.PILOT,
+        options=[discord.SelectOption(label="(stub)", value="stub")],
+    )
+    await select_item.callback(interaction)
 
     rows = (
         (
@@ -245,15 +259,19 @@ async def test_hangar_unassign_removes_build_crew_assignment(db_session, sample_
     assert rows == []
 
 
-def test_setup_hook_registers_hangar_view():
-    """Persistent view contract: HangarView is added at bot startup."""
+def test_setup_hook_registers_hangar_dynamic_item():
+    """Persistent click routing contract: HangarSlotSelect is registered as a
+    DynamicItem at bot startup so /hangar select interactions survive restarts."""
     import inspect
 
     from bot import main as main_mod
 
     source = inspect.getsource(main_mod)
-    assert "HangarView" in source, "bot/main.py must reference HangarView"
-    assert "add_view" in source, "bot/main.py must call add_view()"
+    assert "HangarSlotSelect" in source, "bot/main.py must reference HangarSlotSelect"
+    assert "add_dynamic_items" in source, (
+        "bot/main.py must call add_dynamic_items() — add_view alone won't route "
+        "parameterized custom_ids on persistent components"
+    )
 
 
 def test_setup_hook_always_syncs_globally():

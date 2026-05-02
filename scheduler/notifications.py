@@ -29,13 +29,13 @@ def get_redis_client() -> redis_async.Redis:
 
 def _to_stream_fields(n: NotificationRequest) -> dict[str, str]:
     d = asdict(n)
-    # Redis stream values must be strings; JSON-encode the components list so
-    # the consumer can rebuild discord.ui.Button instances from it.
+    # Redis stream values must be strings; JSON-encode list/object fields.
     components = d.pop("components", None)
     if components:
         d["components"] = json.dumps(components)
-    else:
-        d.pop("components", None)
+    embed_fields = d.pop("embed_fields", None)
+    if embed_fields:
+        d["embed_fields"] = json.dumps(embed_fields)
     d["created_at"] = datetime.now(timezone.utc).isoformat()
     return d
 
