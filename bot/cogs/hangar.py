@@ -354,10 +354,31 @@ class HangarCog(commands.Cog):
                 )
                 return
 
-            # Resolve card names for each slot (slots now store user_card_id)
+            # When the build has a minted title, the title's build_snapshot is the
+            # canonical source for what's equipped — `b.slots` may be stale or
+            # cleared (e.g. tutorial-card cleanup nulls slot refs). Fall back to
+            # `b.slots` only for unlocked builds.
+            title = None
+            if b.ship_title_id:
+                title = await session.get(ShipTitle, b.ship_title_id)
+            snapshot: dict = (title.build_snapshot or {}) if title else {}
+
             slot_lines = []
             best_rarity = "common"
             for slot in CardSlot:
+                snap = snapshot.get(slot.value)
+                if snap:
+                    rarity = snap.get("rarity", "common")
+                    r_emoji = RARITY_EMOJI.get(rarity, "")
+                    name = snap.get("name", "?")
+                    serial = snap.get("serial", 0)
+                    slot_lines.append(
+                        f"**{slot.value.title()}:** {r_emoji} {name} #{serial} ({rarity})"
+                    )
+                    if RARITY_ORDER.get(rarity, 0) > RARITY_ORDER.get(best_rarity, 0):
+                        best_rarity = rarity
+                    continue
+
                 uc_id_str = b.slots.get(slot.value)
                 if uc_id_str:
                     uc = await session.get(UserCard, uuid.UUID(uc_id_str))
@@ -378,11 +399,6 @@ class HangarCog(commands.Cog):
                         slot_lines.append(f"**{slot.value.title()}:** ❌ Part missing (wrecked?)")
                 else:
                     slot_lines.append(f"**{slot.value.title()}:** — Empty —")
-
-            # Load title info if one is minted
-            title = None
-            if b.ship_title_id:
-                title = await session.get(ShipTitle, b.ship_title_id)
 
             build_hc = b.hull_class or user.hull_class
             race_format = title.race_format if title else None
@@ -764,9 +780,27 @@ class HangarCog(commands.Cog):
                 )
                 return
 
+            # Prefer the title's snapshot for locked builds — see /hangar for rationale.
+            title = None
+            if build.ship_title_id:
+                title = await session.get(ShipTitle, build.ship_title_id)
+            snapshot: dict = (title.build_snapshot or {}) if title else {}
+
             slot_lines = []
             best_rarity = "common"
             for slot in CardSlot:
+                snap = snapshot.get(slot.value)
+                if snap:
+                    rarity = snap.get("rarity", "common")
+                    emoji = RARITY_EMOJI.get(rarity, "")
+                    slot_lines.append(
+                        f"**{slot.value.title()}:** {emoji} {snap.get('name', '?')} "
+                        f"#{snap.get('serial', 0)} ({rarity})"
+                    )
+                    if RARITY_ORDER.get(rarity, 0) > RARITY_ORDER.get(best_rarity, 0):
+                        best_rarity = rarity
+                    continue
+
                 uc_id_str = build.slots.get(slot.value)
                 if uc_id_str:
                     uc = await session.get(UserCard, uuid.UUID(uc_id_str))

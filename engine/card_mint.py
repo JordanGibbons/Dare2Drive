@@ -100,11 +100,20 @@ async def mint_tutorial_card(session: AsyncSession, user_id: str, card: Card) ->
 
 async def delete_tutorial_cards(session: AsyncSession, user_id: str) -> int:
     """
-    Delete all tutorial cards (serial_number=0) for a user and clear them from builds.
+    Cleanup pass for tutorial cards (serial_number=0).
 
-    Returns the number of cards deleted.
+    Tutorial cards live until the player completes the tutorial. At that point:
+      - Cards locked into an active ship title's build_snapshot are PROMOTED:
+        they get a real serial number (bumping card.total_minted), roll real
+        stat variance, and the title's snapshot is updated to match. This
+        preserves the player's first ship as a genuine artifact instead of a
+        zombie reference to a deleted card.
+      - All other tutorial cards are deleted, and any references in the
+        player's active build's slots are cleared.
+
+    Returns the number of cards deleted (NOT including promoted ones).
     """
-    from db.models import Build
+    from db.models import Build, ShipStatus, ShipTitle
 
     # Find all tutorial copies
     result = await session.execute(
@@ -117,29 +126,82 @@ async def delete_tutorial_cards(session: AsyncSession, user_id: str) -> int:
     if not tutorial_cards:
         return 0
 
-    tutorial_ids = {str(uc.id) for uc in tutorial_cards}
-
-    # Clear from active build slots
-    build_result = await session.execute(
-        select(Build).where(Build.user_id == user_id, Build.is_active)
+    # Collect all active titles owned by this user — we may need to promote
+    # tutorial cards that are locked into one of their snapshots.
+    title_result = await session.execute(
+        select(ShipTitle).where(
+            ShipTitle.owner_id == user_id,
+            ShipTitle.status != ShipStatus.SCRAPPED,
+        )
     )
-    build = build_result.scalar_one_or_none()
-    if build:
-        new_slots = dict(build.slots)
-        changed = False
-        for slot_name, uc_id in new_slots.items():
-            if uc_id in tutorial_ids:
-                new_slots[slot_name] = None
-                changed = True
-        if changed:
-            build.slots = new_slots
+    active_titles = list(title_result.scalars().all())
 
-    # Delete the tutorial cards
+    # Build: locked_uc_id -> list[(title, slot_name)] so we know what to update.
+    locked_refs: dict[str, list[tuple[ShipTitle, str]]] = {}
+    for title in active_titles:
+        for slot_name, snap in (title.build_snapshot or {}).items():
+            uc_id = snap.get("user_card_id") if isinstance(snap, dict) else None
+            if uc_id:
+                locked_refs.setdefault(uc_id, []).append((title, slot_name))
+
+    promoted_ids: set[str] = set()
     for uc in tutorial_cards:
+        refs = locked_refs.get(str(uc.id))
+        if not refs:
+            continue
+        card = await session.get(Card, uc.card_id)
+        if card is None:
+            continue
+        # Promote: real serial + rolled variance, in place on the existing UserCard.
+        card.total_minted += 1
+        new_serial = card.total_minted
+        uc.serial_number = new_serial
+        uc.stat_modifiers = roll_stat_modifiers(card.stats)
+        # Update each title snapshot that points at this card.
+        for title, slot_name in refs:
+            new_snapshot = dict(title.build_snapshot or {})
+            existing = dict(new_snapshot.get(slot_name) or {})
+            existing["serial"] = new_serial
+            new_snapshot[slot_name] = existing
+            title.build_snapshot = new_snapshot
+        promoted_ids.add(str(uc.id))
+        log.info(
+            "Promoted tutorial card %s -> serial #%d for user %s",
+            card.name,
+            new_serial,
+            user_id,
+        )
+
+    to_delete = [uc for uc in tutorial_cards if str(uc.id) not in promoted_ids]
+    delete_ids = {str(uc.id) for uc in to_delete}
+
+    # Clear delete-bound refs from active build slots. Promoted cards stay
+    # equipped and keep their slot reference.
+    if delete_ids:
+        build_result = await session.execute(
+            select(Build).where(Build.user_id == user_id, Build.is_active)
+        )
+        build = build_result.scalar_one_or_none()
+        if build:
+            new_slots = dict(build.slots)
+            changed = False
+            for slot_name, uc_id in new_slots.items():
+                if uc_id in delete_ids:
+                    new_slots[slot_name] = None
+                    changed = True
+            if changed:
+                build.slots = new_slots
+
+    for uc in to_delete:
         await session.delete(uc)
 
-    log.debug("Deleted %d tutorial cards for user %s", len(tutorial_cards), user_id)
-    return len(tutorial_cards)
+    log.debug(
+        "Tutorial cleanup for user %s: %d deleted, %d promoted",
+        user_id,
+        len(to_delete),
+        len(promoted_ids),
+    )
+    return len(to_delete)
 
 
 def degrade_stat_modifiers(

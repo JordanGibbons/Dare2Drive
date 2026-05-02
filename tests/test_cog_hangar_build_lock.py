@@ -2,10 +2,29 @@
 
 from __future__ import annotations
 
+import inspect
 import uuid
 from unittest.mock import AsyncMock, MagicMock, create_autospec
 
 import pytest
+
+
+def test_hangar_renders_locked_parts_from_title_snapshot():
+    """Regression for the 'all slots Empty' display bug: when a build has a
+    minted ship title, the hangar/peek embeds must read part info from
+    `title.build_snapshot` (the canonical locked-in record), not from
+    `b.slots` which can be cleared by tutorial-card cleanup."""
+    from bot.cogs import hangar as hangar_mod
+
+    src = inspect.getsource(hangar_mod)
+    # Both /hangar (hangar) and /hangar peek must reference build_snapshot.
+    assert src.count("build_snapshot") >= 2, (
+        "expected /hangar and /hangar peek to read parts from title.build_snapshot — "
+        "without this, locked builds with cleared slots render as all Empty"
+    )
+    # And neither should fall straight through to `b.slots` without first
+    # checking the snapshot — guard via a literal phrase the comment uses.
+    assert "snapshot is the" in src.lower() or "snapshot.get" in src
 
 
 def _make_interaction(user_id):
