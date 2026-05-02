@@ -3,14 +3,14 @@
 **Status:** Drafting (2026-05-02)
 **Owner:** Jordan
 **Depends on:**
-- Phase 3a — [`docs/lore/setting.md`](../lore/setting.md) (canonical galaxy setting)
+- Phase 3a — [`docs/lore/setting.md`](../../lore/setting.md) (canonical galaxy setting)
 - Phase 0 — `System` model (per-Sector channel-system)
 - Phase 1 — Build / parts / credits
 - Phase 2a — Durable scheduler
 - Phase 2b — Parameterized expedition engine
 - Phase 2c — LLM narrative pipeline (used for system seed pass)
 
-**Supersedes:** the Phase 3b placeholder section in [`2026-04-22-salvage-pulp-revamp.md`](2026-04-22-salvage-pulp-revamp.md). The original section becomes a stub that points here.
+**Supersedes:** the Phase 3b placeholder section in [`2026-04-22-salvage-pulp-revamp.md`](../../roadmap/2026-04-22-salvage-pulp-revamp.md). The original section becomes a stub that points here.
 
 ---
 
