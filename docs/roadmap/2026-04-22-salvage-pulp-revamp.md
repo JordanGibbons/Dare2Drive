@@ -493,57 +493,31 @@ Lock the cosmology, tone, factions, inhabitants, psychics, the Other Side, and t
 
 ## Phase 3b — Lighthouses + System Character
 
-**Status:** Blocked on Phase 3a (done).
+**Status:** Spec drafted (2026-05-02). Full design: [`2026-05-02-phase-3b-lighthouses-design.md`](2026-05-02-phase-3b-lighthouses-design.md).
 
-### Goal
+### Summary
 
-Replace the abstract "system control" concept with the canonical Lighthouse model from the setting. Each system gets a star type, planets/system features, and a Lighthouse object with an upgrade tree. Players can claim Wardenship of unclaimed Lighthouses.
+Replaces the abstract "system control" concept with the canonical Lighthouse model from the setting. Phase 3b grew from a 4-mechanic plan into the gameplay-layer foundation that 3c, 3d, and 3e build on. See the dedicated spec for full mechanics, data model, commands, and verification criteria.
 
-### Mechanics
+### Headline scope
 
-- **Star type per system.** Single / binary / trinary / etc., with color and age. Drives system character — what planets exist, what weather is common, what resources are likely.
-- **Planet / system-feature taxonomy.** Per system, generated deterministically at activation time from a seed. Varies by star type. Becomes the gameplay surface 3c hangs resources on.
-- **Lighthouse object.** One per system. State machine: dormant → active → contested. Upgrade slots accept K3 tech.
-- **Warden mechanic.** Folds the original roadmap's `SectorControl` into the new fiction. Players claim Wardenship of unclaimed active Lighthouses by completing Authority-vetted contracts. Wardens earn tribute and prioritize upgrade installation.
-- **Inactivity lapse.** Wardens who abandon their system lose the seat (carried over from the original Phase 3 plan).
-
-### New entities
-
-- **`Lighthouse`** — `id`, `system_id` (unique), `state` enum, `warden_user_id` nullable, `last_activated_at`, `seed` for deterministic system character.
-- **`LighthouseUpgrade`** — installed upgrade record. Catalog itself stubbed in 3b, expanded in 3e.
-- **System character** — added as columns or JSONB on the existing `System` model: `star_type`, `planets` taxonomy.
-
-### Files likely touched
-
-- `db/models.py`, `db/migrations/versions/`
-- `engine/lighthouse_engine.py` — claim, upgrade, defense logic
-- `engine/system_generator.py` — deterministic system character from seed
-- `bot/cogs/lighthouse.py` — `/lighthouse info`, `/lighthouse claim`, `/lighthouse upgrade install`
-- `data/upgrades/` — upgrade catalog stub (categories + a few sample upgrades; full catalog deferred to 3e)
-
-### Reuse pointers
-
-- Existing `System` model from Phase 0 — extend, don't replace.
-- Phase 2a scheduler — claim contracts and inactivity-lapse checks are scheduled jobs.
-- Phase 2b expedition engine — claim contracts are a parameterized expedition kind.
+- Per-system rich character (star + planets + features + LLM narrative seed).
+- Self-elected `/dock` citizenship with switching cooldown.
+- Lighthouse object per system with band-scaled slot count (rim 3 / middle 5 / inner 7).
+- Wardenship claim via single Authority-vetted Phase-2b contract; tier-scaled difficulty, per-player cooldown.
+- Donation flow (credits + parts, public goal embeds with patronage multiplier for citizens).
+- Upgrade catalog stub: 5 categories × 2 tiers, dual Warden-side / citizen-side effects.
+- Tribute ledger: passive base + activity cut, fuels Warden-flavor verbs.
+- Beacon Flares Slice X: hourly-ish public events with click-to-claim, two archetypes (Salvage Drift, Signal Pulse), tiered audience delay within Sector, Warden-called variant.
+- System Pride scoreboard with neighbor "stolen from / stolen by" surface.
+- Inactivity lapse with dual-rate tribute defer (favorable vacation, penal panic-mode).
 
 ### Scope boundary (OUT of Phase 3b)
 
-- Active resource gathering (Phase 3c)
-- Home base UI consolidation (Phase 3d)
-- Weather, channel events, villains (Phase 3e)
-- PvP Warden challenges (Phase 4)
-
-### Deliverable
-
-A player can locate an unclaimed Lighthouse on the rim, complete a claim contract, and become its Warden. Every system has discoverable star/planet character. Lighthouse upgrades can be installed (with a stub catalog).
-
-### Verification
-
-- A new system's character is deterministic given its seed
-- Claim contract success → Warden assigned + ControlHistory row written
-- Inactivity lapse fires correctly after the threshold
-- Multi-system Wardenship works (one player can hold multiple Lighthouses)
+- Active resource gathering and sub-claims (Phase 3c).
+- Home base UI consolidation (Phase 3d).
+- Universe-wide flare tier, weather, channel events, named villains, contested-Lighthouse takeovers, additional flare archetypes (Phase 3e).
+- PvP Warden challenges, contested claim windows, alliance Wardenship (Phase 4+).
 
 ---
 
