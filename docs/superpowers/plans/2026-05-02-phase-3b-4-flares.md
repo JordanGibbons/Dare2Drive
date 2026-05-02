@@ -17,7 +17,7 @@
 
 **Tech Stack:** Python 3.12, async SQLAlchemy 2.0, Alembic, asyncpg, discord.py 2.x (DynamicItem persistent View, on_message listener), pytest + pytest-asyncio. No new top-level dependencies.
 
-**Spec:** [docs/roadmap/2026-05-02-phase-3b-lighthouses-design.md](../../roadmap/2026-05-02-phase-3b-lighthouses-design.md) — sections covered: §12 (Beacon Flares — both archetypes, audience tiers, cadence, auto-throttle, prize tiers, reward delivery, Warden-called), §13 (System Pride — sources, decay, visibility, storage), §10.1 last paragraph (activity-cut tribute), parts of §15 (`flares`, `flare_clicks`, `pride_events`), §16.1 (`/lighthouse flare call`), §16.4 (flare embed).
+**Spec:** [docs/superpowers/specs/2026-05-02-phase-3b-lighthouses-design.md](../specs/2026-05-02-phase-3b-lighthouses-design.md) — sections covered: §12 (Beacon Flares — both archetypes, audience tiers, cadence, auto-throttle, prize tiers, reward delivery, Warden-called), §13 (System Pride — sources, decay, visibility, storage), §10.1 last paragraph (activity-cut tribute), parts of §15 (`flares`, `flare_clicks`, `pride_events`), §16.1 (`/lighthouse flare call`), §16.4 (flare embed).
 
 **Depends on:** 3b-1 (Lighthouse + citizenship), 3b-2 (Warden seats — Warden-called flares require a Warden), 3b-3 (donation/install Pride hooks; tribute_ledger).
 

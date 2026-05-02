@@ -16,7 +16,7 @@
 
 **Tech Stack:** Python 3.12, async SQLAlchemy 2.0, Alembic, asyncpg, discord.py 2.x, pytest + pytest-asyncio, **NEW: `anthropic` SDK** (latest 1.x). Anthropic API key required at runtime.
 
-**Spec:** [docs/roadmap/2026-05-02-phase-3b-lighthouses-design.md](../../roadmap/2026-05-02-phase-3b-lighthouses-design.md) §4.4 (LLM narrative pass) and §4.6 (activation flow — "If the LLM job fails, a placeholder paragraph is stored and a retry is scheduled"). The decision to defer this to a follow-on sub-plan was made in 3b-1 ([Open Question §1, marked DECIDED](docs/superpowers/plans/2026-05-02-phase-3b-1-foundation.md#open-questions)).
+**Spec:** [docs/superpowers/specs/2026-05-02-phase-3b-lighthouses-design.md](../specs/2026-05-02-phase-3b-lighthouses-design.md) §4.4 (LLM narrative pass) and §4.6 (activation flow — "If the LLM job fails, a placeholder paragraph is stored and a retry is scheduled"). The decision to defer this to a follow-on sub-plan was made in 3b-1 ([Open Question §1, marked DECIDED](docs/superpowers/plans/2026-05-02-phase-3b-1-foundation.md#open-questions)).
 
 **Depends on:** 3b-1 (system_narrative stub + activation hook + flavor_text column), 3b-5 (the most recent migration — `0010_phase3b_5_lapse`).
 

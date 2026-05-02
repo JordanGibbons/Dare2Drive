@@ -14,7 +14,7 @@
 
 **Tech Stack:** Python 3.12, async SQLAlchemy 2.0, Alembic, asyncpg, discord.py 2.x, pytest + pytest-asyncio, PyYAML (already a dep). No new top-level dependencies.
 
-**Spec:** [docs/roadmap/2026-05-02-phase-3b-lighthouses-design.md](../../roadmap/2026-05-02-phase-3b-lighthouses-design.md) — sections covered: §4 (system character & generation), §5 (citizenship & dock), §6 (Lighthouse object — creation only), parts of §15 (data model: the six tables touched here), §16.1 (`/dock`, read-only `/lighthouse`).
+**Spec:** [docs/superpowers/specs/2026-05-02-phase-3b-lighthouses-design.md](../specs/2026-05-02-phase-3b-lighthouses-design.md) — sections covered: §4 (system character & generation), §5 (citizenship & dock), §6 (Lighthouse object — creation only), parts of §15 (data model: the six tables touched here), §16.1 (`/dock`, read-only `/lighthouse`).
 
 **Sections deferred to later sub-plans:** §7 (claim) → 3b-2; §8–11 (donations, upgrades, tribute passive, citizen buffs) → 3b-3; §12–13 (flares, Pride, activity-cut tribute) → 3b-4; §14 + §10.3 (lapse, vacation, tribute spending) → 3b-5.
 

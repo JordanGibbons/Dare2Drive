@@ -16,7 +16,7 @@
 
 **Tech Stack:** Python 3.12, async SQLAlchemy 2.0, Alembic, asyncpg, discord.py 2.x (DynamicItem persistent View), pytest + pytest-asyncio, PyYAML. No new top-level dependencies.
 
-**Spec:** [docs/roadmap/2026-05-02-phase-3b-lighthouses-design.md](../../roadmap/2026-05-02-phase-3b-lighthouses-design.md) — sections covered: §8 (donation flow), §9 (upgrade catalog), §10.1 (passive tribute drip only), §11 (citizen buffs), parts of §15 (the three new tables), §16.1 (`/lighthouse upgrade …` subcommands), parts of §16.4 (goal embed).
+**Spec:** [docs/superpowers/specs/2026-05-02-phase-3b-lighthouses-design.md](../specs/2026-05-02-phase-3b-lighthouses-design.md) — sections covered: §8 (donation flow), §9 (upgrade catalog), §10.1 (passive tribute drip only), §11 (citizen buffs), parts of §15 (the three new tables), §16.1 (`/lighthouse upgrade …` subcommands), parts of §16.4 (goal embed).
 
 **Depends on:** 3b-1 (Lighthouse row, citizenship, slot allocation by band), 3b-2 (parameters column on expeditions, claim path — Wardens come from there).
 

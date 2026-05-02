@@ -23,7 +23,7 @@
 
 **Tech Stack:** No new top-level deps. Python 3.12, async SQLAlchemy 2.0, Alembic, asyncpg, discord.py 2.x, pytest + pytest-asyncio.
 
-**Spec:** [docs/roadmap/2026-05-02-phase-3b-lighthouses-design.md](../../roadmap/2026-05-02-phase-3b-lighthouses-design.md) — sections covered: §10.3 (vacation/panic/conversion spending), §14 (full lapse + vacation + abdication arc), parts of §15 (column extensions), §16.1 / §16.2 (`/lighthouse vacation`, `/lighthouse abdicate`, `/lighthouse tribute convert`), §16.4 (lapse-warning + abdication public posts).
+**Spec:** [docs/superpowers/specs/2026-05-02-phase-3b-lighthouses-design.md](../specs/2026-05-02-phase-3b-lighthouses-design.md) — sections covered: §10.3 (vacation/panic/conversion spending), §14 (full lapse + vacation + abdication arc), parts of §15 (column extensions), §16.1 / §16.2 (`/lighthouse vacation`, `/lighthouse abdicate`, `/lighthouse tribute convert`), §16.4 (lapse-warning + abdication public posts).
 
 **Depends on:** 3b-1 (Lighthouse columns), 3b-2 (`ClaimAttempt` for the 14-day claim cooldown), 3b-3 (upgrade goals — refund path on abdication), 3b-4 (tribute_ledger spend path, notification consumer pattern, Pride decay).
 

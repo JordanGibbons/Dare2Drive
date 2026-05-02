@@ -14,7 +14,7 @@
 
 **Tech Stack:** Python 3.12, async SQLAlchemy 2.0, Alembic, asyncpg, discord.py 2.x, pytest + pytest-asyncio. No new top-level dependencies.
 
-**Spec:** [docs/roadmap/2026-05-02-phase-3b-lighthouses-design.md](../../roadmap/2026-05-02-phase-3b-lighthouses-design.md) — sections covered: §7 (claim discovery, contract, difficulty, resolution, cooldown, preconditions, auto-dock, multi-system), parts of §15 (`claim_attempts`, `expeditions.parameters`), §16.1 (`/lighthouse list`, `/lighthouse claim`).
+**Spec:** [docs/superpowers/specs/2026-05-02-phase-3b-lighthouses-design.md](../specs/2026-05-02-phase-3b-lighthouses-design.md) — sections covered: §7 (claim discovery, contract, difficulty, resolution, cooldown, preconditions, auto-dock, multi-system), parts of §15 (`claim_attempts`, `expeditions.parameters`), §16.1 (`/lighthouse list`, `/lighthouse claim`).
 
 **Depends on:** Phase 3b-1 (foundation — schema, Lighthouse rows, citizenship, /dock).
 
